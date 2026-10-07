@@ -147,7 +147,8 @@ def _simulate_resp(cand: Compound, seed=0, duration_ms=14000.0, warm_ms=4000.0):
     return resp_metrics(A["t"][m], A["Out"][m], A["Exc"][m])
 
 
-def evaluate(cand: Compound, n_seed=4, reference="nonselective_bz") -> ResultSet:
+def evaluate(cand: Compound, n_seed=4, reference="nonselective_bz",
+             include_motor=True) -> ResultSet:
     """Evaluate a compound and return tiered results.
 
     Ventilation is simulated and reported as UNCALIBRATED: the mechanism is sound but the
@@ -214,6 +215,70 @@ def evaluate(cand: Compound, n_seed=4, reference="nonselective_bz") -> ResultSet
     rs.add(Quantity("rhythm_alive_fraction", alive, Tier.UNCALIBRATED,
                     provenance="eupnoea-band gated; a fragmented fast train does not count "
                                "as a live rhythm"))
+
+    # --- motor endpoints, if the body plant is installed ----------------------------
+    # These are an optional extra (mujoco), so their absence must not fail an evaluation.
+    if include_motor:
+        try:
+            from .assays import stretch_reflex, locomotion
+        except Exception as e:                       # pragma: no cover
+            rs.add(Quantity("motor_endpoints", None, Tier.UNCALIBRATED,
+                            provenance=f"body plant unavailable ({type(e).__name__}); "
+                                       "install the 'plant' extra for motor endpoints"))
+            return rs
+        stm, spm = cand.sens("spinal")
+        d = cand.drug("spinal")
+        try:
+            refl = stretch_reflex(d, gaba_sens_tonic=stm, gaba_sens_phasic=spm)
+            ctrl_refl = stretch_reflex(Drug(), gaba_sens_tonic=stm,
+                                       gaba_sens_phasic=spm)
+            rs.add(Quantity(
+                "reflex_gain", 100.0 * refl["gain"] / max(1e-9, ctrl_refl["gain"]),
+                Tier.UNCALIBRATED, "% of control",
+                provenance="ramp-and-hold stretch reflex, mirroring the servo-imposed "
+                           "experiment; reproduces strychnine hyperreflexia and "
+                           "benzodiazepine depression without being fitted to them",
+                promote_by="a dose-response anchor, e.g. diazepam H-reflex depression in a "
+                           "preparation matching the modelled arc. The spinal sensitivity "
+                           "was never quantitatively fitted — it was set where the "
+                           "qualitative validations passed."))
+
+            loco = locomotion(d, gaba_sens_tonic=stm, gaba_sens_phasic=spm)
+            ctrl_loco = locomotion(Drug(), gaba_sens_tonic=stm, gaba_sens_phasic=spm)
+            rs.add(Quantity(
+                "step_period", 100.0 * loco["step_period_ms"]
+                / max(1e-9, ctrl_loco["step_period_ms"]),
+                Tier.UNCALIBRATED, "% of control",
+                provenance="free-running closed loop: receptor -> circuit -> muscle -> "
+                           "joint -> spindle feedback, nothing imposed. Slowing is a valid "
+                           "impairment signal.",
+                promote_by="gait analysis under a sedative at matched receptor occupancy"))
+            rs.add(Quantity(
+                "coordination", loco["alternation"], Tier.UNCALIBRATED,
+                provenance="flexor/extensor motoneuron correlation; more positive = worse "
+                           "antagonist coordination. Degrades correctly under sedation "
+                           "(-0.67 control -> -0.34 at a 4x PAM).",
+                promote_by="gait analysis; this is the closest thing here to an ataxia "
+                           "measure"))
+            rs.add(Quantity(
+                "walking", loco["walking"], Tier.UNCALIBRATED,
+                provenance="whether rhythmic joint movement persists at all"))
+            # the metric that looks right and is not
+            rs.add(Quantity(
+                "joint_excursion", float("nan"), Tier.VOID, "rad",
+                provenance="reports the WRONG SIGN: a sedative INCREASES joint excursion "
+                           "here (1.607 rad control -> 1.940 at a 4x PAM), because less "
+                           "antagonist co-contraction leaves the joint less stiff. The "
+                           "mechanism is real but the metric is an artefact of a "
+                           "single-joint preparation with the body fixed, no gravitational "
+                           "load and no ground contact — in an animal, lost co-contraction "
+                           "presents as instability, and this model has nothing to "
+                           "collapse against.",
+                promote_by="a whole-body preparation with ground reaction forces; this "
+                           "cannot be fixed by reweighting the metric"))
+        except FileNotFoundError as e:
+            rs.add(Quantity("motor_endpoints", None, Tier.UNCALIBRATED,
+                            provenance=f"body model not found: {e}"))
 
     # --- VOID: quantities that rest on something invalid ----------------------------
     rs.add(Quantity(

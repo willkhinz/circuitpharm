@@ -136,3 +136,35 @@ def test_every_uncalibrated_quantity_states_how_to_promote_it_or_why_not():
     # the two headline ones must name their promotion path explicitly
     assert "P12" in rs.quantity("ventilation").promote_by
     assert "learns" in rs.quantity("subjective_index").promote_by
+
+
+# ------------------------------------------------------------------ motor endpoints
+@pytest.mark.slow
+def test_evaluate_includes_all_three_endpoints():
+    """The package has respiratory, reflex and locomotor endpoints; the public API must
+    expose all three, or users will reach past it into the modules."""
+    rs = evaluate(Compound.from_profile("alogabat", occupancy=0.35), n_seed=1)
+    for name in ("ventilation", "reflex_gain", "step_period", "coordination"):
+        assert rs.quantity(name) is not None, name
+
+
+@pytest.mark.slow
+def test_joint_excursion_is_void_in_the_api_too():
+    """The invalid metric must be VOID at the API boundary, not just renamed in the assay.
+    Renaming protects a careful reader; the tier protects everyone else."""
+    rs = evaluate(Compound.from_profile("alogabat", occupancy=0.35), n_seed=1)
+    q = rs.quantity("joint_excursion")
+    assert q.tier is Tier.VOID
+    with pytest.raises(VoidQuantityError):
+        q.value
+    assert "WRONG SIGN" in q.provenance
+
+
+@pytest.mark.slow
+def test_motor_endpoints_can_be_skipped():
+    """They need the optional body plant, so evaluation must work without them."""
+    rs = evaluate(Compound.from_profile("alogabat", occupancy=0.35), n_seed=1,
+                  include_motor=False)
+    assert rs.quantity("ventilation") is not None
+    with pytest.raises(KeyError):
+        rs.quantity("reflex_gain")

@@ -1798,7 +1798,7 @@ Those turned out to be the same thing, every time.
 ## 2026-10-07 — Session 8: packaging, test suite, and the locomotor behavioural endpoint
 
 Goal: make the model publishable as a generalised tool. Five commits; the repo is now
-under version control (it was not), installable, and covered by 100 tests.
+under version control (it was not), installable, and covered by 92 tests.
 
 ### Packaging (verified)
 - renamed `spinal` -> **`circuitpharm`** (the package spans receptor kinetics, respiratory
@@ -1889,7 +1889,7 @@ without fixing the preparation. Valid impairment metrics are PERIOD and ALTERNAT
 
 A valid stride/ataxia measure needs the whole body and ground reaction forces.
 
-### Test suite: 100 tests
+### Test suite: 92 tests
 - `test_identities.py` (41) exact identities: the tonic/phasic split is a partition, legacy
   single-pool behaviour reproduced exactly, the GluN2B selectivity bound, per-region anchors
 - `test_failure_modes.py` **E1-E12 as executable regressions**, two-sided where possible.
