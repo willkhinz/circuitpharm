@@ -140,3 +140,92 @@ REFLEX_CASES = [
     ("NMDA 60% GluN2B-sel (spinal)",  Drug(nmda_block=0.6, glun2b_selectivity=1.0,
                                            glun2b_fraction=0.15)),
 ]
+
+
+# ------------------------------------------------------------------- locomotion
+# THE SECOND BEHAVIOURAL ENDPOINT, and the one the project lacked for a long time. Motor
+# impairment was previously represented only by stretch-reflex gain, which is a thin proxy
+# for what a sedative actually does to an animal's movement.
+#
+# This closes the chain receptor -> circuit -> muscle -> BODY MOVEMENT for locomotion:
+# the group-pacemaker rhythm generator drives motoneuron pools, which drive Hill-type
+# muscle actuators, which move the joint, whose spindles feed back. Nothing is imposed.
+#
+# Metrics are chosen to match what rodent gait analysis actually measures, so the model's
+# output and an animal's output are the same kind of quantity:
+#     step_period_ms  <-> cadence                      VALID as an impairment measure
+#     alternation     <-> antagonist coordination      VALID
+#     duty            <-> stance/swing ratio           VALID
+#     excursion_rad   <-> stride length proxy          *** NOT VALID -- see below ***
+#
+# EXCURSION REPORTS THE WRONG SIGN AND MUST NOT BE USED AS AN IMPAIRMENT MEASURE.
+# Measured here: control 1.607 rad, benzodiazepine-like PAM 2x -> 1.726, PAM 4x -> 1.940.
+# A sedative INCREASES joint excursion in this preparation. The mechanism is real rather
+# than a bug -- more inhibition means less co-contraction of the antagonist pair, so the
+# joint is less stiff and swings further -- but it is an artefact of the preparation: a
+# single joint with the rest of the body held fixed, no gravitational load and no ground
+# contact. In an animal, reduced co-contraction shows up as instability and collapse, and
+# this model has nothing to collapse against.
+#
+# A valid stride/ataxia measure needs the whole body and ground reaction forces. Until
+# then use PERIOD and ALTERNATION, which degrade in the correct direction:
+#     PAM 4x -> period 1250 -> 1667 ms (slowing) and alternation -0.69 -> -0.33
+#     (coordination loss). Both are what a sedative does.
+#
+# A note on testing glycine here: `Drug(glyr_gain=0.4)` is a 60% block and leaves
+# locomotion essentially unchanged (alternation -0.66 vs -0.69 control). That is recurring
+# error E10, not a negative result -- this coupling is only informative under COMPLETE
+# removal, which at circuit level means ie_gly = 0 (see tests/test_phenotypes.py).
+LOCO_SETTLE_S = 1.0
+
+
+def locomotion(drug: Drug | None = None, duration_s=6.0, seed=1, rg_gain=30.0,
+               gaba_sens=1.0, gaba_sens_tonic=None, gaba_sens_phasic=None,
+               joint="knee_L", xml=None) -> dict:
+    """Free-running closed-loop locomotion. No imposed kinematics.
+
+    `rg_gain` converts the rhythm generator's PER-NEURON rate in Hz into an equivalent
+    total presynaptic rate, so it is the presynaptic population size (30). Treating it as
+    a free gain is recurring error E2.
+    """
+    from .plant import JointPlant
+
+    p = JointPlant(xml or model_xml(), joint=joint, drug=drug or Drug(),
+                   rg_gain=rg_gain, seed=seed, gaba_sens=gaba_sens,
+                   gaba_sens_tonic=gaba_sens_tonic, gaba_sens_phasic=gaba_sens_phasic)
+    for _ in range(int(duration_s / DT)):
+        p.step(DT)
+    A = p.arrays()
+    t = A["t"] / 1000.0
+    m = t > LOCO_SETTLE_S
+    q, mf, me = A["qpos"][m], A["mn_F"][m], A["mn_E"][m]
+
+    out = dict(
+        # NOT an impairment measure -- reports the wrong sign in this single-joint
+        # preparation. Named to say so, because the plain name invites misuse.
+        excursion_rad_INVALID=float(np.ptp(q)),
+        mn_F_peak=float(mf.max()), mn_E_peak=float(me.max()),
+        torque_range=float(np.ptp(A["torque"][m])))
+
+    # frequency from the FFT of joint angle: amplitude-invariant, so a drug that weakens
+    # the rhythm cannot masquerade as a faster one (recurring error E4)
+    if q.std() > 1e-4:
+        x = (q - q.mean()) * np.hanning(len(q))
+        F = np.abs(np.fft.rfft(x))
+        fr = np.fft.rfftfreq(len(q), DT)
+        band = (fr > 0.2) & (fr < 8.0)
+        f0 = float(fr[band][np.argmax(F[band])]) if band.any() else 0.0
+        out["step_period_ms"] = 1000.0 / f0 if f0 > 0 else float("nan")
+        out["freq_hz"] = f0
+    else:
+        out["step_period_ms"] = float("nan")
+        out["freq_hz"] = 0.0
+
+    out["alternation"] = (float(np.corrcoef(mf, me)[0, 1])
+                          if mf.std() > 1e-9 and me.std() > 1e-9 else float("nan"))
+    # duty: fraction of the cycle the extensor pool is above its mid-range
+    thr = me.min() + 0.5 * np.ptp(me)
+    out["duty"] = float((me > thr).mean()) if np.ptp(me) > 1e-9 else float("nan")
+    # a drug can abolish locomotion outright; say so rather than returning a tiny number
+    out["walking"] = bool(out["excursion_rad_INVALID"] > 0.1 and out["freq_hz"] > 0.2)
+    return out

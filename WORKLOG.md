@@ -1792,3 +1792,112 @@ animals, and the external gates (DILI, hERG/QTc, human dose-response).
 
 Session 7 net: the model is substantially more accurate and substantially less reassuring.
 Those turned out to be the same thing, every time.
+
+---
+
+## 2026-10-07 — Session 8: packaging, test suite, and the locomotor behavioural endpoint
+
+Goal: make the model publishable as a generalised tool. Five commits; the repo is now
+under version control (it was not), installable, and covered by 100 tests.
+
+### Packaging (verified)
+- renamed `spinal` -> **`circuitpharm`** (the package spans receptor kinetics, respiratory
+  and spinal circuits, so `spinal` was a misnomer), src/ layout, `pip install -e .`
+- importable from ANYWHERE; previously `import spinal.cpg` failed outside the repo root
+- removed all **33** `sys.path.insert` hacks
+- pyproject with optional extras (`plant`, `chem`, `dev`), MIT LICENSE, README
+- `config.py`: single source for operating points that were duplicated as literals across
+  five scripts. That duplication is HOW E12 happened twice.
+- archived 18 superseded scripts with a README explaining each retirement; 23 remain
+- `.github/workflows/tests.yml`: 3.11 and 3.12, fast and slow suites separately
+- `scripts/reflex.py` was a library nine other scripts imported, with a relative model
+  path that broke outside the repo root -> moved to `circuitpharm/assays.py` with proper
+  path resolution (verified resolving from /tmp); the old module is a re-exporting shim
+
+### Reliability tiers, enforced in code (`results.py`) — the distinguishing feature
+`Quantity` carries tier + provenance + promotion path. Reading a **VOID** quantity RAISES,
+and VOID values never appear in printed output. This exists because the project's worst
+reporting error was not a modelling mistake: a configuration the model itself flagged
+UNREACHABLE was summarised as a clean result, because the flag was printed NEXT TO the
+number instead of blocking it. Caveats get dropped when numbers are copied.
+
+`CALIBRATIONS` registry now records in code that `prebotc_gaba_sens` is VOID.
+
+### TWO REAL BUGS FOUND
+**1. The "validated" locomotor RG shipped with UNTUNED defaults.** The validated
+parameters existed only in the stdout of a past `tune_rg2.py` run and were never written
+back. `RG_E` was silent entirely — winner-take-all, not alternation — so every importer
+inherited a broken rhythm while this worklog described the module as validated. Defaults
+are now the validated set (drive 260, g_adapt 1.2, tau_adapt 280, ie_gly 3.0, ee_ampa
+0.55) and a test guards it.
+
+**2. `tune_rg2.py` tests the strychnine phenotype with a 95% block — error E10**, the
+project's own catalogued mistake, in the script that was supposed to validate the module.
+Retested by COMPLETE removal:
+
+| condition | corr | per_F | per_E |
+|---|---|---|---|
+| coupled | -0.51 | 1245 | 1245 |
+| 95% block | -0.50 | 1242 | 1243 (**no effect**) |
+| COMPLETE removal | **-0.13** | **1154** | **1245** |
+
+Phenotype HOLDS (rhythm intact, 20 bursts each). The original claim was sound; the tuning
+script's test was not. E10 is now an executable demonstration in the suite.
+
+Also: `rg.py` (MatsuokaRG) deleted; `RG_GAIN_PER_NEURON` documents the units change (rg2
+returns Hz per neuron where Matsuoka returned dimensionless — getting this wrong is E2).
+
+### Public API with tiered results (`evaluate.py`)
+`simulator.py` had drifted in three ways that ALL flattered the model: a single
+`gaba_sens` applied to both receptor pools (wrong by ~7x on one), dose escalation clipped
+at a hand-set ceiling of 2.5, and an overdose index printed as a plain number with an
+ignored warning beneath. Now dose is modulator OCCUPANCY, pool gains come from the Markov
+scheme and are exactly linear in occupancy (a partly occupied population is a MIXTURE), so
+they saturate at full occupancy — and that saturation, set by the ligand's own `s_max`, is
+the only honest ceiling. `simulator.py` is a thin CLI.
+
+The ranking now separates the central chiral pair directly: **SH-053-R 9.35 vs
+SH-053-S 3.63** from one stereocentre. Sanity checks pass too: zolpidem 0.10 (a1-preferring
+= all burden, no subjective drive), gaboxadol 0.00.
+
+### NEW: the locomotor behavioural endpoint (link 6, closed for locomotion)
+`circuitpharm.assays.locomotion` — free-running closed loop, NOTHING imposed:
+receptor -> circuit -> motoneurons -> Hill-type muscle -> joint -> spindle feedback.
+
+    control    excursion 1.61 rad, 0.80 Hz, alternation -0.67, duty 0.58
+               both motoneuron pools 26-146 Hz (physiological)
+
+Motor impairment now has a body-level readout instead of reflex gain alone:
+
+| condition | step period | alternation | duty |
+|---|---|---|---|
+| control | 1250 ms | -0.67 | 0.58 |
+| PAM 2x | 1250 ms | -0.64 | 0.49 |
+| PAM 4x | **1667 ms** | **-0.34** | 0.35 |
+
+### ...and the assay immediately caught its own INVALID metric
+Joint excursion goes the WRONG WAY under sedation: control 1.607 rad -> 1.726 at PAM 2x ->
+1.940 at PAM 4x. A sedative increases it. The mechanism is real, not a coding bug — more
+inhibition means less antagonist co-contraction, so the joint is less stiff and swings
+further — but it is an artefact of the preparation: ONE joint, body fixed, no gravitational
+load, no ground contact. In an animal, lost co-contraction presents as instability and
+collapse; this model has nothing to collapse against.
+
+The key is therefore named **`excursion_rad_INVALID`** so the number cannot be used
+casually, and a test pins both the name and the wrong-sign behaviour so nobody renames it
+without fixing the preparation. Valid impairment metrics are PERIOD and ALTERNATION.
+
+A valid stride/ataxia measure needs the whole body and ground reaction forces.
+
+### Test suite: 100 tests
+- `test_identities.py` (41) exact identities: the tonic/phasic split is a partition, legacy
+  single-pool behaviour reproduced exactly, the GluN2B selectivity bound, per-region anchors
+- `test_failure_modes.py` **E1-E12 as executable regressions**, two-sided where possible.
+  Caught an error in its own E11 test (the default efficacy cap binds a gain of 3.0).
+- `test_tiers.py` (12) the refusal machinery, incl. that VOID never leaks into output
+- `test_evaluate.py` the public API; occupancy linearity; scale-invariance of the ranking
+- `test_phenotypes.py` (11) **the only tests that check biology rather than code:**
+  strychnine hyperreflexia (gain 138% of control), benzodiazepine reflex depression (77%),
+  the **GluN2B selectivity window** (non-selective 84% vs selective 102% at the SAME 60%
+  block), adaptation-not-inhibition rhythmogenesis, closed-loop walking, sedative
+  coordination loss, and the E5 guard (Mn peak 40.6 Hz, not pinned at the 125 Hz ceiling)

@@ -189,3 +189,60 @@ def test_E5_motoneuron_peak_is_not_pinned_at_the_firing_ceiling():
     assert r["mn_dyn"] < 0.8 * cap_hz, (
         f"motoneuron dynamic peak {r['mn_dyn']:.1f} Hz is at the {cap_hz:.0f} Hz "
         "structural cap; drug effects will be masked")
+
+
+# ================================================== locomotion: the body-level endpoint
+@pytest.mark.slow
+def test_closed_loop_actually_walks():
+    """Receptor -> circuit -> muscle -> joint, nothing imposed. If this fails there is no
+    body-level behavioural endpoint at all."""
+    from circuitpharm.assays import locomotion
+    r = locomotion()
+    assert r["walking"], "closed loop produced no rhythmic joint movement"
+    assert r["alternation"] < -0.3, (
+        f"flexor/extensor alternation {r['alternation']:+.2f}; antagonists are "
+        "co-activating rather than alternating")
+    assert 300.0 < r["step_period_ms"] < 2500.0, (
+        f"step period {r['step_period_ms']:.0f} ms is outside any plausible range")
+    assert r["mn_F_peak"] > 10.0 and r["mn_E_peak"] > 10.0, "a motoneuron pool is silent"
+
+
+@pytest.mark.slow
+def test_sedative_degrades_coordination_and_slows_the_step_cycle():
+    """A sedative GABA-A PAM must impair locomotion in the valid metrics: slower cycle and
+    worse antagonist coordination. This is the motor-impairment endpoint the project
+    previously approximated with reflex gain alone."""
+    from circuitpharm.assays import locomotion
+    from circuitpharm.cpg import Drug
+    ctrl = locomotion(Drug())
+    pam = locomotion(Drug(gaba_a_gain=4.0, gaba_a_tau=2.8, gaba_a_efficacy_cap=9.0))
+    assert pam["step_period_ms"] > 1.15 * ctrl["step_period_ms"], (
+        f"sedative did not slow the step cycle ({ctrl['step_period_ms']:.0f} -> "
+        f"{pam['step_period_ms']:.0f} ms)")
+    assert pam["alternation"] > ctrl["alternation"] + 0.2, (
+        f"sedative did not degrade coordination ({ctrl['alternation']:+.2f} -> "
+        f"{pam['alternation']:+.2f})")
+
+
+@pytest.mark.slow
+def test_joint_excursion_is_marked_invalid_because_it_has_the_wrong_sign():
+    """Guards a metric that LOOKS right and is not.
+
+    A sedative INCREASES joint excursion here (control 1.61 rad -> 1.94 at PAM 4x), because
+    less co-contraction leaves the joint less stiff and free to swing further. The mechanism
+    is real; the metric is invalid, because a single joint with the body fixed has no
+    gravitational load and nothing to collapse against. The key name carries the warning so
+    the number cannot be used casually, and this test pins both the naming and the sign so
+    nobody 'fixes' the name without fixing the preparation.
+    """
+    from circuitpharm.assays import locomotion
+    from circuitpharm.cpg import Drug
+    ctrl = locomotion(Drug())
+    pam = locomotion(Drug(gaba_a_gain=4.0, gaba_a_tau=2.8, gaba_a_efficacy_cap=9.0))
+    assert "excursion_rad_INVALID" in ctrl
+    assert "excursion_rad" not in ctrl, (
+        "a plainly-named excursion key reappeared; it invites use as an impairment "
+        "measure, which it is not")
+    assert pam["excursion_rad_INVALID"] > ctrl["excursion_rad_INVALID"], (
+        "excursion no longer increases under sedation -- if the preparation gained a load "
+        "or ground contact, re-evaluate whether this metric is now valid")
