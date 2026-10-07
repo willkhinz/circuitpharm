@@ -79,7 +79,7 @@ are ranges, not points. What the module is for is the STRUCTURE of the dependenc
 sign and rough magnitude of how gain, tau and ceiling move together -- which is far more
 robust than any individual rate constant.
 
-    python -m spinal.gabaa_kinetics            # fit, validate, and derive the three numbers
+    python -m circuitpharm.gabaa_kinetics            # fit, validate, and derive the three numbers
 """
 from dataclasses import dataclass, replace
 import numpy as np
@@ -287,7 +287,7 @@ def derive(scheme: Scheme, affinity=1.0, gating=1.0,
            ambient_um=AMBIENT_UM, pulse=None) -> dict:
     """Derive the model's three GABA-A drug numbers from the kinetic scheme.
 
-    Returns the quantities spinal/cpg.py currently takes as independent free parameters:
+    Returns the quantities circuitpharm/cpg.py currently takes as independent free parameters:
       tonic_gain  -> what Drug.gaba_a_gain means for the EXTRASYNAPTIC/tonic conductance
       phasic_gain -> ... and for the SYNAPTIC peak. These differ, which is the point.
       tau_ratio   -> Drug.gaba_a_tau

@@ -115,7 +115,7 @@ Because GABA-A has no respiratory selectivity window, the GABA arm's safety must
 out of it.
 
 > **CORRECTION 2026-10-07 (session 7c) — read this before relying on the ceiling claim
-> above.** An explicit Markov gating model (`spinal/gabaa_kinetics.py`) shows the ceiling
+> above.** An explicit Markov gating model (`circuitpharm/gabaa_kinetics.py`) shows the ceiling
 > is not one number and is much weaker than assumed in the pool that matters here:
 >
 > | pool | agonist seen | headroom for an affinity-type PAM |
@@ -246,7 +246,7 @@ depression while the PAM + GluN2B-selective combination is ~multiplicative.
 mechanism is architecturally wrong — in the real cord, strychnine abolishes left-right
 alternation while the rhythm *persists*, so glycinergic reciprocal inhibition sets PHASE,
 not period. The Matsuoka RG conflates the two. Rebuild the locomotor RG on the
-group-pacemaker architecture already working in `spinal/resp.py`. Margin results are
+group-pacemaker architecture already working in `circuitpharm/resp.py`. Margin results are
 unaffected (reflex runs with the RG off; respiratory uses the correct architecture).
 
 **BLOCKING UNKNOWN: preBötC GABA-A sensitivity is uncalibrated** (finding 21). Absolute

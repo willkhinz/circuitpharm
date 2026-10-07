@@ -1,8 +1,8 @@
 import sys, os; sys.path.insert(0,".")
 import numpy as np
 from multiprocessing import Pool
-from spinal.circuit import SpinalCircuit
-from spinal.cpg import burst_metrics
+from circuitpharm.circuit import SpinalCircuit
+from circuitpharm.cpg import burst_metrics
 
 def run(args):
     gain, gt = args

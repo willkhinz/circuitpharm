@@ -27,9 +27,9 @@ one value.
 import sys, os, itertools; sys.path.insert(0, ".")
 import numpy as np
 from multiprocessing import Pool
-from spinal.resp import PreBotC, resp_metrics
-from spinal.circuit import SpinalCircuit
-from spinal.cpg import Drug
+from circuitpharm.resp import PreBotC, resp_metrics
+from circuitpharm.circuit import SpinalCircuit
+from circuitpharm.cpg import Drug
 import scripts.reflex as R
 
 FOREBRAIN_2B, PERIPHERAL_2B, GABA_SENS, IA_SCALE = 0.70, 0.15, 0.15, 0.30

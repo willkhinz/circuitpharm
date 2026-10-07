@@ -95,7 +95,7 @@ can never set the period. The oscillation is a *delayed-inhibition loop* oscilla
 ~2×(5 ms AMPA + 8 ms gly + 20 ms membrane). **Do not retry tuning a spiking RG.**
 
 ### Locomotor RG — Matsuoka replacement, WORKS
-`spinal/rg.py`. Period law `≈ 2π√(τ·τₐ)` confirmed: predicted 688/889/1192 vs observed
+`circuitpharm/rg.py`. Period law `≈ 2π√(τ·τₐ)` confirmed: predicted 688/889/1192 vs observed
 **704/920/1299 ms**. Duty 0.48, alternation −0.90.
 
 Free finding: at `w=4.0` the rhythm **stops entirely**. Reciprocal inhibition is
@@ -103,7 +103,7 @@ glycinergic, so a GlyR PAM (`glyr_gain≈1.8`) pushes w from 2.2→4.0 and aboli
 rhythm. Ethanol potentiates GlyR → mechanistically grounded prediction.
 
 ### Hybrid circuit — WORKS
-`spinal/circuit.py`: Matsuoka RG → spiking PF/Mn/InPF/IaIn/Rc. Operating point
+`circuitpharm/circuit.py`: Matsuoka RG → spiking PF/Mn/InPF/IaIn/Rc. Operating point
 `rg_gain=900`, `gaba_tonic=2.0 nS`, Mn `tref=8 ms`. Output: **period 920 ms, Mn 35.8 Hz
 (peak 123), duty 0.33, flex/ext corr −0.53** — inside the rat physiological box that 288
 all-spiking combos could not reach.
@@ -134,7 +134,7 @@ absent at higher gain (scale 0.40: predicted 61%, observed 63%). It is *not* a g
 property. This was error E6.
 
 ### Closed loop — DONE
-`spinal/plant.py`. Mn pool rate → muscle activation (`d.ctrl`); actuator length/velocity
+`circuitpharm/plant.py`. Mn pool rate → muscle activation (`d.ctrl`); actuator length/velocity
 normalised against `actuator_lengthrange` → `spindle_ia()` → Ia afferents. Circuit takes
 20 substeps of 0.1 ms per 2 ms physics step.
 
@@ -161,7 +161,7 @@ firing 0.62±0.12 → 1.76±0.26 Hz (~4 sd) while depressing the dynamic respons
 Renshaw negative-feedback self-limitation. Small absolute quantities; not pursued.
 
 ### preBötC respiratory module — built, metric fixed, now bursting
-`spinal/resp.py`. Deliberately **all-spiking**, unlike the locomotor RG: a *group
+`circuitpharm/resp.py`. Deliberately **all-spiking**, unlike the locomotor RG: a *group
 pacemaker* (recurrently excitatory glutamatergic population + spike-triggered adaptation)
 needs no plateau, so the mechanism works in LIF.
 
@@ -430,7 +430,7 @@ is NMDA-only and per the discrimination literature would not feel like alcohol. 
 "different pleasant state" option flagged early in the project, now with numbers.
 
 ### LOCOMOTOR RG v2 — ARCHITECTURE FIXED AND VALIDATED
-`spinal/rg2.py`. Each half-centre is an independent group pacemaker (recurrent excitation +
+`circuitpharm/rg2.py`. Each half-centre is an independent group pacemaker (recurrent excitation +
 spike-triggered adaptation, the preBotC mechanism); glycinergic interneurons only enforce
 anti-phase. Operating point: drive=260, g_adapt=1.2, tau_adapt=280, ie_gly=3.0,
 ee_ampa=0.55, asym=0.08 -> period 1245 ms, duty ~0.3, corr -0.51.
@@ -646,7 +646,7 @@ and at 1-10 mg/kg is "devoid of ataxia, sedation or an influence on the anxiety 
 Contrast QH-ii-066 (older, less clean a5 agonist) which DOES cause sedation and ataxia --
 consistent with residual a1 activity being the culprit.
 
-### MODEL UPGRADE: subunit-resolved GABA-A (`spinal/subtypes.py`)
+### MODEL UPGRADE: subunit-resolved GABA-A (`circuitpharm/subtypes.py`)
 Regional subunit fractions x per-compound subtype efficacies, with PER-REGION calibration
 constants anchored so a non-selective benzodiazepine reproduces each region's empirical
 value (preBotC 0.15 from midazolam ventilation; spinal 1.00 where the reflex validations
@@ -1057,7 +1057,7 @@ not mis-parameterised. Sweeping `ee_nmda` could never have found it.
 The conclusion may still be right, but as argued it was an artefact of a missing pathway.
 
 ### Pathway added (verified locally)
-`spinal/resp.py`: `ei_nmda` added to `self.W`, injected onto `("Inh","nmda")`. Default
+`circuitpharm/resp.py`: `ei_nmda` added to `self.W`, injected onto `("Inh","nmda")`. Default
 **0.0**, which exactly reproduces prior behaviour so earlier runs stay reproducible.
 
 ### Test 1 — does disinhibition change the sign? NO (model-derived)
@@ -1181,7 +1181,7 @@ was caught):
     a5 arm better in 100% of draws  ->  interval excludes zero
 
 So the model **can** rank these two arms on respiratory burden, and the ordering survives
-its own parameter uncertainty. That vindicates the `spinal/subtypes.py` claim that the
+its own parameter uncertainty. That vindicates the `circuitpharm/subtypes.py` claim that the
 fractions' *ordering* is solid even though their values are not.
 
 ### FINDING 3 — marginal intervals, and why they mislead on their own
@@ -1208,7 +1208,7 @@ protection that motivated the PAM choice), or the load shared with a second mech
 
 ## 2026-10-07 — Session 7c: GABA-A as an explicit Markov scheme
 
-New module `spinal/gabaa_kinetics.py`. Motivation: the model carries THREE independent
+New module `circuitpharm/gabaa_kinetics.py`. Motivation: the model carries THREE independent
 hand-set numbers for a PAM (`gaba_a_gain`, `gaba_a_tau`, `gaba_a_efficacy_cap`) which are
 in reality three consequences of ONE thing — how the modulator shifts gating rate
 constants. Tying them to a single kinetic scheme removes two free parameters and lets the
@@ -1293,7 +1293,7 @@ the ceiling cannot be inherited from the class, it has to be demonstrated per ca
 
 ### Status
 Module and sweep built and self-consistent on anchored data; NOT yet wired into
-`spinal/cpg.py`. Wiring it requires splitting GABA-A into separate tonic and phasic
+`circuitpharm/cpg.py`. Wiring it requires splitting GABA-A into separate tonic and phasic
 conductances (they now have different gains, 7.2x vs 1.06x, where the model applies one
 number to both) and then RE-CALIBRATING `gaba_sens` against the midazolam anchor, since
 the decomposition changes even though the current calibration is internally consistent.
@@ -1363,10 +1363,10 @@ its three fit targets was never reachable.
 Net: the model is more accurate and considerably less reassuring. Those are the same thing.
 
 ### Compartment split implemented (verified locally) — STOPPED MID-TASK HERE
-`spinal/subtypes.py`: added `EXTRASYN` (per-subtype extrasynaptic fraction) plus
+`circuitpharm/subtypes.py`: added `EXTRASYN` (per-subtype extrasynaptic fraction) plus
 `regional_sens_split()` and `subjective_index_split()`. Split identities verified exactly —
 tonic + phasic reproduces the old total for every profile, so the per-region calibration is
-untouched. `spinal/resp.py`: `PreBotC` now accepts `gaba_sens_tonic` / `gaba_sens_phasic`,
+untouched. `circuitpharm/resp.py`: `PreBotC` now accepts `gaba_sens_tonic` / `gaba_sens_phasic`,
 both defaulting to `gaba_sens`; legacy identity verified exactly (mean 22.7744 both ways).
 
 **The finding this enables — the project's two core assumptions are the same parameter and
@@ -1587,7 +1587,7 @@ Bath-applied **midazolam 1 uM prolonged the decay phase of evoked and miniature 
 (GABA-A mediated) WITHOUT A CHANGE IN AMPLITUDE**; GABA/muscimol currents were enhanced at
 0.1 uM, flumazenil-sensitive.
 
-This is exactly what `spinal/gabaa_kinetics.py` predicted from ONE calibrated parameter:
+This is exactly what `circuitpharm/gabaa_kinetics.py` predicted from ONE calibrated parameter:
 phasic peak gain **1.06x** (no amplitude change) with decay tau ratio **1.66x** (decay
 prolonged). The two anchored checks in `scripts/kinetics_sensitivity.py` were scored against
 ranges; they now have a specific matching measurement behind them. The kinetic scheme's
@@ -1664,7 +1664,7 @@ exactly the entanglement that made the 7d calibration unidentifiable. A direct a
 bypasses all of it and separates the two unknowns:
 
     muscimol/GABA concentration-response  ->  how sensitive is the NETWORK to GABA-A conductance
-    spinal/gabaa_kinetics.py              ->  what does THIS PAM do to GABA-A conductance
+    circuitpharm/gabaa_kinetics.py              ->  what does THIS PAM do to GABA-A conductance
 
 **Specification of the needed experiment:** muscimol (or GABA) concentration-response on
 inspiratory burst frequency AND amplitude in a rhythmic preBotC slice or perfused

@@ -7,8 +7,8 @@ period, duty cycle, flexor/extensor alternation, and whether the rhythm survives
 import sys, os; sys.path.insert(0,".")
 import numpy as np
 from multiprocessing import Pool
-from spinal.circuit import SpinalCircuit
-from spinal.cpg import Drug, burst_metrics
+from circuitpharm.circuit import SpinalCircuit
+from circuitpharm.cpg import Drug, burst_metrics
 
 GAIN, T, DT = 900.0, 9000.0, 0.1
 SMOOTH = np.ones(60)/60.0

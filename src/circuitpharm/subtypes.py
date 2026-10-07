@@ -53,7 +53,7 @@ SUBJECTIVE_WEIGHT = dict(a1=0.0, a23=1.0, a5=1.0, d_a4=0.0, eps=0.0)
 # SYNAPTIC vs EXTRASYNAPTIC LOCALISATION. Added 2026-10-07 (session 7c) and it is not a
 # refinement -- it decides the project's central safety argument.
 #
-# spinal/gabaa_kinetics.py shows that an affinity-type PAM has utterly different headroom
+# circuitpharm/gabaa_kinetics.py shows that an affinity-type PAM has utterly different headroom
 # in the two pools, because they see different agonist concentrations:
 #     SYNAPTIC       near-saturating cleft transient (~mM)  -> headroom ~1.1x
 #     EXTRASYNAPTIC  ambient ~0.4 uM vs EC50 ~20 uM         -> headroom ~211x

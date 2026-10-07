@@ -2,7 +2,7 @@
 
 THE QUESTION THIS ANSWERS, which nothing else in the project does. Every number the
 simulator reports is a POINT ESTIMATE computed from parameters that are estimates. The
-module docstring of spinal/subtypes.py says it outright: the subunit fractions "are the
+module docstring of circuitpharm/subtypes.py says it outright: the subunit fractions "are the
 weakest numbers here... their ORDERING is solid; their precise values are not." If the
 spread those estimates induce is wider than the gap between two compounds, then the model
 CANNOT RANK THEM, and every comparison in the project so far is inside its own noise.
@@ -34,9 +34,9 @@ Run:  python scripts/uncertainty.py --draws 150
 import sys, os, argparse; sys.path.insert(0, ".")
 import numpy as np
 from multiprocessing import Pool
-from spinal.resp import PreBotC, resp_metrics
-from spinal.cpg import Drug
-from spinal.subtypes import REGIONS, SUBTYPES, SUBJECTIVE_WEIGHT
+from circuitpharm.resp import PreBotC, resp_metrics
+from circuitpharm.cpg import Drug
+from circuitpharm.subtypes import REGIONS, SUBTYPES, SUBJECTIVE_WEIGHT
 
 RESP_OP = dict(drive=170.0, g_adapt=2.5, tau_adapt=400.0,
                w=dict(ee_ampa=0.45, ee_nmda=0.2475))
@@ -68,7 +68,7 @@ def regional_sens(eff, frac, region, anchor):
 
     The denominator is what a NON-SELECTIVE BZ would produce in this region, so the anchor
     is reproduced by construction for that reference compound -- the same per-region
-    calibration used in spinal/subtypes.py, recomputed here from SAMPLED fractions instead
+    calibration used in circuitpharm/subtypes.py, recomputed here from SAMPLED fractions instead
     of mutating module globals (multiprocessing uses spawn; mutating globals in a worker is
     error E8 territory).
     """

@@ -3,8 +3,8 @@ blocking glycine must ABOLISH ALTERNATION while PRESERVING the rhythm."""
 import sys, os, itertools; sys.path.insert(0,".")
 import numpy as np
 from multiprocessing import Pool
-from spinal.rg2 import GroupPacemakerRG
-from spinal.cpg import Drug, burst_metrics
+from circuitpharm.rg2 import GroupPacemakerRG
+from circuitpharm.cpg import Drug, burst_metrics
 
 def metrics(drug, drive, gadp, tau_a, wgly, wee=0.42, seed=1, T=30000., dt=0.1):
     r = GroupPacemakerRG(drug=drug, drive=drive, g_adapt=gadp, tau_adapt=tau_a,

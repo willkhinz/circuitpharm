@@ -9,7 +9,7 @@ old relative-threshold metric then mis-reported as a fast rhythm.
 import sys, os, itertools; sys.path.insert(0, ".")
 import numpy as np
 from multiprocessing import Pool
-from spinal.resp import PreBotC, resp_metrics
+from circuitpharm.resp import PreBotC, resp_metrics
 
 
 def probe(a):

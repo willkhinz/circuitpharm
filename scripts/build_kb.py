@@ -88,7 +88,7 @@ S = [
 S += [
  ("matsuoka","Matsuoka half-centre oscillator (rate-based reciprocal inhibition + adaptation)",None,1985,"method"),
  ("sim_port","THIS PROJECT: muscle port of dm_control rodent hindlimb (scripts/port_muscle.py)",None,2026,"internal"),
- ("sim_cpg","THIS PROJECT: hybrid spinal circuit, Matsuoka RG + spiking PF/Mn (spinal/circuit.py)",None,2026,"internal"),
+ ("sim_cpg","THIS PROJECT: hybrid spinal circuit, Matsuoka RG + spiking PF/Mn (circuitpharm/circuit.py)",None,2026,"internal"),
 ]
 c.executemany("INSERT INTO sources VALUES(?,?,?,?,?)", S)
 
@@ -187,7 +187,7 @@ F += [
  (16,"A GABA-A efficacy ceiling limits but does not prevent severe motor depression: capping the PAM at 2.5x still leaves motoneuron output at 17% of control.","simulated Mn firing rate","model-derived",
   "Consistent with the earlier conclusion that the GABA arm has NO selectivity window and only a ceiling. The ceiling is necessary for overdose safety but is not sufficient for a motor margin.","sim_cpg"),
  (17,"An exhaustive 288-point parameter search showed an all-spiking LIF rhythm generator CANNOT produce a physiological locomotor rhythm: near-target period only with no alternation (corr -0.17), good alternation only at 81-111 ms, duty cycle never above 0.24. Reciprocal inhibition weight from 8 to 40 changed nothing.","locomotor rhythm","model-derived",
-  "STRUCTURAL, not parametric: a LIF resets V every spike so no plateau potential forms, the half-centre is never bistable on the fast timescale, and adaptation can never set the period. Do not retry tuning the spiking RG -- use the Matsuoka RG in spinal/rg.py.","sim_cpg"),
+  "STRUCTURAL, not parametric: a LIF resets V every spike so no plateau potential forms, the half-centre is never bistable on the fast timescale, and adaptation can never set the period. Do not retry tuning the spiking RG -- use the Matsuoka RG in circuitpharm/rg.py.","sim_cpg"),
 ]
 c.executemany("INSERT INTO findings VALUES(?,?,?,?,?,?)", F)
 R = [

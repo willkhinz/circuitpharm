@@ -7,8 +7,8 @@ Mn response per unit Ia drive; %ctrl is the paired ratio to the control at the s
 import sys, os, itertools; sys.path.insert(0,".")
 import numpy as np
 from multiprocessing import Pool
-from spinal.circuit import SpinalCircuit
-from spinal.cpg import Drug
+from circuitpharm.circuit import SpinalCircuit
+from circuitpharm.cpg import Drug
 import scripts.reflex as R
 
 N_SEED = 6

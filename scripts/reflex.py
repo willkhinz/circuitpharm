@@ -6,8 +6,8 @@ from the locomotor rhythm.
 """
 import sys; sys.path.insert(0,".")
 import numpy as np
-from spinal.plant import JointPlant
-from spinal.cpg import Drug
+from circuitpharm.plant import JointPlant
+from circuitpharm.cpg import Drug
 
 XML = "models/rodent_muscle.xml"
 DT, HOLD, RAMP, PRE, POST = 0.002, 0.30, 0.05, 0.40, 0.45   # s

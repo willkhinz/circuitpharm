@@ -2,11 +2,11 @@
 import sys, os; sys.path.insert(0,".")
 import numpy as np
 from multiprocessing import Pool
-from spinal.resp import PreBotC, resp_metrics
-from spinal.circuit import SpinalCircuit
-from spinal.plant import JointPlant
-from spinal.cpg import Drug
-from spinal.subtypes import PROFILES
+from circuitpharm.resp import PreBotC, resp_metrics
+from circuitpharm.circuit import SpinalCircuit
+from circuitpharm.plant import JointPlant
+from circuitpharm.cpg import Drug
+from circuitpharm.subtypes import PROFILES
 import scripts.reflex as R
 
 RESP_OP=dict(drive=170.0,g_adapt=2.5,tau_adapt=400.0,w=dict(ee_ampa=0.45,ee_nmda=0.2475))

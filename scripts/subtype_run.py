@@ -8,10 +8,10 @@ with the non-selective benzodiazepine anchored at the calibrated value of 0.15.
 import sys, os; sys.path.insert(0,".")
 import numpy as np
 from multiprocessing import Pool
-from spinal.resp import PreBotC, resp_metrics
-from spinal.circuit import SpinalCircuit
-from spinal.cpg import Drug
-from spinal.subtypes import PROFILES
+from circuitpharm.resp import PreBotC, resp_metrics
+from circuitpharm.circuit import SpinalCircuit
+from circuitpharm.cpg import Drug
+from circuitpharm.subtypes import PROFILES
 import scripts.reflex as R
 
 RESP_OP = dict(drive=170.0, g_adapt=2.5, tau_adapt=400.0, w=dict(ee_ampa=0.45, ee_nmda=0.2475))
@@ -55,7 +55,7 @@ def job(a):
             SpinalCircuit.W[("Ia","Mn",rec)]=orig[("Ia","Mn",rec)]*IA_SCALE
         # patch the spinal sensitivity for this compound
         import scripts.reflex as RR
-        from spinal.plant import JointPlant
+        from circuitpharm.plant import JointPlant
         pl=JointPlant(RR.XML, drug=d, rg_gain=0.0, seed=seed, gaba_sens=p.regional_sens("spinal"))
         traj=RR.trajectory(0.1,0.45)
         for (t,q,v) in traj: pl.step(RR.DT, impose=(q,v))

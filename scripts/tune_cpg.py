@@ -1,6 +1,6 @@
 import sys; sys.path.insert(0,".")
 import numpy as np
-from spinal.cpg import HalfCentreCPG, burst_metrics
+from circuitpharm.cpg import HalfCentreCPG, burst_metrics
 
 def probe(drive, w_gly, gadp, tau_a, T=10000., dt=0.1):
     c = HalfCentreCPG(drive=drive, tau_adapt=tau_a, seed=1)

@@ -31,9 +31,9 @@ Run:  python scripts/recalibrate_kinetic.py
 import sys, os, itertools; sys.path.insert(0, ".")
 import numpy as np
 from multiprocessing import Pool
-from spinal.resp import PreBotC, resp_metrics
-from spinal.cpg import Drug
-from spinal.gabaa_kinetics import fit_scheme, derive, calibrate_pam
+from circuitpharm.resp import PreBotC, resp_metrics
+from circuitpharm.cpg import Drug
+from circuitpharm.gabaa_kinetics import fit_scheme, derive, calibrate_pam
 
 OP = dict(drive=170.0, g_adapt=2.5, tau_adapt=400.0,
           w=dict(ee_ampa=0.45, ee_nmda=0.2475))

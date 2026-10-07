@@ -3,8 +3,8 @@ so drug modulation is visible. Target dynamic peak 40-70 Hz (ceiling is 125 Hz).
 import sys, os; sys.path.insert(0,".")
 import numpy as np
 from multiprocessing import Pool
-from spinal.circuit import SpinalCircuit
-from spinal.cpg import Drug
+from circuitpharm.circuit import SpinalCircuit
+from circuitpharm.cpg import Drug
 import scripts.reflex as R
 
 def probe(scale):

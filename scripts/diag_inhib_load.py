@@ -21,8 +21,8 @@ Run:  python scripts/diag_inhib_load.py
 import sys, os; sys.path.insert(0, ".")
 import numpy as np
 from multiprocessing import Pool
-from spinal.resp import PreBotC, resp_metrics
-from spinal.cpg import Drug
+from circuitpharm.resp import PreBotC, resp_metrics
+from circuitpharm.cpg import Drug
 
 EE_AMPA, EE_NMDA = 0.45, 0.2475
 N_SEED = 4

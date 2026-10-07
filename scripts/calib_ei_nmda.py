@@ -25,8 +25,8 @@ Run:  python scripts/calib_ei_nmda.py
 import sys, os, itertools; sys.path.insert(0, ".")
 import numpy as np
 from multiprocessing import Pool
-from spinal.resp import PreBotC, resp_metrics
-from spinal.cpg import Drug
+from circuitpharm.resp import PreBotC, resp_metrics
+from circuitpharm.cpg import Drug
 
 # operating point used everywhere else in the project (simulator.RESP_OP)
 EE_AMPA, EE_NMDA = 0.45, 0.2475

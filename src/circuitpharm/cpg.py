@@ -46,7 +46,7 @@ class Drug:
     # GABA-A positive allosteric modulation. A PAM raises peak conductance AND
     # prolongs decay; both matter and they are not interchangeable.
     #
-    # THE TWO POOLS ARE NOT EQUIVALENT (spinal/gabaa_kinetics.py). A PAM acting by
+    # THE TWO POOLS ARE NOT EQUIVALENT (circuitpharm/gabaa_kinetics.py). A PAM acting by
     # increasing apparent agonist affinity barely touches the SYNAPTIC peak, because the
     # cleft transient is already near-saturating (derived phasic gain ~1.06), while it
     # potentiates the TONIC/extrasynaptic current strongly, because ambient GABA (~0.4 uM)

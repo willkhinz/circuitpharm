@@ -1,6 +1,6 @@
 """Locomotor rhythm generator, architecture v2 — group pacemaker with phase coupling.
 
-SUPERSEDES spinal/rg.py (Matsuoka). Reason for the rewrite, from literature:
+SUPERSEDES circuitpharm/rg.py (Matsuoka). Reason for the rewrite, from literature:
 
     In lamprey fictive locomotion, strychnine (glycine receptor BLOCK) ELIMINATES
     left-right alternation while robust rhythmic activity PERSISTS -- same burst
@@ -20,7 +20,7 @@ v2 architecture -- each half-centre is an INDEPENDENT group pacemaker:
     InRG_F/E: inhibitory interneurons, glycinergic, cross-projecting    -> sets anti-phase
 
 Rhythm comes from recurrent excitation + adaptation (the preBotC mechanism already
-validated in spinal/resp.py, and it works in LIF because it needs no plateau potential).
+validated in circuitpharm/resp.py, and it works in LIF because it needs no plateau potential).
 Inhibition only enforces alternation. Therefore blocking glycine must leave the rhythm
 intact and only destroy the phase relationship -- which is the published, falsifiable
 validation target for this module.

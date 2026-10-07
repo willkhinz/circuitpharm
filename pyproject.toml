@@ -1,0 +1,39 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "circuitpharm"
+version = "0.1.0"
+description = "Receptor-resolved pharmacology coupled to spiking neural circuit models, with calibration and identifiability analysis"
+readme = "README.md"
+requires-python = ">=3.11,<3.13"
+license = { text = "MIT" }
+authors = [{ name = "William Hinz", email = "hinzwilliam52@gmail.com" }]
+keywords = ["computational neuroscience", "pharmacology", "GABA-A",
+            "respiratory rhythm", "spiking networks", "identifiability"]
+classifiers = [
+  "Intended Audience :: Science/Research",
+  "Topic :: Scientific/Engineering :: Bio-Informatics",
+  "Programming Language :: Python :: 3.11",
+]
+dependencies = [
+  "numpy>=1.26",
+  "scipy>=1.11",
+]
+
+[project.optional-dependencies]
+# the MuJoCo body plant; not needed for the receptor or circuit layers
+plant = ["mujoco>=3.1", "dm_control>=1.0.20"]
+# chirality / cheminformatics tools
+chem = ["rdkit>=2023.9"]
+dev = ["pytest>=8.0", "pytest-xdist>=3.5"]
+all = ["mujoco>=3.1", "dm_control>=1.0.20", "rdkit>=2023.9", "pytest>=8.0"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# the circuit tests integrate 14 s of network activity; they are slow by nature
+markers = ["slow: integrates a full circuit simulation (seconds to minutes)"]

@@ -17,8 +17,8 @@ drug-free rhythm is unchanged.
 import sys, os, itertools; sys.path.insert(0,".")
 import numpy as np
 from multiprocessing import Pool
-from spinal.resp import PreBotC, resp_metrics
-from spinal.cpg import Drug
+from circuitpharm.resp import PreBotC, resp_metrics
+from circuitpharm.cpg import Drug
 
 BASE_TOTAL = 0.45 + 0.2475     # keep total excitatory weight constant
 SHARES = (0.55, 0.35, 0.20, 0.12, 0.06)

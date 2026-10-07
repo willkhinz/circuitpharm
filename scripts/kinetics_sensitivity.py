@@ -1,6 +1,6 @@
 """Can the GABA-A kinetic scheme reproduce ALL FOUR benzodiazepine observables at once?
 
-THE SITUATION. spinal/gabaa_kinetics.py fits the baseline scheme to three baseline
+THE SITUATION. circuitpharm/gabaa_kinetics.py fits the baseline scheme to three baseline
 anchors (GABA EC50, max open probability, IPSC deactivation tau), then gives the drug
 exactly ONE free parameter calibrated against ONE drug observable (the 2.5x leftward EC50
 shift). The remaining four quantities are predictions. At the nominal physiological
@@ -44,7 +44,7 @@ Run:  python scripts/kinetics_sensitivity.py
 import sys, os, itertools; sys.path.insert(0, ".")
 import numpy as np
 from multiprocessing import Pool
-from spinal.gabaa_kinetics import (Scheme, fit_scheme, derive, calibrate_pam,
+from circuitpharm.gabaa_kinetics import (Scheme, fit_scheme, derive, calibrate_pam,
                                    FIT_RANGES)
 
 PEAKS = (300.0, 1000.0, 3000.0)       # uM, cleft peak

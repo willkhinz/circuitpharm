@@ -1,7 +1,7 @@
 """preBotzinger complex: respiratory rhythm generator and the respiratory-depression axis.
 
 ARCHITECTURE CHOICE. Unlike the locomotor half-centre (which needs plateau potentials
-that a LIF cannot produce -- see spinal/rg.py), the preBotC rhythm is modelled as a
+that a LIF cannot produce -- see circuitpharm/rg.py), the preBotC rhythm is modelled as a
 "group pacemaker": a RECURRENTLY EXCITATORY glutamatergic population whose synchronous
 burst is terminated by spike-triggered adaptation. Recurrent excitation gives
 regenerative recruitment and synchrony, so this mechanism DOES work in a LIF network --
@@ -67,7 +67,7 @@ class PreBotC:
         # model gave ~50% at PAM 1.5x, i.e. 3-4x too sensitive.
         self.gaba_sens = gaba_sens
         # The two pools need SEPARATE sensitivities, because subtype localisation differs
-        # (spinal/subtypes.py EXTRASYN) and the two pools are driven by gains that differ
+        # (circuitpharm/subtypes.py EXTRASYN) and the two pools are driven by gains that differ
         # ~200-fold in headroom. Both default to `gaba_sens`, which reproduces the old
         # single-pool behaviour exactly.
         self.gaba_sens_tonic = gaba_sens if gaba_sens_tonic is None else gaba_sens_tonic

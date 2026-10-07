@@ -7,7 +7,7 @@ Targets (rat hindlimb locomotion):
 import sys, os, itertools, time; sys.path.insert(0, ".")
 import numpy as np
 from multiprocessing import Pool
-from spinal.cpg import HalfCentreCPG, burst_metrics
+from circuitpharm.cpg import HalfCentreCPG, burst_metrics
 
 T, DT, WARM = 7000.0, 0.1, 2000.0
 

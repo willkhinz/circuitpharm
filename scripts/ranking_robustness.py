@@ -33,7 +33,7 @@ Run:  python scripts/ranking_robustness.py --draws 20000
 """
 import sys, argparse; sys.path.insert(0, ".")
 import numpy as np
-from spinal.subtypes import (REGIONS, SUBTYPES, SUBJECTIVE_WEIGHT, EXTRASYN, PROFILES)
+from circuitpharm.subtypes import (REGIONS, SUBTYPES, SUBJECTIVE_WEIGHT, EXTRASYN, PROFILES)
 
 ARMS = ("neurosteroid", "hz_166", "mp_iii_022", "alogabat", "ideal_a5")
 REF = "nonselective_bz"

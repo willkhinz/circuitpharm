@@ -5,7 +5,7 @@
                              +--------------+       |  IaIn (gly, reciprocal)
                                             Ia afferent -> Mn (AMPA + NMDA)
 
-Rationale for the split is in spinal/rg.py: an exhaustive 288-point search showed the
+Rationale for the split is in circuitpharm/rg.py: an exhaustive 288-point search showed the
 all-spiking LIF rhythm generator cannot reach a physiological locomotor rhythm (best
 score 0.83; near-target period only with no alternation, good alternation only at
 ~90 ms, duty never above 0.24). The cause is structural, not parametric -- a LIF has no

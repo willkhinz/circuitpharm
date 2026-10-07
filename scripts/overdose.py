@@ -22,8 +22,8 @@ is not.
 import sys, os, itertools; sys.path.insert(0, ".")
 import numpy as np
 from multiprocessing import Pool
-from spinal.resp import PreBotC, resp_metrics
-from spinal.cpg import Drug
+from circuitpharm.resp import PreBotC, resp_metrics
+from circuitpharm.cpg import Drug
 
 FOREBRAIN_2B, PERIPHERAL_2B, GABA_SENS = 0.70, 0.15, 0.15
 RESP_OP = dict(drive=170.0, g_adapt=2.5, tau_adapt=400.0,
