@@ -4,7 +4,7 @@ and to the GABA-A PAM + NMDA antagonist combination.
 Readouts are the 'data from the simulated brain': motoneuron pool rates, locomotor
 period, duty cycle, flexor/extensor alternation, and whether the rhythm survives at all.
 """
-import sys, os; sys.path.insert(0,".")
+import os
 import numpy as np
 from multiprocessing import Pool
 from circuitpharm.circuit import SpinalCircuit

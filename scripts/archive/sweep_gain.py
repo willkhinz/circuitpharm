@@ -1,4 +1,4 @@
-import sys, os; sys.path.insert(0,".")
+import os
 import numpy as np
 from multiprocessing import Pool
 from circuitpharm.circuit import SpinalCircuit

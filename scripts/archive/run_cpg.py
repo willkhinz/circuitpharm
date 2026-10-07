@@ -1,5 +1,5 @@
 """Verify the spinal CPG: does it produce alternating flexor/extensor rhythm?"""
-import sys, time; sys.path.insert(0, ".")
+import time
 import numpy as np
 from circuitpharm.cpg import HalfCentreCPG, Drug, burst_metrics
 

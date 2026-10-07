@@ -24,7 +24,7 @@ Two options for the GABA arm, with a real trade-off:
 literature support, so the recommendation is reported across a range of it rather than at
 one value.
 """
-import sys, os, itertools; sys.path.insert(0, ".")
+import os, itertools
 import numpy as np
 from multiprocessing import Pool
 from circuitpharm.resp import PreBotC, resp_metrics

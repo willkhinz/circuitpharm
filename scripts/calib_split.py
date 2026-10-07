@@ -28,7 +28,7 @@ CO2 loop, so it is unreachable in principle (session 7c).
 
 Run:  python scripts/calib_split.py
 """
-import sys, os; sys.path.insert(0, ".")
+import os
 import numpy as np
 from multiprocessing import Pool
 from circuitpharm.resp import PreBotC, resp_metrics

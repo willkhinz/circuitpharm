@@ -1,5 +1,5 @@
 """Final confirmation: alpha5-selective GABA arm + NMDA arm, 8 seeds, vs references."""
-import sys, os; sys.path.insert(0,".")
+import os
 import numpy as np
 from multiprocessing import Pool
 from circuitpharm.resp import PreBotC, resp_metrics

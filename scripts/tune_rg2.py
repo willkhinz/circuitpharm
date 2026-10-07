@@ -1,6 +1,6 @@
 """Tune the v2 group-pacemaker RG, and test the published validation target:
 blocking glycine must ABOLISH ALTERNATION while PRESERVING the rhythm."""
-import sys, os, itertools; sys.path.insert(0,".")
+import os, itertools
 import numpy as np
 from multiprocessing import Pool
 from circuitpharm.rg2 import GroupPacemakerRG

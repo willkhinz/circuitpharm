@@ -16,7 +16,7 @@ Primary readout is MEAN OUTPUT (minute-ventilation proxy = rate x amplitude). Fr
 is NOT reported: the FFT peak follows fast fluctuations once the burst pattern degrades,
 so it rises during depression and is unusable in this regime.
 """
-import sys, os; sys.path.insert(0, ".")
+import os
 import numpy as np
 from multiprocessing import Pool
 from circuitpharm.resp import PreBotC, resp_metrics

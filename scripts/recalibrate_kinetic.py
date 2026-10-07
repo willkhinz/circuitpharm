@@ -28,7 +28,7 @@ CLINICAL ANCHOR (unchanged): human midazolam 2 mg IV
 
 Run:  python scripts/recalibrate_kinetic.py
 """
-import sys, os, itertools; sys.path.insert(0, ".")
+import os, itertools
 import numpy as np
 from multiprocessing import Pool
 from circuitpharm.resp import PreBotC, resp_metrics

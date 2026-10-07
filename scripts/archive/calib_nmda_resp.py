@@ -14,7 +14,7 @@ This sweep finds the NMDA share at which a full non-selective NMDA block leaves 
 near control, as clinically observed. Total excitatory drive is held constant so the
 drug-free rhythm is unchanged.
 """
-import sys, os, itertools; sys.path.insert(0,".")
+import os, itertools
 import numpy as np
 from multiprocessing import Pool
 from circuitpharm.resp import PreBotC, resp_metrics

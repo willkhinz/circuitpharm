@@ -9,7 +9,7 @@ Also surfaces a real constraint: a highly selective compound with an efficacy ce
 LOWER MAXIMUM achievable subjective effect, because it carries the whole subjective load on
 fewer subtypes. max_subj = subjective_index_per_unit_gain * (ceiling - 1).
 """
-import sys, os, itertools; sys.path.insert(0, ".")
+import os, itertools
 import numpy as np
 from multiprocessing import Pool
 from circuitpharm.resp import PreBotC, resp_metrics

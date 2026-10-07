@@ -43,7 +43,7 @@ without first checking its age. Don't make it three times.
 
 Run:  python scripts/predict_muscimol.py
 """
-import sys, os; sys.path.insert(0, ".")
+import os
 import numpy as np
 from multiprocessing import Pool
 from circuitpharm.resp import PreBotC, resp_metrics

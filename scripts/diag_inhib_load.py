@@ -18,7 +18,7 @@ Four conditions, all drug-free unless stated:
 
 Run:  python scripts/diag_inhib_load.py
 """
-import sys, os; sys.path.insert(0, ".")
+import os
 import numpy as np
 from multiprocessing import Pool
 from circuitpharm.resp import PreBotC, resp_metrics

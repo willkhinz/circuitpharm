@@ -22,7 +22,7 @@ used because it is the harshest test and the one with the clearest clinical anch
 
 Run:  python scripts/calib_ei_nmda.py
 """
-import sys, os, itertools; sys.path.insert(0, ".")
+import os, itertools
 import numpy as np
 from multiprocessing import Pool
 from circuitpharm.resp import PreBotC, resp_metrics

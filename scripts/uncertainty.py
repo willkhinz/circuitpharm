@@ -31,7 +31,7 @@ PAIRED interval spans zero, it cannot rank.
 
 Run:  python scripts/uncertainty.py --draws 150
 """
-import sys, os, argparse; sys.path.insert(0, ".")
+import os, argparse
 import numpy as np
 from multiprocessing import Pool
 from circuitpharm.resp import PreBotC, resp_metrics

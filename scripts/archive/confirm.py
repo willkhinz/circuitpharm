@@ -5,7 +5,7 @@ References included so the candidate can be read against things with known human
   GluN2B-selective antagonist alone at 40% forebrain block -> the non-alcohol-like option
   non-selective NMDA version of the candidate -> the cost of getting selectivity wrong
 """
-import sys, os; sys.path.insert(0, ".")
+import os
 import numpy as np
 from multiprocessing import Pool
 from circuitpharm.resp import PreBotC, resp_metrics

@@ -41,7 +41,7 @@ refit -- it only enters the tonic readout.
 
 Run:  python scripts/kinetics_sensitivity.py
 """
-import sys, os, itertools; sys.path.insert(0, ".")
+import os, itertools
 import numpy as np
 from multiprocessing import Pool
 from circuitpharm.gabaa_kinetics import (Scheme, fit_scheme, derive, calibrate_pam,

@@ -18,7 +18,7 @@ gaba_sens = fraction of preBotC GABA-A conductance that is drug-modulatable. Bio
 motivated: BZ-site PAMs need gamma2, and the respiratory network also expresses delta,
 alpha4 and epsilon subunits, with epsilon (enriched on NK1R+ rhythm neurons) BZ-insensitive.
 """
-import sys, os; sys.path.insert(0, ".")
+import os
 import numpy as np
 from multiprocessing import Pool
 from circuitpharm.resp import PreBotC, resp_metrics

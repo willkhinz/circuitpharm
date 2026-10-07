@@ -129,3 +129,63 @@ def test_adaptation_not_inhibition_terminates_prebotc_bursts():
     assert no_inhib["mean"] > 1.2 * intact["mean"], (
         "removing inhibition did not raise output; then there would be no inhibition for "
         "an NMDA antagonist to release, and that negative result would be vacuous")
+
+
+# ============================================================ spinal reflex phenotypes
+# These are reproduced by a circuit that was NOT fitted to them: the reflex arc's
+# connectivity was hand-built from anatomy, and the drug effects follow from receptor
+# placement. Strychnine hyperreflexia in particular is a textbook phenotype.
+@pytest.mark.slow
+def test_strychnine_causes_hyperreflexia():
+    """Glycine block must INCREASE reflex gain. Glycinergic Renshaw and reciprocal Ia
+    inhibition restrain the motoneuron pool, so removing it releases the reflex -- the
+    classic strychnine phenotype."""
+    from circuitpharm.assays import stretch_reflex
+    from circuitpharm.cpg import Drug
+    ctrl = stretch_reflex(Drug())["gain"]
+    stry = stretch_reflex(Drug(glyr_gain=0.4))["gain"]
+    assert stry > 1.2 * ctrl, (
+        f"glycine block gave gain {stry:.3f} vs control {ctrl:.3f}; strychnine must "
+        "produce hyperreflexia")
+
+
+@pytest.mark.slow
+def test_benzodiazepine_depresses_the_reflex():
+    """Diazepam depresses the stretch reflex; the model must too."""
+    from circuitpharm.assays import stretch_reflex
+    from circuitpharm.cpg import Drug
+    ctrl = stretch_reflex(Drug())["gain"]
+    bz = stretch_reflex(Drug(gaba_a_gain=2.0, gaba_a_tau=1.6))["gain"]
+    assert bz < 0.9 * ctrl, f"benzodiazepine gave gain {bz:.3f} vs control {ctrl:.3f}"
+
+
+@pytest.mark.slow
+def test_glun2b_selectivity_window_spares_the_spinal_reflex():
+    """THE MECHANISM THE WHOLE NMDA ARM RESTS ON. At the same 60% block, a GluN2B-selective
+    antagonist must spare the spinal reflex (low local GluN2B fraction) where a
+    non-selective one depresses it. If this collapses, there is no selectivity window."""
+    from circuitpharm.assays import stretch_reflex
+    from circuitpharm.cpg import Drug
+    ctrl = stretch_reflex(Drug())["gain"]
+    nonsel = stretch_reflex(Drug(nmda_block=0.6, glun2b_selectivity=0.0))["gain"]
+    sel = stretch_reflex(Drug(nmda_block=0.6, glun2b_selectivity=1.0,
+                              glun2b_fraction=0.15))["gain"]
+    assert nonsel < 0.92 * ctrl, "non-selective NMDA block should depress the reflex"
+    assert sel > 0.95 * ctrl, (
+        f"GluN2B-selective block depressed the reflex to {100*sel/ctrl:.0f}% of control; "
+        "the selectivity window has collapsed")
+    assert sel > nonsel
+
+
+@pytest.mark.slow
+def test_E5_motoneuron_peak_is_not_pinned_at_the_firing_ceiling():
+    """Recurring error E5: with the full Ia->Mn weight the motoneuron dynamic peak sits at
+    the tref=8 ms cap (125 Hz) and EVERY drug reads ~100% of control. The assay rescales
+    the weight so controls sit mid-range; this asserts it worked."""
+    from circuitpharm.assays import stretch_reflex
+    from circuitpharm.cpg import Drug
+    r = stretch_reflex(Drug())
+    cap_hz = 1000.0 / 8.0        # tref = 8 ms
+    assert r["mn_dyn"] < 0.8 * cap_hz, (
+        f"motoneuron dynamic peak {r['mn_dyn']:.1f} Hz is at the {cap_hz:.0f} Hz "
+        "structural cap; drug effects will be masked")

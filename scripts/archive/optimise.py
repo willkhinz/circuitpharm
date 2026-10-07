@@ -24,7 +24,7 @@ is visible rather than hidden.
 HARM AXES (simulated): preBotC ventilation (minute-ventilation proxy) and stretch-reflex
 gain, both with peripheral GluN2B fraction 0.15.
 """
-import sys, os, itertools; sys.path.insert(0, ".")
+import os, itertools
 import numpy as np
 from multiprocessing import Pool
 from circuitpharm.resp import PreBotC, resp_metrics

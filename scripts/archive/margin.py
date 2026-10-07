@@ -22,7 +22,7 @@ policy. All numbers below are therefore "cost at a *nominal* matched subjective 
 NOTE (bug fixed): every worker function must be at MODULE level. macOS multiprocessing
 uses spawn, so a function defined inside `if __name__ == "__main__"` is not picklable.
 """
-import sys, os; sys.path.insert(0, ".")
+import os
 import numpy as np
 from multiprocessing import Pool
 from circuitpharm.resp import PreBotC, resp_metrics

@@ -6,7 +6,7 @@ interburst phase so that recurrent excitation can recruit the population regener
 With suprathreshold drive the population fires tonically and only ripples -- which the
 old relative-threshold metric then mis-reported as a fast rhythm.
 """
-import sys, os, itertools; sys.path.insert(0, ".")
+import os, itertools
 import numpy as np
 from multiprocessing import Pool
 from circuitpharm.resp import PreBotC, resp_metrics

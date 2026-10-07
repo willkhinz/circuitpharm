@@ -4,7 +4,7 @@ Single runs are noisy (30 Mn neurons, stochastic drive), so every condition is r
 N_SEED independent seeds and reported as mean +/- sd. Reflex gain is the dynamic-phase
 Mn response per unit Ia drive; %ctrl is the paired ratio to the control at the same seed.
 """
-import sys, os, itertools; sys.path.insert(0,".")
+import os, itertools
 import numpy as np
 from multiprocessing import Pool
 from circuitpharm.circuit import SpinalCircuit

@@ -4,7 +4,7 @@ Targets (rat hindlimb locomotion):
   period 300-1500 ms, flexor/extensor Mn correlation < -0.5,
   Mn firing 10-50 Hz, duty cycle 0.3-0.7, both half-centres active.
 """
-import sys, os, itertools, time; sys.path.insert(0, ".")
+import os, itertools, time
 import numpy as np
 from multiprocessing import Pool
 from circuitpharm.cpg import HalfCentreCPG, burst_metrics

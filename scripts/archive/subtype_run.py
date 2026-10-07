@@ -5,7 +5,7 @@ Each GABA compound is dosed so its forebrain subjective index equals a common ta
 Its regional sensitivities (preBotC, spinal) then follow from its subunit selectivity,
 with the non-selective benzodiazepine anchored at the calibrated value of 0.15.
 """
-import sys, os; sys.path.insert(0,".")
+import os
 import numpy as np
 from multiprocessing import Pool
 from circuitpharm.resp import PreBotC, resp_metrics

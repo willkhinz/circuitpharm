@@ -26,7 +26,7 @@ tracebacks until the disk fills (observed: 13,334 identical tracebacks, 144 MB).
 
 Run:  python scripts/validate_rg2_glycine.py
 """
-import sys, os; sys.path.insert(0, ".")
+import os
 import numpy as np
 from multiprocessing import Pool
 from circuitpharm.rg2 import GroupPacemakerRG

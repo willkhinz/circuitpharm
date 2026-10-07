@@ -4,7 +4,7 @@ Brainstem is GluN2D-dominant, so glun2b_fraction=0.15 here. The forebrain (subje
 comparison uses 0.7. Multi-seed with statistics; apnoea is declared on collapse of burst
 modulation or mean output, not on crossing count (see resp_metrics docstring).
 """
-import sys, os; sys.path.insert(0, ".")
+import os
 import numpy as np
 from multiprocessing import Pool
 from circuitpharm.resp import PreBotC, resp_metrics

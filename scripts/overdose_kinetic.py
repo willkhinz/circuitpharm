@@ -60,7 +60,7 @@ the individual MOLECULE and has to be measured per candidate.
 
 Run:  python scripts/overdose_kinetic.py
 """
-import sys, os, itertools; sys.path.insert(0, ".")
+import os, itertools
 import numpy as np
 from multiprocessing import Pool
 from circuitpharm.resp import PreBotC, resp_metrics

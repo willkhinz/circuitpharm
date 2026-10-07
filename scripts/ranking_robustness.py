@@ -31,7 +31,7 @@ A ratio of ratios, so the lumped `gaba_sens` scale cancels in every draw regardl
 
 Run:  python scripts/ranking_robustness.py --draws 20000
 """
-import sys, argparse; sys.path.insert(0, ".")
+import argparse
 import numpy as np
 from circuitpharm.subtypes import (REGIONS, SUBTYPES, SUBJECTIVE_WEIGHT, EXTRASYN, PROFILES)
 

@@ -7,7 +7,7 @@ modulator gives the propofol numbers. Propofol is NOT a BZ-site PAM (it also hit
 receptors, HCN and sodium channels and has direct agonist activity at higher
 concentrations), so it must NOT be modelled as a capped PAM.
 """
-import sys, os; sys.path.insert(0, ".")
+import os
 import numpy as np
 from multiprocessing import Pool
 from circuitpharm.resp import PreBotC, resp_metrics
