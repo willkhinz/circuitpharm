@@ -1,26 +1,56 @@
-"""Hybrid spinal circuit: rate-based rhythm generator + spiking output stages.
+"""Spinal reflex arc and pattern-formation stages, driven by a spiking rhythm generator.
 
-    MatsuokaRG (clock)  ->  PF_F/PF_E (spiking)  ->  Mn_F/Mn_E (spiking)
-                             |  InPF (gly)          |  Rc (gly, recurrent)
-                             +--------------+       |  IaIn (gly, reciprocal)
-                                            Ia afferent -> Mn (AMPA + NMDA)
+    GroupPacemakerRG  ->  PF_F/PF_E (spiking)  ->  Mn_F/Mn_E (spiking)
+     (circuitpharm/rg2)    |  InPF (gly)            |  Rc (gly, recurrent)
+                           +--------------+         |  IaIn (gly, reciprocal)
+                                          Ia afferent -> Mn (AMPA + NMDA)
 
-Rationale for the split is in circuitpharm/rg.py: an exhaustive 288-point search showed the
-all-spiking LIF rhythm generator cannot reach a physiological locomotor rhythm (best
-score 0.83; near-target period only with no alternation, good alternation only at
-~90 ms, duty never above 0.24). The cause is structural, not parametric -- a LIF has no
-plateau potential, so the half-centre is never bistable on the fast timescale and
-adaptation cannot set the period.
+HISTORY, because it explains a retraction. This circuit originally used a rate-based
+Matsuoka oscillator, chosen after an exhaustive 288-point search showed an all-spiking LIF
+half-centre could not reach a physiological locomotor rhythm (best score 0.83; near-target
+period only without alternation, good alternation only at ~90 ms, duty never above 0.24).
+That reasoning was sound about LIF half-centres -- a LIF has no plateau potential, so the
+half-centre is never bistable on the fast timescale -- but the conclusion was wrong,
+because it assumed the rhythm must COME FROM mutual inhibition.
 
-All pharmacologically load-bearing nodes remain conductance-based:
-  tonic extrasynaptic GABA-A on PF and Mn      <- GABA-A PAM (with efficacy ceiling)
+A group pacemaker (recurrent excitation + spike-triggered adaptation) needs no plateau and
+so works in LIF, which is why circuitpharm/rg2.py replaced the oscillator outright. The
+difference is not cosmetic: in Matsuoka, inhibition IS the oscillator, so glycine block
+stops the rhythm. The lamprey strychnine phenotype shows the opposite -- block abolishes
+alternation while the rhythm persists. A prediction of this project rested on the Matsuoka
+pathway and was retracted. The replacement reproduces the phenotype
+(tests/test_phenotypes.py).
+
+All pharmacologically load-bearing nodes are conductance-based:
+  tonic extrasynaptic GABA-A on PF and Mn      <- GABA-A PAM, via gaba_scale_tonic
+  phasic synaptic GABA-A                       <- GABA-A PAM, via gaba_scale (much weaker;
+                                                  the cleft transient is near-saturating)
   glycinergic InPF / IaIn / Renshaw inhibition <- glycine potentiation
   NMDA on RG->PF, PF->Mn and Ia->Mn            <- NMDA antagonist (subunit-resolved)
-  RG reciprocal inhibition + tonic bias        <- glycine / GABA-A (inside MatsuokaRG)
 """
 import numpy as np
 from .cpg import Pop, Syn, Drug, E_REV, spindle_ia
-from .rg import MatsuokaRG
+from .rg2 import GroupPacemakerRG
+
+# RG OUTPUT UNITS — the thing that makes swapping rhythm generators dangerous.
+#
+# This circuit converts the rhythm generator's output into an equivalent TOTAL presynaptic
+# firing rate before turning it into conductance. How to do that depends on what the RG
+# returns, and getting it wrong is recurring error E2 (omitting the presynaptic population
+# size, which leaves the downstream pool silent and every weight sweep flat):
+#
+#   GroupPacemakerRG  returns a PER-NEURON population rate in Hz, so the conversion factor
+#                     is the presynaptic POPULATION SIZE (n_exc = 30). Physical units.
+#   MatsuokaRG        (removed) returned a dimensionless activation in ~[0,1], so its
+#                     factor (170) was a lumped fudge absorbing both population size and an
+#                     unknown rate scale.
+#
+# The Matsuoka oscillator was removed outright rather than kept as an option: it conflates
+# rhythm generation with phase setting, so in it glycinergic inhibition IS the oscillator.
+# That contradicts the lamprey strychnine phenotype (glycine block abolishes alternation
+# while the rhythm PERSISTS) and it invalidated an earlier prediction of this project. Its
+# replacement reproduces that phenotype and is covered by tests/test_phenotypes.py.
+RG_GAIN_PER_NEURON = 30.0      # = GroupPacemakerRG n_exc
 
 
 class SpinalCircuit:
@@ -36,12 +66,13 @@ class SpinalCircuit:
         ("Ia", "IaIn", "ampa"): 0.45,
     }
 
-    def __init__(self, drug: Drug | None = None, rg_gain=170.0, gaba_tonic=2.0, ia_n=25,
-                 gaba_sens=1.0,
+    def __init__(self, drug: Drug | None = None, rg_gain=RG_GAIN_PER_NEURON,
+                 gaba_tonic=2.0, ia_n=25,
+                 gaba_sens=1.0, gaba_sens_tonic=None, gaba_sens_phasic=None,
                  drive_pf=110.0, drive_mn=100.0, drive_in=75.0,
                  rg_kw=None, seed=0):
         self.drug = drug or Drug()
-        self.rg = MatsuokaRG(drug=self.drug, seed=seed, **(rg_kw or {}))
+        self.rg = GroupPacemakerRG(drug=self.drug, seed=seed, **(rg_kw or {}))
         # rg_gain maps RG output (arb units) to an equivalent TOTAL presynaptic rate,
         # i.e. it already absorbs the presynaptic population size. ia_n is kept explicit
         # because a muscle has ~25 Ia afferents and omitting that factor silently makes
@@ -49,6 +80,10 @@ class SpinalCircuit:
         self.rg_gain = rg_gain
         self.ia_n = ia_n
         self.gaba_sens = gaba_sens
+        # separate tonic/phasic sensitivities; both default to gaba_sens, which reproduces
+        # the legacy single-pool behaviour exactly
+        self.gaba_sens_tonic = gaba_sens if gaba_sens_tonic is None else gaba_sens_tonic
+        self.gaba_sens_phasic = gaba_sens if gaba_sens_phasic is None else gaba_sens_phasic
         self.gaba_tonic = gaba_tonic
         self.drive = dict(PF=drive_pf, Mn=drive_mn, InPF=drive_in,
                           IaIn=drive_in, Rc=drive_in)
@@ -64,7 +99,7 @@ class SpinalCircuit:
                 for rec in ("ampa", "nmda", "gabaa", "gly"):
                     self.syn[(nm, rec)] = Syn(
                         n, rec, self.drug,
-                        sens=(gaba_sens if rec in ("gabaa", "gly") else 1.0))
+                        sens=(self.gaba_sens_phasic if rec in ("gabaa", "gly") else 1.0))
         self.t = 0.0
         self.trace = {k: [] for k in self.pops}
         self.trace.update(t=[], RG_F=[], RG_E=[])
@@ -106,7 +141,7 @@ class SpinalCircuit:
                 s = self.syn[(nm, rec)]
                 g[rec] = s.conductance(p.V); E[rec] = E_REV[rec]
             if base in ("PF", "Mn"):               # tonic extrasynaptic GABA-A
-                eff = 1.0 + self.gaba_sens * (self.drug.gaba_scale_tonic() - 1.0)
+                eff = 1.0 + self.gaba_sens_tonic * (self.drug.gaba_scale_tonic() - 1.0)
                 g["gabaa"] = g["gabaa"] + self.gaba_tonic * eff
             p.step(dt, g, E, self.drive.get(base, 0.0), self.rng)
         for s in self.syn.values():
