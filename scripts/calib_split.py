@@ -35,11 +35,16 @@ from circuitpharm.resp import PreBotC, resp_metrics
 from circuitpharm.cpg import Drug
 from circuitpharm.subtypes import PROFILES
 from circuitpharm.gabaa_kinetics import fit_scheme, derive, calibrate_pam
+from circuitpharm.config import RESP_OP, SYNAPTIC_PULSE, AMBIENT_GABA_UM
 
-OP = dict(drive=170.0, g_adapt=2.5, tau_adapt=400.0,
-          w=dict(ee_ampa=0.45, ee_nmda=0.2475))
-PULSE = dict(peak_um=3000.0, clear_ms=1.00)
-AMBIENT, T, DT, WARM = 0.40, 14000.0, 0.1, 4000.0
+# Operating point, cleft pulse and ambient GABA come from circuitpharm.config --
+# the single source. These were previously duplicated as literals in each script,
+# which is HOW recurring error E12 (a calibration carried across a change of
+# parameterisation) happened twice. dict() copies keep local mutation safe.
+OP = dict(RESP_OP); OP["w"] = dict(RESP_OP["w"])
+PULSE = dict(SYNAPTIC_PULSE)
+AMBIENT = AMBIENT_GABA_UM
+T, DT, WARM = 14000.0, 0.1, 4000.0
 N_SEED = 3
 SUBJ_TARGET = 0.50
 S_MAX = 2.5                      # classical BZ intrinsic allosteric efficacy

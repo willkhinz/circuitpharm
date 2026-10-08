@@ -48,9 +48,11 @@ import numpy as np
 from multiprocessing import Pool
 from circuitpharm.resp import PreBotC, resp_metrics
 from circuitpharm.cpg import Drug
+from circuitpharm.config import RESP_OP
 
-OP = dict(drive=170.0, g_adapt=2.5, tau_adapt=400.0,
-          w=dict(ee_ampa=0.45, ee_nmda=0.2475))
+# Operating point from circuitpharm.config -- the single source. Duplicated
+# literals are HOW recurring error E12 happened twice.
+OP = dict(RESP_OP); OP["w"] = dict(RESP_OP["w"])
 BASE_TONIC = 1.5          # nS, the model's drug-free standing GABA-A conductance
 MULTS = (1.0, 1.5, 2.0, 3.0, 4.0, 6.0, 8.0, 12.0, 16.0, 24.0)
 N_SEED, T, DT, WARM = 4, 14000.0, 0.1, 4000.0

@@ -23,8 +23,11 @@ import numpy as np
 from multiprocessing import Pool
 from circuitpharm.resp import PreBotC, resp_metrics
 from circuitpharm.cpg import Drug
+# Operating point from circuitpharm.config -- the single source. Duplicated
+# literals are HOW recurring error E12 happened twice.
+from circuitpharm.config import RESP_OP
 
-EE_AMPA, EE_NMDA = 0.45, 0.2475
+EE_AMPA, EE_NMDA = RESP_OP["w"]["ee_ampa"], RESP_OP["w"]["ee_nmda"]
 N_SEED = 4
 DUR_MS, DT = 14000.0, 0.1
 
@@ -46,7 +49,8 @@ def job(a):
     w = dict(ee_ampa=EE_AMPA, ee_nmda=EE_NMDA); w.update(wextra)
     b = PreBotC(drug=Drug(nmda_block=blk, glun2b_selectivity=0.0),
                 gaba_sens=0.15, seed=seed,
-                drive=170.0, g_adapt=g_adapt, tau_adapt=400.0, w=w)
+                drive=RESP_OP["drive"], g_adapt=g_adapt,
+                tau_adapt=RESP_OP["tau_adapt"], w=w)
     for i in range(int(DUR_MS / DT)):
         b.step(DT)
         if i % 10 == 0:

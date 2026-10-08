@@ -9,9 +9,11 @@ import numpy as np
 from multiprocessing import Pool
 from circuitpharm.resp import PreBotC, resp_metrics
 from circuitpharm.cpg import Drug
+from circuitpharm.config import RESP_OP
 
-OP = dict(drive=170.0, g_adapt=2.5, tau_adapt=400.0,
-          w=dict(ee_ampa=0.45, ee_nmda=0.2475))
+# Operating point from circuitpharm.config -- the single source. Duplicated
+# literals are HOW recurring error E12 happened twice.
+OP = dict(RESP_OP); OP["w"] = dict(RESP_OP["w"])
 N_SEED, T, DT = 4, 14000.0, 0.1
 BRAINSTEM_2B = 0.15
 

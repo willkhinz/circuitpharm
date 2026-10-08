@@ -38,8 +38,12 @@ from circuitpharm.resp import PreBotC, resp_metrics
 from circuitpharm.cpg import Drug
 from circuitpharm.subtypes import REGIONS, SUBTYPES, SUBJECTIVE_WEIGHT
 
-RESP_OP = dict(drive=170.0, g_adapt=2.5, tau_adapt=400.0,
-               w=dict(ee_ampa=0.45, ee_nmda=0.2475))
+# Operating point, cleft pulse and ambient GABA come from circuitpharm.config --
+# the single source. These were previously duplicated as literals in each script,
+# which is HOW recurring error E12 (a calibration carried across a change of
+# parameterisation) happened twice. dict() copies keep local mutation safe.
+from circuitpharm.config import RESP_OP as _RESP_OP
+RESP_OP = dict(_RESP_OP); RESP_OP["w"] = dict(_RESP_OP["w"])
 DUR_MS, DT, WARM = 14000.0, 0.1, 4000.0
 CEILING = 2.5
 SUBJ_TARGET = 0.50

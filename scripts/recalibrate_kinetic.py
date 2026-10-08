@@ -34,11 +34,15 @@ from multiprocessing import Pool
 from circuitpharm.resp import PreBotC, resp_metrics
 from circuitpharm.cpg import Drug
 from circuitpharm.gabaa_kinetics import fit_scheme, derive, calibrate_pam
+from circuitpharm.config import RESP_OP, SYNAPTIC_PULSE, AMBIENT_GABA_UM
 
-OP = dict(drive=170.0, g_adapt=2.5, tau_adapt=400.0,
-          w=dict(ee_ampa=0.45, ee_nmda=0.2475))
-PULSE = dict(peak_um=3000.0, clear_ms=1.00)      # a cell that passed the anchored checks
-AMBIENT = 0.40
+# Operating point, cleft pulse and ambient GABA come from circuitpharm.config --
+# the single source. These were previously duplicated as literals in each script,
+# which is HOW recurring error E12 (a calibration carried across a change of
+# parameterisation) happened twice. dict() copies keep local mutation safe.
+OP = dict(RESP_OP); OP["w"] = dict(RESP_OP["w"])
+PULSE = dict(SYNAPTIC_PULSE)   # a cell that passed the anchored checks
+AMBIENT = AMBIENT_GABA_UM
 N_SEED, T, DT, WARM = 3, 14000.0, 0.1, 4000.0
 
 SHIFTS = (1.5, 2.0, 2.5, 3.0, 4.0)
