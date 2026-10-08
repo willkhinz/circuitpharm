@@ -11,6 +11,7 @@ Columns of judgement:
   verdict      CANDIDATE / BACKUP / REJECT / TOOL / GAP
 """
 import sqlite3, pathlib
+import sys
 # SIDE-EFFECT GUARD added 2026-10-07. This script previously did its work at MODULE level,
 # so merely importing it ran it. For `port_muscle.py` that regenerated the MuJoCo body
 # model, and for `build_kb.py`/`build_compounds.py` it rewrote the pharmacology database --
@@ -22,6 +23,19 @@ def main():
 
     DB = pathlib.Path(__file__).resolve().parent.parent / "data" / "pharmacology.db"
     c = sqlite3.connect(DB)
+    # DESTRUCTION GUARD (same lesson as scripts/build_kb.py, which destroyed 48 sources
+    # and 41 findings this way during session 8). This drops and rebuilds the `compounds`
+    # table from the literals below, so refuse when the live table holds more than will be
+    # written -- those extra rows were added later and are not reproducible from here.
+    WILL_WRITE = 46
+    try:
+        live = c.execute("select count(*) from compounds").fetchone()[0]
+    except Exception:
+        live = 0
+    if live > WILL_WRITE and "--force" not in sys.argv:
+        print(f"REFUSING: compounds has {live} rows live, this script writes {WILL_WRITE}.")
+        print("Rebuilding would discard rows added later. Use --force, or INSERT instead.")
+        return
     c.execute("DROP TABLE IF EXISTS compounds")
     c.execute("""CREATE TABLE compounds(
       name TEXT, arm TEXT, target TEXT, status TEXT,

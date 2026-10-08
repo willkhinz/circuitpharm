@@ -1975,3 +1975,64 @@ module) -> **95%** after the dead-code extraction, which alone took `cpg.py` fro
 94%. `fail_under = 90` in pyproject, and CI reports it. `cpg.py` is 253 lines, was 362.
 
 All 114 tests still pass.
+
+### I DESTROYED DATA, AND RECOVERED IT — and the lesson is the entry, not the recovery
+
+While verifying the import-side-effect fix (above), I ran `scripts/build_kb.py` directly.
+It contained an unconditional `if DB.exists(): DB.unlink()` and rebuilds the database from
+the literal tables written into it: **42 sources and 17 findings**. The live database held
+**90 sources and 58 findings**, accumulated across later sessions by other means.
+
+So I silently discarded **48 sources and 41 findings**, then committed the damaged file in
+`c86bfdb`. I noticed only because a later count came back 42/17 when I expected 90/58.
+
+Recovered from `e1fd284` (the pre-refactor snapshot), and the model_facts work plus the new
+verification columns re-applied on top. Final state: sources 90, findings 58,
+model_facts 32, compounds 53. **This was recoverable ONLY because the database is tracked
+in git** — which it is only because I initialised version control at the start of this
+session for an unrelated reason.
+
+**The irony is the point:** this happened during the step where I was fixing the exact class
+of bug it belongs to. Finding that a script has destructive side effects on import is not
+the same as making it safe to run.
+
+**Lasting fix — a destruction guard in both builders.** Each now compares the LIVE row count
+against what it is about to write and refuses unless `--force`, taking a timestamped backup
+either way:
+
+    build_kb.py       REFUSING: sources 90 live vs 42 written; findings 58 vs 17
+    build_compounds.py REFUSING: compounds 53 live vs 46 written
+
+The second guard immediately earned itself: `build_compounds.py` had the same
+`DROP TABLE IF EXISTS compounds` pattern and would have destroyed 7 compounds.
+
+`tests/test_data_safety.py` (6 tests): a canary on the accumulated row counts, both
+builders must contain a guard and a `--force` override, both must have `__main__` guards,
+and the citation verification column must exist with UNVERIFIED rows in it.
+
+### Citations: verification status is now explicit rather than implied
+Added a `verification` column to `sources` and `findings`, defaulting to **UNVERIFIED**.
+The 90 sources carry resolvable URLs to real papers and were read at the time, but nobody
+has gone back to each figure or table to confirm the attributed claim is what the paper
+supports *at the stated precision*. Recording that honestly is the same discipline as the
+VOID tier on quantities: omitting the column lets a reader assume a check that never
+happened. Three findings that rest on the VOID calibration, the pool-dependent ceiling or
+the overdose index are marked SUPERSEDED in the row itself, not only in this log.
+
+Before publication every load-bearing quantitative citation needs checking against the
+actual figure. Session 7c found my recall wrong by a factor of 1.6 on one number
+(predicted gating-only phasic gain ~2.2x, actual 1.40x), so the error rate is not zero.
+
+### Single source for the operating point (verified)
+Nine live scripts still carried the preBotC operating point as literals — the exact
+mechanism behind E12, committed twice. All nine now import from `circuitpharm.config`;
+each verified to produce identical values, and `predict_muscimol.py` reproduces its
+published curve exactly. `tests/test_config_single_source.py` pins it: no LIVE script may
+contain the literal (archived ones are exempt as frozen records), the shared constants are
+immutable so an in-process caller cannot poison later runs, and the VOID calibration cannot
+be quietly promoted by an edit. My grep found 4 offenders; the test found 9 — five used
+formatting the pattern missed.
+
+### Pushed
+Remote `willkhinz/circuitpharm` (**private**) already existed with my history through
+`c86bfdb`. Fast-forward, no force, nothing overwritten. CI runs on 3.11 and 3.12.

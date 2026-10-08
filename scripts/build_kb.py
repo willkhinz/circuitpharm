@@ -2,6 +2,9 @@
 """Build data/pharmacology.db — structured knowledge base for the alcohol-substitute project.
 Idempotent: drops and rebuilds. Every row carries a source_key into `sources`."""
 import sqlite3, os, pathlib
+import sys
+import shutil
+import datetime
 # SIDE-EFFECT GUARD added 2026-10-07. This script previously did its work at MODULE level,
 # so merely importing it ran it. For `port_muscle.py` that regenerated the MuJoCo body
 # model, and for `build_kb.py`/`build_compounds.py` it rewrote the pharmacology database --
@@ -13,7 +16,45 @@ def main():
 
     DB = pathlib.Path(__file__).resolve().parent.parent / "data" / "pharmacology.db"
     DB.parent.mkdir(exist_ok=True)
-    if DB.exists(): DB.unlink()
+
+    # DESTRUCTION GUARD, added 2026-10-07 after this script destroyed real data.
+    #
+    # This line used to be an unconditional `if DB.exists(): DB.unlink()`. The script
+    # rebuilds the database from the literal tables below, which hold 42 sources and 17
+    # findings -- but the live database had accumulated 90 sources and 58 findings across
+    # later sessions, added by other means. Running this script (which, before the
+    # __main__ guard, happened on mere IMPORT) silently threw away 48 sources and 41
+    # findings. Recovered from git; the loss would have been permanent had the file not
+    # been tracked.
+    #
+    # So: refuse to overwrite a database that is RICHER than what this script will write,
+    # unless --force. And back up unconditionally before touching it.
+    WILL_WRITE = {"sources": 42, "findings": 17}
+    force = "--force" in sys.argv
+    if DB.exists():
+        try:
+            _c = sqlite3.connect(f"file:{DB}?mode=ro", uri=True)
+            live = {t: _c.execute(f"select count(*) from {t}").fetchone()[0]
+                    for t in WILL_WRITE}
+            _c.close()
+        except Exception:
+            live = {}
+        richer = {t: (live[t], WILL_WRITE[t]) for t in live
+                  if live.get(t, 0) > WILL_WRITE[t]}
+        if richer and not force:
+            print("REFUSING to rebuild: the live database is richer than this script.")
+            for t, (have, want) in richer.items():
+                print(f"  {t}: {have} rows live, this script writes only {want}")
+            print("\nRebuilding would discard rows added after this script was written.")
+            print("If you really mean it, re-run with --force (a timestamped backup is")
+            print("kept either way). To ADD facts, insert them instead of rebuilding.")
+            return
+        backup = DB.with_suffix(
+            f".backup-{datetime.datetime.now():%Y%m%d-%H%M%S}.db")
+        shutil.copy2(DB, backup)
+        print(f"backed up existing database to {backup.name}")
+        DB.unlink()
+
     c = sqlite3.connect(DB); x = c.executescript
 
     x("""
