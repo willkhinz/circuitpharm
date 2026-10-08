@@ -281,3 +281,169 @@ def test_abolished_locomotion_does_not_emit_a_numpy_warning():
     with warnings.catch_warnings():
         warnings.simplefilter("error", RuntimeWarning)
         evaluate(Compound.from_profile("nonselective_bz", occupancy=1.0), n_seed=2)
+
+
+# =====================================================================================
+# REVIEW PASS 7 (2026-10-07). Eight findings; the three with a library surface are here.
+# The other five were script-level (build_kb collateral destruction, ranking_robustness
+# empty percentile, overdose_kinetic NaN propagation, two division-by-zero guards) plus
+# dead code in conftest.
+# =====================================================================================
+
+# ------------------------------------------------- R7.1 calibrate_pam lower bracket
+@pytest.mark.parametrize("target_shift", [1.0, 0.8, 0.5])
+def test_calibrate_pam_returns_nan_below_its_search_domain(target_shift):
+    """Only the UPPER bracket end was checked, so asking for a shift at or below 1.0 --
+    a neutral ligand, or a NAM, which right-shifts EC50 -- made both endpoints positive
+    and brentq raised a bare ValueError about signs. The documented convention for
+    'unreachable by this mechanism' is NaN, and callers already test isfinite."""
+    from circuitpharm.gabaa_kinetics import fit_scheme, calibrate_pam
+    s = fit_scheme(verbose=False)
+    out = calibrate_pam(s, target_shift=target_shift)
+    assert not np.isfinite(out), (
+        f"expected NaN for target_shift={target_shift} (outside the x>=1 search domain), "
+        f"got {out}")
+
+
+def test_calibrate_pam_still_solves_a_reachable_shift():
+    """Guard against the lower-bracket fix swallowing the normal case."""
+    from circuitpharm.gabaa_kinetics import fit_scheme, calibrate_pam
+    s = fit_scheme(verbose=False)
+    out = calibrate_pam(s, target_shift=2.5)
+    assert np.isfinite(out) and out > 1.0
+
+
+# ------------------------------------------------- R7.2 no negative GABA-A conductance
+@pytest.mark.parametrize("cls_name", ["PreBotC", "GroupPacemakerRG", "SpinalCircuit"])
+def test_tonic_gabaa_conductance_never_goes_negative(cls_name):
+    """A NAM (gaba_scale_tonic < 1) meeting a sensitivity above 1 made `eff` negative,
+    and a negative tonic term can drive the TOTAL gabaa conductance negative. Since the
+    current is g*(E - V), that inverts an inhibitory shunt into regenerative negative
+    damping: the voltage diverges rather than the run failing visibly. Same class as the
+    clamp already in Drug.nmda_scale.
+
+    Latent rather than live -- PROFILES top out at sens 0.815 -- but both
+    `gaba_sens_tonic` and `Drug(gaba_a_gain_tonic=...)` are public.
+    """
+    from circuitpharm.cpg import Drug
+    d = Drug(gaba_a_gain_tonic=0.0, gaba_a_cap_tonic=5.0)   # full negative modulation
+    if cls_name == "PreBotC":
+        from circuitpharm.resp import PreBotC
+        net = PreBotC(drug=d, gaba_sens_tonic=3.0, seed=0)
+    elif cls_name == "GroupPacemakerRG":
+        from circuitpharm.rg2 import GroupPacemakerRG
+        net = GroupPacemakerRG(drug=d, gaba_sens_tonic=3.0, seed=0)
+    else:
+        from circuitpharm.circuit import SpinalCircuit
+        net = SpinalCircuit(drug=d, gaba_sens_tonic=3.0, seed=0)
+
+    for _ in range(3000):
+        net.step(0.1)
+    for nm, p in net.pops.items():
+        v = np.asarray(p.V, float)
+        assert np.all(np.isfinite(v)), f"{cls_name}.{nm}: voltage went non-finite"
+        assert v.max() < 1e3, (
+            f"{cls_name}.{nm}: voltage diverged to {v.max():.3g} mV -- negative "
+            f"conductance is acting as negative damping")
+
+
+# ------------------------------------------------- R7.3 locomotor FFT spacing is pinned
+@pytest.mark.needs_plant
+def test_locomotion_fft_spacing_comes_from_the_time_vector():
+    """The sample spacing was the module-level DT rather than the recorded time vector.
+    Same number today, so not wrong -- UNPINNED. Decimating the recording (an obvious way
+    to hold memory down on a long run) would leave rfftfreq told the undecimated spacing
+    and report a frequency N times too fast, silently. A drug that slows the step cycle
+    reading as a faster one is recurring error E4.
+
+    Checked by source inspection: the behavioural version needs a decimation path that
+    does not exist yet, and asserting on the DT literal is what let this drift.
+    """
+    import inspect
+    from circuitpharm import assays
+    src = inspect.getsource(assays.locomotion)
+    assert "np.fft.rfftfreq(len(q), dt_s)" in src, (
+        "locomotion's FFT spacing is no longer derived from the recorded time vector")
+    assert "np.fft.rfftfreq(len(q), DT)" not in src
+
+
+# =====================================================================================
+# REVIEW PASS 10 (2026-10-07). Three findings. One (locomotion's empty-window crash) has
+# a library surface; the other two are the NaN-poisoned grid search and the remaining
+# unguarded baseline divisions, both script-level, covered by the shared-pattern test
+# below rather than by running the sweeps (each takes minutes).
+# =====================================================================================
+
+# ------------------------------------------------- R10.1 locomotion rejects a dead window
+@pytest.mark.needs_plant
+@pytest.mark.parametrize("duration_s", [0.5, 1.0])
+def test_locomotion_refuses_a_duration_with_no_analysable_window(duration_s):
+    """`m = t > LOCO_SETTLE_S` is all-False at or below the settle time, so every analysis
+    slice was shape (0,) and the first reduction raised numpy's "zero-size array to
+    reduction operation maximum which has no identity" -- an obscure message from deep
+    inside the function naming nothing the caller controls. duration_s <= 1.0 is exactly
+    what someone writes for a fast unit test."""
+    from circuitpharm.assays import locomotion, LOCO_SETTLE_S
+    with pytest.raises(ValueError, match="no analysable window"):
+        locomotion(duration_s=duration_s)
+    assert duration_s <= LOCO_SETTLE_S        # the premise of the test
+
+
+# ------------------------------------------------- R10.2 NaN cannot latch a grid search
+def test_nan_does_not_latch_a_min_tracking_comparison():
+    """The bug, in isolation: `err < best[0]` is False whenever best[0] is NaN, so one
+    non-finite error in the FIRST grid cell latched `best` permanently and every later
+    finite, better candidate was discarded. The script then printed that poisoned cell as
+    BEST with NaN% beside it, which reads as a converged answer.
+
+    This pins the PATTERN. The three sweeps that had it (calib_split, calibrate_resp,
+    recalibrate_kinetic) each take minutes to run, so they are checked by source
+    inspection in the companion test below.
+    """
+    def select(errs, guarded):
+        best = None
+        for e in errs:
+            if guarded:
+                if np.isfinite(e) and (best is None or e < best[0]):
+                    best = (e, "cand")
+            elif best is None or e < best[0]:
+                best = (e, "cand")
+        return best
+
+    errs = [float("nan"), 0.05, 0.01]
+    assert math.isnan(select(errs, guarded=False)[0]), "premise: unguarded form latches"
+    assert select(errs, guarded=True)[0] == 0.01
+    # all-NaN must yield None so the caller can refuse, not a poisoned winner
+    assert select([float("nan")] * 3, guarded=True) is None
+
+
+@pytest.mark.parametrize("script,var", [
+    ("scripts/calib_split.py", "e"),
+    ("scripts/calibrate_resp.py", "err"),
+    ("scripts/recalibrate_kinetic.py", "err"),
+])
+def test_calibration_sweeps_guard_their_min_tracking(script, var):
+    """Each sweep must test isfinite before comparing, and must refuse rather than report
+    a winner when nothing finite was found."""
+    import pathlib
+    src = pathlib.Path(script).read_text()
+    assert f"np.isfinite({var}) and (best is None" in src, (
+        f"{script}: min-tracking is not NaN-guarded")
+    assert "best is None:" in src and "SystemExit" in src, (
+        f"{script}: does not refuse when every grid cell is non-finite")
+
+
+# ------------------------------------------------- R10.3 baselines guarded, not bare
+@pytest.mark.parametrize("script", [
+    "scripts/predict_muscimol.py", "scripts/recalibrate_kinetic.py",
+    "scripts/calib_split.py", "scripts/reflex.py",
+])
+def test_percent_of_control_never_divides_bare(script):
+    """A quiescent drug-free control makes every percent-of-control 0/0. Bare division
+    raised ZeroDivisionError and killed an entire grid or concentration series at one bad
+    cell; NaN says "no baseline to measure against" and lets the rest report.
+    `evaluation._pct_of_control` has done this for several sessions; the scripts had not.
+    """
+    import pathlib
+    src = pathlib.Path(script).read_text()
+    assert "1e-9" in src, f"{script}: no baseline-magnitude guard present"

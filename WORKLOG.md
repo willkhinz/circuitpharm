@@ -2312,3 +2312,168 @@ That last number is the important one. It does not support "the code is nearly c
 it supports "this code has a defect density my own review cannot measure." Any claim that
 this is publishable needs at least one review pass that finds nothing, and that has not
 happened yet.
+
+---
+
+## Session 13 — roadmap recorded, substrate diagnosed, review pass 7
+
+### The roadmap existed only in conversation
+Asked what the next step was, I searched WORKLOG and KNOWLEDGE for the six-link plan and
+found **nothing**. The compound-to-behaviour roadmap had never been written down. That is
+the third time this project has nearly lost work to the same failure mode: tuned RG
+parameters that lived only in a past run's stdout, destroyed KB rows that survived only by
+accident of version control, and now the plan itself. Written into `KNOWLEDGE.md` as a
+per-link status table (`cc6d3f9`).
+
+### Link 4/5 design, written before any code
+`knowledge/05-design-conductance-substrate.md`. Design only — the gate below still stands.
+
+The roadmap's stated reason for the conductance upgrade was "LIF is not the biophysics,"
+which argues from principle, and this project has been wrong from principle before. So I
+**measured** what the LIF substrate does to the voltage-dependent mechanisms the
+pharmacology actually depends on. `PreBotC(**RESP_OP)`, 15 s, 250k samples of `Exc`:
+
+| quantity | LIF substrate | a spiking cell |
+|---|---|---|
+| V range | −71.1 .. −44.2 mV | −65 .. +20 mV |
+| NMDA Mg²⁺ relief | mean **0.063** | up to 0.925 |
+| Mg relief dynamic range | **4.50×** | 15.5× |
+| GABA-A driving force | mean **10.4** mV | up to 95 mV |
+| glutamate driving force | 44–65 mV, never collapses | collapses at burst peak |
+
+Three consequences, in increasing order of how much they matter:
+
+1. **NMDA conductance is held in near-permanent Mg²⁺ block** — ~6% of unblocked, always.
+   `cpg.py:243` says "voltage dependence is why NMDA block is state-dependent." On this
+   substrate it is not.
+2. **Excitation never self-limits**: driving force never approaches zero.
+3. **The phasic GABA-A pool's driving force is truncated exactly when it matters.** Both
+   pools share one V, so at rest both are correct. The asymmetry is in *timing*: tonic is
+   always on at the resting driving force, which the LIF gets right; phasic arrives
+   correlated with the burst, i.e. when a real cell would be at spike voltages and the
+   driving force would be up to **9.1× larger**.
+
+**Why this is not absorbable into the hand-tuned weights.** The obvious objection is that
+the weights were fitted on this substrate, so magnitudes were compensated. True, and that
+is why (1) and (2) are listed first and lightly — a scalar weight rescales a mean. What a
+scalar weight cannot restore is a voltage-**dependence**: it cannot turn 4.5× into 15.5×,
+and it cannot make one pool's driving force swing 9× while the other's stays flat, because
+both share a single weight-independent `E_rev` and a single V.
+
+So the defect is **state-dependence**, and the exposed result is the project's central one:
+the tonic/phasic ratio is a conductance claim and stands, but its *behavioural* consequence
+runs through g·(E−V), and the substrate suppresses the phasic pool's driving force at the
+moment it arrives. The design's deliverable is therefore not "a better neuron" — it is
+**whether the selectivity ranking is substrate-independent as well as
+calibration-independent**, which nobody has checked. Either answer is worth having.
+
+Also recorded there: links 4 and 5 cannot ship separately (a 21 pF Butera cell against the
+current 200 pF one makes every nS weight wrong by ~10×, silently); six acceptance tests,
+including **E7 inverted** — the test that documented the LIF's limit becomes the test that
+the replacement cleared it; six predicted new failure modes (E13–E18); and an explicit list
+of what the upgrade does **not** fix, chiefly that it moves the >P12 muscimol anchor
+*further* away by importing Butera's neonatal age.
+
+### Review pass 7 — eight findings
+All eight legitimate and reproduced before fixing. Two were latent rather than live and are
+labelled as such in the code.
+
+1. **`calibrate_pam` raised an scipy internal below its search domain.** Only `f(hi) < 0`
+   was checked. The bracket is x ≥ 1.0001 (potentiation only), so `target_shift = 1.0` or a
+   NAM made both endpoints positive and `brentq` raised a bare *"f(a) and f(b) must have
+   different signs"* — from a function whose other failure path is a documented NaN. Now
+   returns NaN, the convention callers already test.
+2. **`build_kb.py --force` destroyed tables it did not own — and worse than the review
+   found.** It called `DB.unlink()`, deleting the whole *file*, then recreated only its own
+   8 tables. Collateral: `compounds` (53 rows, owned by `build_compounds.py`) and
+   `chiral_pairs` (12 rows). I checked for a builder for `chiral_pairs`: **there is none
+   anywhere in the repo**, so those 12 rows exist only in the live `.db` and would have
+   been **unrecoverable**. The row-count guard I added the *last* time this script destroyed
+   data did not help, because it only counts the tables the script owns — it was watching
+   the wrong thing. A guard on `sources` and `findings` says nothing about `compounds`. Now
+   drops only its own 8 tables; verified on a copy that both foreign tables survive.
+3. **`np.percentile([], 5)` raises `IndexError`, it does not return NaN.** An arm whose
+   `s_max` is unreachable yields all-NaN draws — a legitimate pharmacological outcome — and
+   crashed the entire robustness report.
+4. **Negative total GABA-A conductance** in `resp.py`, `rg2.py`, `circuit.py`. A NAM meeting
+   sensitivity > 1 makes `eff` negative; since current is g·(E−V), a negative conductance
+   inverts an inhibitory shunt into **regenerative negative damping** and the voltage
+   diverges rather than failing visibly. Same class as the clamp already in
+   `Drug.nmda_scale`. *Latent*: measured max sensitivity across all `PROFILES` × regions is
+   0.815, so no current path reaches it — but `gaba_sens_tonic` and
+   `Drug(gaba_a_gain_tonic=...)` are both public.
+5. **`overdose_kinetic.py` fed a NaN affinity into `derive()`**, making `koff = NaN` and
+   poisoning every rate matrix — surfacing much later as an opaque ODE failure. Now exits
+   with the cause named.
+6. **Locomotor FFT spacing was the module-level `DT`, not the recorded time vector.** Same
+   number today, so not wrong — *unpinned*. Decimate the recording and `rfftfreq` would be
+   told the undecimated spacing and report a frequency N× too fast, silently. `resp_metrics`
+   already derives it correctly. A drug that slows the step cycle reading as faster is E4,
+   which this project has now hit in two forms. *Latent*: needs a decimation path that does
+   not exist yet.
+7. **Division by zero on quiescent controls** in `calib_split.py` and `reflex.py`.
+   `stretch_reflex` legitimately returns NaN gain below `IA_RESPONSE_FLOOR`, so reachable
+   without a bug.
+8. Dead `src` local in `conftest.py` — residue of the name-based skip heuristic review 1
+   removed.
+
+Three new regression tests cover the findings with a library surface (R7.1–R7.3).
+
+### The gate is not met
+**46 defects across seven passes: 9, 11, 8, 10, —, —, 8.** The rate is still flat. Pass 7
+also found a *second* instance of the exact class of bug (destructive DB rebuild) that I had
+already been bitten by and had already "fixed" — and my fix was watching the wrong tables.
+
+That is the strongest available evidence for the sequencing argument in the design doc:
+a conductance-based rewrite plus a circuit swap is a large new surface on a base whose
+defect density my own review cannot measure. **Design is written; implementation stays
+gated on a review pass that finds nothing.**
+
+### Review pass 10 — three findings, and one of them was mine from pass 7
+All three reproduced before fixing.
+
+1. **A NaN latched the grid search in all three calibration sweeps**
+   (`calib_split.py`, `calibrate_resp.py`, `recalibrate_kinetic.py`). The idiom was
+   `if best is None or err < best[0]`. `err < nan` is **False**, so one non-finite error in
+   the *first* grid cell latched `best` permanently and every later finite, better
+   candidate was silently discarded. The script then printed that poisoned cell as `BEST`
+   with `NaN%` beside it — which reads as a converged answer. These scripts are what the
+   project's calibration constants came from, so this is a defect in the provenance of
+   numbers already in use, not just in a tool.
+
+   **And `calib_split.py` is where I made the path reachable.** My pass-7 fix turned a
+   `ZeroDivisionError` on a quiescent control into a NaN `dv`, which lands directly in
+   `e = abs(dv - TARGET_VENT)`. Before that fix the script crashed loudly; after it, it
+   would have reported a wrong best silently. **A fix that converts a loud failure into a
+   quiet wrong answer is worse than no fix, and this is the second time I have done it**
+   (the first was the `evaluate` lazy-import attempt that bound a non-callable module).
+   Both sweeps now test `np.isfinite` before comparing, and refuse with a stated reason
+   when no cell is finite rather than reporting a winner.
+
+2. **`locomotion()` crashed on any duration at or below the settle time.** `m = t >
+   LOCO_SETTLE_S` is all-False for `duration_s <= 1.0`, so every analysis slice was shape
+   `(0,)` and the first reduction raised *"zero-size array to reduction operation maximum
+   which has no identity"* — an obscure numpy message from deep inside the function naming
+   nothing the caller controls. `duration_s=0.5` is exactly what someone writes for a fast
+   unit test or a latency sweep, so this is a likely call. Now refused at the function head
+   with the settle time and the default named.
+
+3. **Remaining unguarded baseline divisions** in `predict_muscimol.py` and
+   `recalibrate_kinetic.py` (`100*mn/c`, `100*amp/ca`, `100*(v-cv)/cv`,
+   `100*(am-ca)/ca`). Same class as pass 7 finding 7 and the same fix;
+   `evaluation._pct_of_control` has done this correctly for several sessions while the
+   scripts had not. In `recalibrate_kinetic.py` the sibling `df` was *already* guarded with
+   `max(1e-9, cf)` on the line below — so the guard was present, applied to one of three
+   divisions, and nobody noticed the other two.
+
+Ten new regression tests (R10.1–R10.3). The NaN-latching one pins the *pattern* in
+isolation plus a source check on each sweep, because running the three sweeps takes minutes
+each.
+
+### Running total: 49 defects across eight passes
+**9, 11, 8, 10, 8, 3.** The rate is finally falling, and pass 10 was reported as the last
+of this review round. But two of its three findings were in the same classes as pass 7's
+(unguarded baseline division; a silent-NaN path), and one was *created by my own pass-7
+fix* — so the fall is partly the reviewer running out of new surface, not the code becoming
+clean. The gate in `knowledge/05-design-conductance-substrate.md` asks for a pass that
+finds **nothing**; 3 is not 0.

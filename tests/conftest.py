@@ -46,11 +46,9 @@ def pytest_collection_modifyitems(config, items):
         return
     skip = pytest.mark.skip(reason="MuJoCo not installed (optional 'plant' extra)")
     for item in items:
-        src = ""
-        try:
-            src = item.function.__code__.co_consts and str(item.function.__code__.co_names)
-        except Exception:
-            pass
+        # (A `src` local was computed here from co_consts/co_names and never read. It was
+        # the residue of an earlier name-based skip heuristic that review 1 removed as
+        # over-broad; the two signals below replaced it.)
         names = set(getattr(item.function, "__code__", None).co_names) \
             if getattr(item.function, "__code__", None) else set()
         # Two signals only, both specific:

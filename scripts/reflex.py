@@ -34,6 +34,10 @@ if __name__ == "__main__":
         gain = r["gain"]
         if ctrl is None:
             ctrl = gain
+        # The control row IS the first row, so a zero/NaN control reflex gain makes every
+        # subsequent percentage 0/0. stretch_reflex legitimately returns a NaN gain when
+        # the Ia response is below IA_RESPONSE_FLOOR, so this is reachable without a bug.
+        pct = 100 * gain / ctrl if ctrl and abs(ctrl) > 1e-9 else float("nan")
         print(f"{lab:<32} {r['ia_base']:8.1f} {r['ia_dyn']:7.1f} {r['mn_base']:8.1f} "
               f"{r['mn_dyn']:7.1f} {r['mn_sta']:7.1f} {r['mn_anta']:7.1f} "
-              f"{r['f_dyn']:7.3f} {gain:7.3f} ({100*gain/ctrl:3.0f}%)")
+              f"{r['f_dyn']:7.3f} {gain:7.3f} ({pct:3.0f}%)")

@@ -145,8 +145,19 @@ class PreBotC:
             # TONIC pool uses the TONIC scale, which differs from the phasic one under
             # the kinetic scheme (see Drug.gaba_scale_tonic). Identical to the old
             # behaviour whenever gaba_a_gain_tonic is None.
-            eff = 1.0 + self.gaba_sens_tonic * (self.drug.gaba_scale_tonic() - 1.0)
-            g["gabaa"] = g["gabaa"] + self.gaba_tonic * eff
+            # CLAMPED AT ZERO. `eff` is negative whenever a NAM (gaba_scale_tonic < 1)
+            # meets a sensitivity above 1, and a negative tonic term can drive the TOTAL
+            # gabaa conductance negative. In Pop.step the current is g*(E - V), so a
+            # negative conductance inverts an inhibitory shunt into regenerative negative
+            # damping and the voltage diverges instead of failing visibly. Same class as
+            # the clamp in Drug.nmda_scale, which was reachable the same way.
+            #
+            # Latent, not live: no current path reaches it (PROFILES top out at sens 0.815
+            # and the kinetic scheme yields gains >= 1), but `gaba_sens_tonic` and
+            # `Drug(gaba_a_gain_tonic=...)` are both public.
+            eff = max(0.0, 1.0 + self.gaba_sens_tonic
+                      * (self.drug.gaba_scale_tonic() - 1.0))
+            g["gabaa"] = np.maximum(0.0, g["gabaa"] + self.gaba_tonic * eff)
             Id = (self.drive * drive_scale * (1.0 + self.resp_drive_boost)
                   if nm == "Exc" else 60.0)
             p.step(dt, g, E, Id, self.rng)

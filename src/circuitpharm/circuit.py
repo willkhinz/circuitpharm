@@ -172,8 +172,12 @@ class SpinalCircuit:
                 s = self.syn[(nm, rec)]
                 g[rec] = s.conductance(p.V); E[rec] = E_REV[rec]
             if base in ("PF", "Mn"):               # tonic extrasynaptic GABA-A
-                eff = 1.0 + self.gaba_sens_tonic * (self.drug.gaba_scale_tonic() - 1.0)
-                g["gabaa"] = g["gabaa"] + self.gaba_tonic * eff
+                # Clamped at zero; see the note in resp.py. A negative tonic term can drive
+                # the total gabaa conductance negative, which inverts the inhibitory shunt
+                # into regenerative negative damping rather than failing visibly.
+                eff = max(0.0, 1.0 + self.gaba_sens_tonic
+                          * (self.drug.gaba_scale_tonic() - 1.0))
+                g["gabaa"] = np.maximum(0.0, g["gabaa"] + self.gaba_tonic * eff)
             p.step(dt, g, E, self.drive.get(base, 0.0), self.rng)
         for s in self.syn.values():
             s.decay(dt)

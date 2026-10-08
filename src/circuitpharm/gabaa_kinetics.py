@@ -344,6 +344,25 @@ def calibrate_pam(scheme: Scheme, target_shift: float = 2.5,
     lo, hi = 1.0001, 1e4
     if f(hi) < 0:
         return float("nan")      # cannot reach the target shift by this mechanism
+    # THE LOWER END NEEDS THE SAME CHECK AS THE UPPER END (review pass 7).
+    #
+    # Only `f(hi) < 0` was tested, so the upper, saturating end of the bracket was handled
+    # and the lower end was not. The search domain is x >= 1.0001, i.e. POTENTIATION only,
+    # so the smallest reachable shift is ~1.0. Ask for `target_shift = 1.0` (a neutral
+    # ligand) or anything below it (a NEGATIVE allosteric modulator, which right-shifts
+    # EC50 and therefore needs x < 1) and both bracket endpoints come out positive.
+    # `brentq` requires opposite signs, so it raised a bare
+    # `ValueError: f(a) and f(b) must have different signs` -- an scipy internal, not a
+    # statement about pharmacology, from a function whose entire other failure path is a
+    # documented NaN.
+    #
+    # NAMs are not merely unhandled here, they are OUT OF DOMAIN: this function searches
+    # affinity/gating multipliers above 1. Returning NaN uses the convention the caller
+    # already understands ("unreachable by this mechanism"; see evaluation.pool_gains,
+    # which tests np.isfinite and falls back). Extending the bracket below 1 to cover NAMs
+    # would be a feature, not a bug fix, and is deliberately not done here.
+    if f(lo) > 0:
+        return float("nan")
     return float(brentq(f, lo, hi, xtol=1e-6))
 
 

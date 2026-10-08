@@ -117,13 +117,28 @@ if __name__ == "__main__":
     for k in KS:
         mn = np.mean([x[0] for x in A[k]])
         al = np.mean([x[2] for x in A[k]])
-        dv = 100 * (mn - cv) / cv
+        # A quiescent control makes this 0/0. Reporting NaN says "no baseline to
+        # measure against"; ZeroDivisionError kills the whole sweep at one bad cell.
+        dv = 100 * (mn - cv) / cv if abs(cv) > 1e-9 else float("nan")
         ok = VENT_RANGE[0] <= dv <= VENT_RANGE[1]
         print(f"{k:7.1f}{min(1.0,t*k):12.4f}{min(1.0,ph*k):13.4f}"
               f"{dv:12.1f}%{al:7.2f}{'  OK' if ok else '':>4}")
         e = abs(dv - TARGET_VENT)
-        if best is None or e < best[0]:
+        # NaN-SAFE SELECTION. `err < best[0]` is False whenever best[0] is NaN, so a
+        # single non-finite error in the FIRST grid cell latched `best` permanently and
+        # every later finite, better candidate was silently discarded -- the script then
+        # printed that poisoned cell as BEST. A grid search that reports the first point
+        # it tried, with NaN% beside it, looks like a converged answer.
+        #
+        # Note this script is where I MADE the path reachable: the review-7 fix above
+        # turned a ZeroDivisionError on a quiescent control into a NaN `dv`, which lands
+        # straight here. A fix that converts a loud failure into a quiet wrong answer is
+        # worse than no fix, and that is the second time in this project.
+        if np.isfinite(e) and (best is None or e < best[0]):
             best = (e, k, dv)
+    if best is None:
+        raise SystemExit("no grid point produced a finite error -- every control was "
+                         "quiescent or every run failed. Nothing to calibrate against.")
     print(f"\nBEST k = {best[1]:.1f}  -> ventilation {best[2]:+.1f}% "
           f"(target {TARGET_VENT}%)")
     print(f"  non-selective BZ sensitivities at that k: "

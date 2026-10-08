@@ -110,8 +110,12 @@ class GroupPacemakerRG:
             # affinity-type PAM potentiates the standing extrasynaptic conductance far
             # more than the near-saturated synaptic one. Identical to the old behaviour
             # whenever gaba_a_gain_tonic is None.
-            eff = 1.0 + self.gaba_sens_tonic * (self.drug.gaba_scale_tonic() - 1.0)
-            g["gabaa"] = g["gabaa"] + self.gaba_tonic * eff
+            # Clamped at zero; see the note in resp.py. A negative tonic term can drive the
+            # total gabaa conductance negative, which inverts the inhibitory shunt into
+            # regenerative negative damping rather than failing visibly.
+            eff = max(0.0, 1.0 + self.gaba_sens_tonic
+                      * (self.drug.gaba_scale_tonic() - 1.0))
+            g["gabaa"] = np.maximum(0.0, g["gabaa"] + self.gaba_tonic * eff)
             Id = (self.drive_half[nm[-1]] * drive_scale if nm.startswith("RG") else 70.0)
             p.step(dt, g, E, Id, self.rng)
         for s in self.syn.values():

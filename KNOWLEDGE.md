@@ -41,10 +41,58 @@ Concretely: move `Pop` to a conductance-based single-compartment neuron (Arbor o
 or a hand-rolled Hodgkin–Huxley-style cell — the mechanisms needed are few), then replace
 the hand-tuned preBötC with a published parameter set and re-run the phenotype tests.
 
+**The full design is written: `knowledge/05-design-conductance-substrate.md`.** It is design
+only, gated per below. It settles the architecture (two selectable backends, so the LIF path
+stays byte-identical and the two can be COMPARED), the cell (Butera–Rinzel–Smith Model 1 —
+three state variables, so ~20x cost rather than ~60x), six acceptance tests, six predicted
+new failure modes, and what the upgrade does NOT fix.
+
+### Why the upgrade is not cosmetic — measured, not argued
+`scripts/diag_substrate_limits.py`. The LIF preBötC holds V in [−71, −44] mV, and:
+
+* **NMDA conductance sits in near-permanent Mg²⁺ block** — mean relief **0.063**, dynamic
+  range **4.5x** against the 15.5x a spiking cell has. `cpg.py` says "voltage dependence is
+  why NMDA block is state-dependent"; on this substrate it is not.
+* **The phasic GABA-A pool's driving force is truncated exactly when it matters.** Mean
+  GABA-A driving force is **10.4 mV**; during a real burst it would be up to **95 mV**. Both
+  pools share one V, so at rest both are right — the asymmetry is in TIMING. Tonic is always
+  on at the resting driving force; phasic arrives correlated with the burst.
+* **Excitation never self-limits**: glutamate driving force never approaches zero.
+
+The standing objection is that the weights were tuned on this substrate so magnitudes were
+compensated. True — and that is why the claim is about voltage-**dependence**, not
+magnitude. A scalar weight rescales a mean; it cannot turn 4.5x into 15.5x, nor make one
+pool's driving force swing 9x while the other's stays flat, because both share a single
+weight-independent `E_rev` and a single V.
+
+So the exposed result is the project's central one. The tonic/phasic ratio is a conductance
+claim and stands; its *behavioural* consequence runs through g·(E−V), which this substrate
+truncates for the phasic pool. **The deliverable of links 4–5 is therefore not "a better
+neuron" — it is whether the selectivity ranking is substrate-independent as well as
+calibration-independent.** Nobody has checked. Either answer is worth having.
+
 ### But sequencing matters more than the next feature right now
-Four external reviews found **38 defects**, at a rate of 9, 11, 8, 10 — flat. Each review
+Eight review passes have found **49 defects**, at a rate of 9, 11, 8, 10, 8, 3. Each review
 found defects created or left incomplete by the previous round's fixes. My own scrutiny
-across twelve sessions found none of them.
+across thirteen sessions found none of them.
+
+Two findings make the point better than the count does:
+
+* **Pass 7** found a *second instance* of a defect class this project had already been
+  bitten by and already "fixed" — a destructive database rebuild — where the guard added
+  the first time was counting the wrong tables and so could not see the collateral it was
+  destroying (including 12 rows with no builder anywhere in the repo, which would have been
+  unrecoverable).
+* **Pass 10** found a NaN latching the grid search in all three calibration sweeps — the
+  scripts the project's calibration constants came from — and in one of them **my own
+  pass-7 fix is what made the path reachable**, by converting a loud `ZeroDivisionError`
+  into a silent NaN. That is the second time in this project I have replaced a loud failure
+  with a quiet wrong answer.
+
+The rate is falling, but pass 10 was the last of this review round, and two of its three
+findings were in classes pass 7 had already raised — so the fall is partly the reviewer
+running out of new surface rather than the code becoming clean. **The gate asks for a pass
+that finds nothing. Three is not zero.**
 
 A conductance-based rewrite of the neuron model plus a circuit swap is a large new surface
 on a base whose defect density I cannot measure. **Get one review pass that finds nothing

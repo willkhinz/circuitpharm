@@ -162,16 +162,28 @@ if __name__ == "__main__":
             v = np.mean([x[0] for x in A[(sh, s)]])
             am = np.mean([x[1] for x in A[(sh, s)]])
             fq = np.mean([x[2] for x in A[(sh, s)]])
-            dv = 100 * (v - cv) / cv
-            da = 100 * (am - ca) / ca
+            # Guarded like `df` already was. A quiescent drug-free control makes these
+            # 0/0: bare division raised ZeroDivisionError and killed the whole grid, where
+            # NaN says "no baseline to measure against" and lets the rest of the sweep
+            # report. evaluation._pct_of_control does this already; these scripts did not.
+            dv = 100 * (v - cv) / cv if abs(cv) > 1e-9 else float("nan")
+            da = 100 * (am - ca) / ca if abs(ca) > 1e-9 else float("nan")
             df = 100 * (fq - cf) / max(1e-9, cf)
             err = (((dv - TARGET_VENT) / 6.0) ** 2 + ((da - TARGET_AMP) / 6.0) ** 2
                    + (((df - TARGET_RATE) / 15.0) ** 2 if FIT_RATE else 0.0)) ** 0.5
             row += f"{err:11.2f}"
-            if best is None or err < best[0]:
+            # NaN-SAFE SELECTION. `err < best[0]` is False whenever best[0] is NaN, so a
+            # single non-finite error in the FIRST grid cell latched `best` permanently
+            # and every later finite, better candidate was silently discarded -- the
+            # script then printed that poisoned cell as BEST. A grid search that reports
+            # the first point it tried, with NaN% beside it, looks like a converged answer.
+            if np.isfinite(err) and (best is None or err < best[0]):
                 best = (err, sh, s, dv, da, df)
         print(row)
 
+    if best is None:
+        raise SystemExit("no (ec50_shift, gaba_sens) cell produced a finite error -- "
+                         "every control was quiescent or every run failed.")
     err, sh, s, dv, da, df = best
     print(f"\nBEST: ec50_shift {sh}, gaba_sens {s:.3f}  (error {err:.2f})")
     print(f"  ventilation {dv:+.1f}%  (target {TARGET_VENT}, FITTED)")

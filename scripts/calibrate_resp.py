@@ -75,8 +75,15 @@ if __name__ == "__main__":
                + 0.5 * abs(r2 - TARGET_RATE_PAM2) / 25.0)
         print(f"{s:5.2f} | {c_r:8.0f} | {v2:8.1f}% {a2:7.1f}% {r2:8.1f}% | "
               f"{v5:8.1f}% {a5:7.1f}% | {err:5.3f}")
-        if best is None or err < best[0]:
+        # NaN-SAFE SELECTION. `err < best[0]` is False whenever best[0] is NaN, so a
+        # single non-finite error in the FIRST grid cell latched `best` permanently and
+        # every later finite, better candidate was silently discarded -- the script then
+        # printed that poisoned cell as BEST. A grid search that reports the first point
+        # it tried, with NaN% beside it, looks like a converged answer.
+        if np.isfinite(err) and (best is None or err < best[0]):
             best = (err, s, v2, a2, r2, a5)
+    if best is None:
+        raise SystemExit("no gaba_sens produced a finite error -- nothing to calibrate.")
     print(f"\nBEST: gaba_sens={best[1]:.2f} -> PAM2 vent {best[2]:+.1f}% "
           f"(target {TARGET_VENT_PAM2:+.0f}), PAM2 amp {best[3]:+.1f}%, "
           f"PAM2 rate {best[4]:+.1f}%, PAM5 amp {best[5]:+.1f}% "

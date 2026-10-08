@@ -211,8 +211,25 @@ def locomotion(drug: Drug | None = None, duration_s=6.0, seed=1, rg_gain=30.0,
     `rg_gain` converts the rhythm generator's PER-NEURON rate in Hz into an equivalent
     total presynaptic rate, so it is the presynaptic population size (30). Treating it as
     a free gain is recurring error E2.
+
+    `duration_s` must exceed LOCO_SETTLE_S: the first second is discarded because the
+    circuit starts at an arbitrary phase, so a shorter run analyses nothing.
     """
     from .plant import JointPlant
+
+    # REFUSE A DURATION THAT LEAVES NOTHING TO ANALYSE, instead of failing in numpy.
+    #
+    # The settling mask `t > LOCO_SETTLE_S` is all-False for duration_s <= 1.0, so every
+    # analysis slice came out shape (0,) and the first reduction raised
+    # "ValueError: zero-size array to reduction operation maximum which has no identity" --
+    # an obscure numpy message from deep inside the function, naming nothing the caller
+    # controls. duration_s=0.5 or 1.0 is exactly what someone writes for a fast unit test
+    # or a latency sweep, so this is a likely call, not an exotic one.
+    if duration_s <= LOCO_SETTLE_S:
+        raise ValueError(
+            f"duration_s={duration_s} s leaves no analysable window: the first "
+            f"LOCO_SETTLE_S={LOCO_SETTLE_S} s is discarded as settling transient. "
+            f"Use duration_s > {LOCO_SETTLE_S}; the default is 6.0.")
 
     # Ia WEIGHTS ARE SCALED HERE TOO. This ran with the UNSCALED weights while
     # stretch_reflex scaled them by IA_SCALE=0.30, so the same circuit received 3.33x
@@ -248,7 +265,18 @@ def locomotion(drug: Drug | None = None, duration_s=6.0, seed=1, rg_gain=30.0,
     if q.std() > 1e-4:
         x = (q - q.mean()) * np.hanning(len(q))
         F = np.abs(np.fft.rfft(x))
-        fr = np.fft.rfftfreq(len(q), DT)
+        # SAMPLE SPACING FROM THE RECORDED TIME VECTOR, not from the global DT.
+        #
+        # These are the same number today, which is why the hardcoded DT was not wrong --
+        # it was UNPINNED. Decimate the recording (log every 5th step to hold memory down,
+        # an obvious future change on a long locomotor run) and rfftfreq would still be
+        # told the undecimated spacing, reporting a frequency 5x too fast with nothing
+        # raising. resp_metrics already derives its spacing this way; this brings the
+        # locomotor path in line. A drug that slows the step cycle reading as a faster one
+        # is recurring error E4, which this project has now hit in two forms.
+        t_s = t[m]                       # already seconds; DT is seconds too
+        dt_s = float(t_s[1] - t_s[0]) if t_s.size > 1 else DT
+        fr = np.fft.rfftfreq(len(q), dt_s)
         band = (fr > 0.2) & (fr < 8.0)
         f0 = float(fr[band][np.argmax(F[band])]) if band.any() else 0.0
         out["step_period_ms"] = 1000.0 / f0 if f0 > 0 else float("nan")

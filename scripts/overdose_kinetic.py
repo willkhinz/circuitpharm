@@ -91,6 +91,17 @@ SCHEME = fit_scheme(verbose=False, pulse=PULSE)
 MAXGAIN = {}
 for _s in S_MAX:
     _aff = calibrate_pam(SCHEME, _s, "affinity", pulse=PULSE, ambient_um=AMBIENT)
+    # FAIL LOUDLY ON AN UNREACHABLE s_max. calibrate_pam returns NaN when the requested
+    # EC50 shift cannot be produced by this mechanism. Feeding that NaN straight into
+    # derive() makes Scheme.pam build koff = NaN, which poisons every rate matrix and
+    # surfaces much later as an opaque ODE integration failure -- far from the cause.
+    # evaluation.pool_gains already tests isfinite and falls back to a gating-type
+    # modulation; this script had no such check.
+    if not np.isfinite(_aff):
+        raise SystemExit(
+            f"s_max = {_s} is unreachable by affinity-type modulation under this scheme "
+            f"(calibrate_pam returned NaN). Either drop it from S_MAX or switch that arm "
+            f"to kind='gating', as evaluation.pool_gains does.")
     MAXGAIN[_s] = derive(SCHEME, affinity=_aff, ambient_um=AMBIENT, pulse=PULSE)
 
 

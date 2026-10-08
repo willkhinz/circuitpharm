@@ -30,6 +30,12 @@ def main():
     # So: refuse to overwrite a database that is RICHER than what this script will write,
     # unless --force. And back up unconditionally before touching it.
     WILL_WRITE = {"sources": 42, "findings": 17}
+
+    # THE TABLES THIS SCRIPT OWNS. Nothing outside this set may be dropped, because the
+    # database is SHARED -- see the collateral-destruction note below.
+    OWNED = ("sources", "ethanol_targets", "discrimination", "eeg_studies",
+             "subunit_expression", "findings", "sim_results", "model_facts")
+
     force = "--force" in sys.argv
     if DB.exists():
         try:
@@ -53,9 +59,26 @@ def main():
             f".backup-{datetime.datetime.now():%Y%m%d-%H%M%S}.db")
         shutil.copy2(DB, backup)
         print(f"backed up existing database to {backup.name}")
-        DB.unlink()
 
     c = sqlite3.connect(DB); x = c.executescript
+
+    # COLLATERAL DESTRUCTION, found 2026-10-07 (review pass 7).
+    #
+    # This was `DB.unlink()` -- it deleted the whole FILE. But the database is shared: this
+    # script owns 8 tables, `build_compounds.py` owns `compounds` (53 rows), and
+    # `chiral_pairs` (12 rows) has NO BUILDER ANYWHERE IN THE REPO. Unlinking recreated
+    # only the 8 owned tables, so `build_kb.py --force` silently destroyed 65 rows it did
+    # not own -- and the 12 chiral_pairs rows would have been UNRECOVERABLE, since no
+    # script can regenerate them and only the .db file holds them.
+    #
+    # The row-count guard above was added after this script destroyed data once already.
+    # It did not help here, because it only counts the tables this script OWNS -- it was
+    # watching the wrong thing entirely. A guard that protects `sources` and `findings`
+    # says nothing about `compounds`.
+    #
+    # Fix: drop only the owned tables. `build_compounds.py` already does table-level
+    # recreation, which is why it never had this bug.
+    x("\n".join(f"DROP TABLE IF EXISTS {t};" for t in OWNED))
 
     x("""
     CREATE TABLE sources(

@@ -102,9 +102,18 @@ if __name__ == "__main__":
         mod = np.mean([x[3] for x in A[m]])
         al = np.mean([x[4] for x in A[m]])
         state = "intact" if al >= 0.99 else ("FAILED" if al < 0.5 else "partial")
-        print(f"{m:10.1f}{BASE_TONIC*m:12.2f}{100*mn/c:12.0f}%{100*amp/ca:10.0f}%"
-              f"{100*fq/cf:10.0f}%{mod:7.2f}{state:>9}")
-        if partial is None and 100 * mn / c < 70:
+        # GUARDED BASELINES. A quiescent drug-free control makes each of these 0/0, and
+        # bare division raised ZeroDivisionError, killing the whole concentration series
+        # at one bad cell. NaN says "no baseline to measure against" and lets the rest of
+        # the curve print. evaluation._pct_of_control already does this.
+        pct = lambda x, base: 100.0 * x / base if abs(base) > 1e-9 else float("nan")
+        pct_mn = pct(mn, c)
+        print(f"{m:10.1f}{BASE_TONIC*m:12.2f}{pct_mn:12.0f}%{pct(amp, ca):10.0f}%"
+              f"{pct(fq, cf):10.0f}%{mod:7.2f}{state:>9}")
+        # `partial` marks the first multiple that drops output below 70% of control. A NaN
+        # comparison is False, so an unmeasurable cell is skipped rather than being
+        # treated as a threshold crossing.
+        if partial is None and np.isfinite(pct_mn) and pct_mn < 70:
             partial = m
         if full is None and al < 0.5:
             full = m

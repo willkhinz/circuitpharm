@@ -97,10 +97,23 @@ if __name__ == "__main__":
     print("The lumped calibration scale cancels in every draw.\n")
     print(f"{'arm':<24}{'median':>9}{'5th':>8}{'95th':>8}{'P(better than ref)':>21}")
     print("-" * 70)
+    # EMPTY-ARRAY GUARD. `np.percentile([], 5)` does not return NaN, it raises
+    # `IndexError: index -1 is out of bounds for axis 0 with size 0`. Every draw for an arm
+    # can be non-finite -- calibrate_pam returns NaN when the requested EC50 shift is
+    # unreachable by the ligand's mechanism, which is a legitimate pharmacological outcome,
+    # not an error. So an arm whose s_max cannot reach its target crashed the whole
+    # robustness report instead of being reported as unreachable.
+    def _pctl(arr, q):
+        return float(np.percentile(arr, q)) if len(arr) else float("nan")
+
     for k in ARMS:
         v = np.array([x for x in R[k] if np.isfinite(x)])
+        if not len(v):
+            note = "no finite draws - mechanism cannot reach its target shift"
+            print(f"{PROFILES[k].name[:23]:<24}{note:>46}")
+            continue
         print(f"{PROFILES[k].name[:23]:<24}{np.median(v):9.2f}"
-              f"{np.percentile(v,5):8.2f}{np.percentile(v,95):8.2f}"
+              f"{_pctl(v,5):8.2f}{_pctl(v,95):8.2f}"
               f"{100*(v>1.0).mean():19.1f}%")
 
     print("\nPAIRWISE: does the a5 class beat the a2/a3 class, draw by draw?")
@@ -118,13 +131,13 @@ if __name__ == "__main__":
     print("VERDICT")
     print("=" * 70)
     robust = [k for k in ARMS
-              if np.percentile([x for x in R[k] if np.isfinite(x)], 5) > 1.0]
+              if _pctl(np.array([x for x in R[k] if np.isfinite(x)]), 5) > 1.0]
     if robust:
         print("These arms beat a non-selective benzodiazepine in the LOWER 5th percentile,")
         print("i.e. the ordering survives even adverse draws of every invented parameter:")
         for k in robust:
             v = np.array([x for x in R[k] if np.isfinite(x)])
-            print(f"    {PROFILES[k].name[:40]:<42} >= {np.percentile(v,5):.2f}x")
+            print(f"    {PROFILES[k].name[:40]:<42} >= {_pctl(v,5):.2f}x")
         print("\n-> the RANKING is a real result. It is the project's surviving output.")
     else:
         print("NO arm beats the reference robustly. The ranking does not survive its own")
