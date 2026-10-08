@@ -36,4 +36,4 @@ jobs:
       # actually catch a regression in the dynamics, so they run too -- just separately,
       # so a failure says which kind it was.
       - name: Circuit integration tests
-        run: pytest -m slow -q -n auto
+        run: pytest -m slow -q -n auto --cov=circuitpharm --cov-report=term

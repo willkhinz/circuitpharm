@@ -1943,3 +1943,35 @@ a worked example, and 18 superseded scripts archived with reasons.
 
 Each of those looked fine from the outside, which is the recurring lesson of this project
 and the reason the failure modes are now executable tests rather than prose.
+
+### Session 8b — hygiene found three more real problems
+
+**1. Scripts did destructive work at IMPORT time.** Eight scripts had no `__main__` guard,
+so merely importing them ran them: `port_muscle.py` regenerated the MuJoCo body model and
+`build_kb.py` / `build_compounds.py` rewrote the pharmacology database. Any tool that
+imports or scans the package would have triggered that. All eight guarded; verified that
+importing is now silent and that running them directly still works, and that
+`port_muscle.py` is deterministic (re-running it produces no diff in `models/`).
+
+**2. A stale knowledge-base fact actively recommending the deleted architecture.**
+`build_kb.py` carried "Do not retry tuning the spiking RG -- use the Matsuoka RG in
+circuitpharm/rg.py", pointing at a file deleted this session for being wrong. A future
+agent reading the KB would have been sent straight back to the retracted approach. Fixed,
+and two `model_facts` rows (the Matsuoka operating point and its period law) marked
+SUPERSEDED rather than deleted, per the convention that conclusions are corrected, never
+removed. Four facts added that now matter: the VOID preBotC calibration, the
+pool-dependent ceiling, the tonic-vs-phasic gain asymmetry, and the locomotor endpoint
+including its invalid excursion metric. `model_facts` 23 -> 27 rows.
+
+**3. 108 lines of dead code shipping in the package.** `HalfCentreCPG` — the REJECTED
+all-spiking architecture, 28% of `cpg.py` — was reachable only from three archived
+scripts. Moved to `scripts/archive/half_centre_cpg.py` with a header recording why the
+288-point search that rejected it was right about LIF half-centres and wrong in its
+conclusion (it assumed the rhythm must come from inhibition; a group pacemaker needs no
+plateau and works fine in LIF).
+
+**Coverage is now measured and gated:** 77% -> 90% (omitting the optional-extra chirality
+module) -> **95%** after the dead-code extraction, which alone took `cpg.py` from 67% to
+94%. `fail_under = 90` in pyproject, and CI reports it. `cpg.py` is 253 lines, was 362.
+
+All 114 tests still pass.
