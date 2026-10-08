@@ -7,6 +7,8 @@ from circuitpharm.rg2 import GroupPacemakerRG
 from circuitpharm.cpg import Drug, burst_metrics
 
 def metrics(drug, drive, gadp, tau_a, wgly, wee=0.42, seed=1, T=30000., dt=0.1):
+    """`wgly` is the glycinergic coupling weight. Pass 0.0 to REMOVE the coupling, which
+    is the only informative way to test it -- see the E10 note in probe()."""
     r = GroupPacemakerRG(drug=drug, drive=drive, g_adapt=gadp, tau_adapt=tau_a,
                          w=dict(ie_gly=wgly, ee_ampa=wee, ee_nmda=wee*0.55), seed=seed)
     for i in range(int(T/dt)):
@@ -23,10 +25,19 @@ def metrics(drug, drive, gadp, tau_a, wgly, wee=0.42, seed=1, T=30000., dt=0.1):
                 per=bm["period"], duty=bm["duty"], nb=bm["n_bursts"])
 
 def probe(a):
+    """CORRECTED 2026-10-07. This previously tested the phenotype with
+    `Drug(glyr_gain=0.05)` -- a 95% block -- which is recurring error E10 and is BLIND to
+    the coupling. Measured: 95% block left alternation entirely intact (corr -0.50 vs
+    -0.51 coupled, periods 1242/1243 vs 1245/1245), so every row of this sweep reported
+    control and "blocked" as identical and the phenotype looked unreproducible.
+
+    Complete removal (ie_gly = 0) gives corr -0.13 with periods diverging to 1154/1245 ms
+    and the rhythm intact -- the published strychnine result. Entrainment is cheap;
+    couplings must be removed, not attenuated."""
     drive,gadp,tau_a,wgly,wee = a
     ctrl = metrics(Drug(), drive,gadp,tau_a,wgly,wee)
     if ctrl is None or ctrl["nb"]<4: return None
-    blk  = metrics(Drug(glyr_gain=0.05), drive,gadp,tau_a,wgly,wee)   # strychnine
+    blk  = metrics(Drug(), drive,gadp,tau_a, 0.0, wee)   # glycine coupling REMOVED
     if blk is None: return None
     return dict(drive=drive,gadp=gadp,tau_a=tau_a,wgly=wgly,wee=wee,ctrl=ctrl,blk=blk)
 

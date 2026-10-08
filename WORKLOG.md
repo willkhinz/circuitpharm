@@ -1901,3 +1901,45 @@ A valid stride/ataxia measure needs the whole body and ground reaction forces.
   the **GluN2B selectivity window** (non-selective 84% vs selective 102% at the SAME 60%
   block), adaptation-not-inhibition rhythmogenesis, closed-loop walking, sedative
   coordination loss, and the E5 guard (Mn peak 40.6 Hz, not pinned at the 125 Hz ceiling)
+
+### E10 fixed in `tune_rg2.py` (verified) — the sweep is now informative
+The tuning script tested the phenotype with `Drug(glyr_gain=0.05)`, a 95% block, in the
+very script meant to validate the module. Replaced with complete removal (`ie_gly = 0`).
+Before, every row reported control and "blocked" as identical. After:
+
+| drive | g_adapt | tau_a | ctrl per / corr | removed per / corr / bursts |
+|---|---|---|---|---|
+| 260 | 1.2 | 280 | 1243 / -0.51 | 1154 / **-0.13** / 20 |
+| 200 | 1.2 | 280 | 1507 / -0.35 | 1321 / **-0.01** / 18 |
+| 260 | 1.2 | 380 | 1907 / -0.51 | 1785 / -0.06 / 13 |
+
+Every row now detects the coupling. The top-scoring cell is 260 / 1.2 / 280, which is
+independently what was written in as the module defaults. Note `ie_gly` 3.0 and 7.0 give
+near-identical results — the coupling saturates by 3.0.
+
+### Session 8 close — the tool
+Nine commits. 114 tests, parallel, 2m35s wall (was 9m32s serial before the control cache
+and xdist). The repo is installable, importable from anywhere, has CI for 3.11 and 3.12,
+a worked example, and 18 superseded scripts archived with reasons.
+
+**New this session beyond packaging:**
+- `results.py` — reliability tiers enforced in code; VOID quantities RAISE on access and
+  never print. The distinguishing feature of the tool.
+- `config.py` — single source for operating points (their duplication is how E12 happened
+  twice) plus a calibration registry recording that the preBotC anchor is VOID.
+- `evaluate.py` — public API; dose is modulator OCCUPANCY, pool gains derived from the
+  Markov scheme and exactly linear in occupancy, saturating at full occupancy, which is
+  the only honest ceiling.
+- `assays.py` — behavioural protocols, with model-path resolution that works from anywhere.
+- **the locomotor endpoint**: free-running closed loop, nothing imposed. Motor impairment
+  finally has a body-level readout (period 1250 -> 1667 ms and coordination -0.67 -> -0.34
+  under a 4x PAM) rather than reflex gain alone.
+- `tests/test_chirality.py` — the parity-invariance identity pinned exactly.
+
+**Three bugs found by doing the engineering:**
+1. the "validated" locomotor RG shipped with UNTUNED defaults; one half-centre was silent
+2. its validation script tested the phenotype with a 95% block (E10)
+3. the new locomotor assay's joint-excursion metric reports the WRONG SIGN under sedation
+
+Each of those looked fine from the outside, which is the recurring lesson of this project
+and the reason the failure modes are now executable tests rather than prose.

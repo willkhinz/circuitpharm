@@ -5,6 +5,44 @@
 
 ---
 
+## THE TOOL (session 8) — what exists now
+
+The code is packaged as **`circuitpharm`** and is the durable output of this project,
+independent of whether the alcohol-substitute question is ever answered.
+
+```bash
+pip install -e ".[dev]"      # core + tests;  ".[all]" adds the body plant and RDKit
+pytest                       # 114 tests, parallel, ~2.5 min
+python examples/quickstart.py
+```
+
+**What it does.** Takes a compound's MEASURED receptor activity and propagates it to three
+behavioural endpoints, attaching a reliability tier to every number:
+
+| endpoint | readout | maps to |
+|---|---|---|
+| respiratory | preBötC rhythm, ventilation proxy | plethysmography |
+| spinal reflex | ramp-and-hold stretch reflex gain | H-reflex / tendon jerk |
+| locomotor | free-running closed loop: step period, coordination | gait analysis |
+
+**What makes it unusual.** It refuses. Reading a `VOID` quantity raises rather than
+returning a caveated number, because caveats get dropped when numbers are copied — which
+is exactly how this project's worst reporting error happened. `python simulator.py
+calibration` prints what is anchored, what is not, and what would promote each one.
+
+**Phenotypes it reproduces without having been fitted to them** (the only route to
+VALIDATED): strychnine hyperreflexia (138% of control), benzodiazepine reflex depression
+(77%), the GluN2B selectivity window (84% non-selective vs 102% selective at the *same*
+60% block), the lamprey strychnine phenotype in the locomotor RG (alternation lost, rhythm
+intact, only under COMPLETE glycine removal), adaptation-not-inhibition rhythmogenesis, and
+the parity-invariance identity exactly (0.00e+00).
+
+**Failure modes E1–E12 are executable regression tests**, not prose. Every one of them was
+made during development, several twice, and every one produced a result that looked fine.
+Doing session 8's engineering found three more of the same kind — see the worklog.
+
+---
+
 ## VERDICT (2026-10-07, after sessions 7a-7f) — READ BEFORE DOING ANY MORE MODELLING
 
 **Asked: is there a perfect answer, or does none exist? Answer: none exists by this
