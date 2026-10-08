@@ -84,7 +84,7 @@ if __name__ == "__main__":
         for b in BLOCKS[1:]:
             v = np.mean([x[0] for x in A[(s, b)]])
             alive = np.mean([x[3] for x in A[(s, b)]])
-            cell = f"{100*v/c:.0f}%" + ("" if alive > 0.5 else "*")
+            cell = f"{100*v/max(1e-9, c):.0f}%" + ("" if alive > 0.5 else "*")
             row += f"{cell:>11}"
         print(row)
     print("\npercentages are ventilation vs the drug-free control AT THAT SHARE")

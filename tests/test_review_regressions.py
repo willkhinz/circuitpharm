@@ -159,3 +159,125 @@ def test_coverage_threshold_is_not_set_globally():
     active = [l for l in body.splitlines()
               if l.strip().startswith("fail_under")]
     assert not active, f"fail_under is set globally: {active}"
+
+
+# =====================================================================================
+# Review 3 (8 findings). Two of these were created or left incomplete by the review-2
+# fixes, which is the more useful lesson: a correct fix can still interact badly with
+# another correct fix, and a partial fix looks identical to a complete one from outside.
+# =====================================================================================
+
+import numpy as np
+
+
+# ---------------------------------------------------- R3.1 duty-cycle phase dependence
+def test_duty_cycle_is_phase_invariant():
+    """`burst_metrics` paired onsets and offsets BY INDEX, which is only correct when the
+    trace starts below threshold. Starting mid-burst -- routine, since analysis windows
+    open after settling at an arbitrary phase -- shifted every pair by one, so
+    `off[i] > on[i]` failed for every burst and duty came back NaN for a strongly,
+    regularly bursting circuit.
+
+    The silence was the damage: scripts/tune_rg2.py scores a NaN duty as 0.0 and penalises
+    it, so parameter sets were ranked partly on where their window happened to open.
+    """
+    from circuitpharm.cpg import burst_metrics
+    t = np.arange(0, 10000.0, 1.0)
+    duties = []
+    for phase in (0.0, 0.3, np.pi / 2, np.pi, 1.7 * np.pi):
+        sig = np.sin(2 * np.pi * t / 1000.0 + phase)
+        r = burst_metrics(t, sig - sig.min())
+        assert np.isfinite(r["duty"]), f"duty is NaN at phase {phase:.2f}"
+        duties.append(r["duty"])
+    assert max(duties) - min(duties) < 1e-6, f"duty varies with phase: {duties}"
+
+
+def test_duty_cycle_matches_a_known_square_wave():
+    """Phase-invariance alone could be satisfied by a constant wrong answer."""
+    from circuitpharm.cpg import burst_metrics
+    t = np.arange(0, 10000.0, 1.0)
+    sq = (np.sin(2 * np.pi * t / 1000.0) > 0).astype(float)
+    assert burst_metrics(t, sq, thresh_frac=0.5)["duty"] == pytest.approx(0.5, abs=0.02)
+
+
+# ------------------------------------------------- R3.5 direct agonists must not crash
+def test_direct_agonist_raises_with_actionable_guidance():
+    """CREATED BY TWO EARLIER FIXES INTERACTING. Carrying each profile's ceiling into
+    s_max (correct) met a hard raise on unreachable affinity shifts (also correct), and
+    together they made gaboxadol -- a direct orthosteric agonist with ceiling 1e9 -- raise
+    instead of evaluate. Neither fix was wrong; the combination was unhandled.
+
+    A direct agonist genuinely cannot be modelled by the PAM machinery, so raising is
+    right -- but the error must name the reason and point at the right tool.
+    """
+    with pytest.raises(ValueError, match="DIRECT|agonist"):
+        Compound.from_profile("gaboxadol").pool_gains()
+
+
+@pytest.mark.parametrize("key", ["alogabat", "neurosteroid", "imepitoin", "tpa023",
+                                 "hz_166", "mp_iii_022", "ideal_a5", "zolpidem"])
+def test_every_modulator_profile_evaluates_at_its_own_ceiling(key):
+    """All non-agonist profiles must work with their real s_max. The neurosteroid arm
+    (ceiling 6.0) needs the gating fallback, since an affinity-only mechanism cannot
+    reach a 6x shift."""
+    g = Compound.from_profile(key, occupancy=0.5).pool_gains()
+    assert all(math.isfinite(g[k]) for k in ("tonic", "phasic", "tau")), key
+    assert g["tonic"] >= 1.0 and g["phasic"] >= 1.0, key
+
+
+# ------------------------------------------- R3.6 glyr_sens must reach the assays
+def test_assays_accept_and_forward_glyr_sens():
+    """INCOMPLETE EARLIER FIX. glyr_sens was added to Drug, the circuits and the plant,
+    but not to the assay signatures -- so the public entry points could not vary glycine
+    sensitivity at all, which is the whole point of separating it from GABA-A."""
+    import inspect
+    from circuitpharm.assays import stretch_reflex, locomotion
+    for fn in (stretch_reflex, locomotion):
+        assert "glyr_sens" in inspect.signature(fn).parameters, fn.__name__
+
+
+@pytest.mark.needs_plant
+@pytest.mark.slow
+def test_glycine_action_survives_a_tiny_gaba_sensitivity():
+    """The substantive check behind the plumbing: strychnine must still cause
+    hyperreflexia when the GABA-A sensitivity is tiny, because glycine receptors contain
+    no GABA-A subunits. Before the decoupling a 1.6x glycine potentiation became
+    1.0019x at alogabat's preBotC sensitivity."""
+    from circuitpharm.assays import stretch_reflex
+    ctrl = stretch_reflex(Drug(), gaba_sens_phasic=0.01, glyr_sens=1.0)["gain"]
+    stry = stretch_reflex(Drug(glyr_gain=0.4), gaba_sens_phasic=0.01,
+                          glyr_sens=1.0)["gain"]
+    assert stry > 1.2 * ctrl, (
+        f"glycine block gave {stry:.3f} vs control {ctrl:.3f}; glycine pharmacology is "
+        "being suppressed by a GABA-A-derived fraction again")
+
+
+# --------------------------------------- R3.4 the two forebrain scales must stay distinct
+def test_forebrain_sensitivity_and_subjective_index_are_documented_as_different_scales():
+    """`regional_sens("forebrain")` includes K (so a non-selective BZ gives 1.00) while
+    `subjective_index()` omits it (giving 0.55) -- a 1.8x gap between two quantities that
+    both sound like forebrain drug engagement. The omission is correct (the index is a
+    weighted SUBSET, so a whole-conductance normaliser would be meaningless) but it must
+    be stated, or the two get compared."""
+    from circuitpharm.subtypes import PROFILES
+    p = PROFILES["nonselective_bz"]
+    assert p.regional_sens("forebrain") == pytest.approx(1.0, abs=1e-6)
+    assert p.subjective_index() == pytest.approx(0.55, abs=1e-6)
+    doc = type(p).subjective_index.__doc__ or ""
+    assert "NOT ON THE SAME SCALE" in doc.upper() or "discrepancy" in doc.lower()
+
+
+# ------------------------------------------------- R3.8 no warnings on legitimate NaN
+@pytest.mark.needs_plant
+@pytest.mark.slow
+def test_abolished_locomotion_does_not_emit_a_numpy_warning():
+    """np.nanmean over an all-NaN list warns 'Mean of empty slice' and returns NaN. That
+    case is legitimate -- a heavy sedative can abolish locomotion in every seed -- so the
+    warning is noise on a correct result, and noise on correct results is how real
+    warnings get ignored."""
+    import warnings
+    from circuitpharm.evaluate import evaluate, clear_control_cache
+    clear_control_cache()
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", RuntimeWarning)
+        evaluate(Compound.from_profile("nonselective_bz", occupancy=1.0), n_seed=2)

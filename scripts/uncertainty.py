@@ -143,13 +143,19 @@ if __name__ == "__main__":
     unreached = {arm: 0 for arm in ARMS}
     bad_draw = set()        # (draw) where ANY arm failed to reach target
     for draw, arm, mn, sens, reached in out:
+        # RECORD UNREACHABILITY FIRST. `continue` on NaN used to run BEFORE this check, so
+        # a draw whose forebrain drive collapsed (si <= 1e-9 -> mn=NaN, reached=False)
+        # never incremented the counter and never entered bad_draw. That deflated the
+        # headline "target unreachable in X% of draws" figure AND let a failed draw into
+        # reached_all, contaminating the matched-subjective paired contrast -- the one
+        # comparison in this script that is supposed to be apples-to-apples.
+        if not reached:
+            unreached[arm] += 1
+            bad_draw.add(draw)
         if np.isnan(mn):
             continue
         V.setdefault((draw, arm), []).append(100.0 * mn / ctrl)
         S[arm].append(sens)
-        if not reached:
-            unreached[arm] += 1
-            bad_draw.add(draw)
     reached_all = set(range(a.draws)) - bad_draw
     per = {arm: np.array([np.mean(V[(d, arm)]) for d in range(a.draws)
                           if (d, arm) in V]) for arm in ARMS}

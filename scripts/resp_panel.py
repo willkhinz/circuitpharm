@@ -9,7 +9,9 @@ import numpy as np
 from multiprocessing import Pool
 from circuitpharm.resp import PreBotC, resp_metrics
 from circuitpharm.cpg import Drug
-from circuitpharm.config import RESP_OP
+from circuitpharm.config import RESP_OP, CALIBRATIONS
+
+PREBOTC_GABA_SENS = CALIBRATIONS['prebotc_gaba_sens'].value
 
 # Operating point from circuitpharm.config -- the single source. Duplicated
 # literals are HOW recurring error E12 happened twice.
@@ -20,7 +22,16 @@ BRAINSTEM_2B = 0.15
 
 def one(args):
     label, drug, seed = args
-    b = PreBotC(drug=drug, seed=seed, **OP)
+    # gaba_sens MUST be passed. PreBotC defaults to 1.0, which is the UNCALIBRATED
+    # setting and makes the network 3-4x too drug-sensitive -- it reported severe
+    # respiratory depression for doses that clinically produce mild sedation. Every other
+    # analysis passes either the anchored 0.15 or the split regional sensitivity; this
+    # panel silently did not.
+    #
+    # NOTE the anchor itself is VOID (see circuitpharm.config CALIBRATIONS): human
+    # whole-body ventilation is the wrong observable for an isolated preBotC. 0.15 is used
+    # here for comparability with the project's other runs, not because it is right.
+    b = PreBotC(drug=drug, seed=seed, gaba_sens=PREBOTC_GABA_SENS, **OP)
     for i in range(int(T / DT)):
         b.step(DT)
         if i % 10 == 0:

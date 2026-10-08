@@ -2172,3 +2172,71 @@ that exists to catch E6.
 
 **160 tests passing.** The lesson I take: every one of these 20 produced plausible output.
 Twelve sessions of scrutiny by the same eyes did not surface a single one of them.
+
+### Review 3 (8 findings) — and two were caused by my review-2 fixes
+All 8 legitimate. **28 defects across three reviews, all mine.** The new lesson is in the
+two self-inflicted ones.
+
+1. **Duty cycle silently NaN whenever a trace started mid-burst.** `burst_metrics` paired
+   onsets and offsets BY INDEX, which is only correct when the trace starts below
+   threshold. Analysis windows open after a settling period at an arbitrary phase, so
+   starting high is routine: every pair shifted by one, `off[i] > on[i]` failed for every
+   burst, and duty returned NaN for a strongly, regularly bursting circuit. Verified
+   phase-dependence directly. **The silence was the damage** — `scripts/tune_rg2.py`
+   scores a NaN duty as 0.0 and penalises it, so locomotor parameter sets were ranked
+   partly on where their analysis window happened to open. Fixed by pairing each onset
+   with the first offset that follows it; duty is now identical across five phases and a
+   50% square wave reads 0.500.
+
+2. **Unreachability undercounted.** `scripts/uncertainty.py` ran `if np.isnan(mn):
+   continue` BEFORE `if not reached:`, so a draw whose forebrain drive collapsed never
+   incremented the counter and never entered `bad_draw`. That deflated the headline
+   "target unreachable in X% of draws" AND let failed draws into `reached_all`,
+   contaminating the matched-subjective paired contrast — the one comparison in that
+   script that is meant to be apples-to-apples.
+
+3. **`resp_panel.py` ran at the UNCALIBRATED default** `gaba_sens=1.0`, making the network
+   3-4x too drug-sensitive: it reported severe respiratory depression for doses that
+   clinically produce mild sedation. Every other analysis passes 0.15 or the split value.
+
+4. **Two forebrain scales that both sound like the same thing.**
+   `regional_sens("forebrain")` includes `K_REGION` (1.00 for a non-selective BZ);
+   `subjective_index()` omits it (0.55) — a 1.8x gap. The omission is CORRECT, because the
+   index is a weighted SUBSET of subtypes and a whole-conductance normaliser would be
+   meaningless on it. But undocumented it invites exactly the comparison it cannot support.
+   Now stated at the source, including that the subjective index has no absolute scale at
+   all and a "target of 0.50" is a number in invented units.
+
+5. **SELF-INFLICTED: direct agonists crashed.** Carrying each profile's ceiling into
+   `s_max` (review-2 fix #3, correct) met a hard raise on unreachable affinity shifts
+   (review-1 fix #7, also correct), and together they made gaboxadol — a direct orthosteric
+   agonist with `ceiling=1e9` — raise instead of evaluate. Neither fix was wrong; the
+   interaction was unhandled. Now: a modality field with affinity→gating auto-fallback, and
+   agonists raise with the reason and a pointer to `predict_muscimol.py`, which models them
+   correctly as a standing conductance. Side effect worth noting: the neurosteroid arm now
+   evaluates at its real ceiling of 6.0 and gives tonic gain **25.76** rather than being
+   silently capped at 2.5.
+
+6. **SELF-INFLICTED, incomplete: `glyr_sens` never reached the assays.** Review 2's most
+   serious finding was glycine sensitivity being scaled by a GABA-A-derived fraction. I
+   added `glyr_sens` to the circuits and the plant but not to `stretch_reflex` or
+   `locomotion`, so the public entry points could not vary it — the fix was invisible from
+   outside, which looks identical to no fix.
+
+7. Unguarded division by a possibly-zero control mean in `calib_ei_nmda.py`.
+8. `np.nanmean` over an all-NaN seed list warned "Mean of empty slice" on a LEGITIMATE
+   case (a heavy sedative abolishing locomotion in every seed). Noise on correct results is
+   how real warnings get ignored.
+
+**175 tests passing.**
+
+### What three reviews establish
+Twenty-eight defects. Every one produced plausible output; none announced itself. Twelve
+sessions of my own scrutiny surfaced none of them, and the third review found two that my
+own second-review fixes had created or left half-done. The specific failure mode to
+remember: **a correct fix can interact badly with another correct fix, and a partial fix is
+indistinguishable from a complete one from the outside.** Neither is caught by re-reading
+your own diff.
+
+This is now the strongest argument in the repo for external review before publication, and
+it belongs in the paper's methods rather than being quietly fixed.

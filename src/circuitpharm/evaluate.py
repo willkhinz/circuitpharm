@@ -37,6 +37,12 @@ from .config import (RESP_OP, SYNAPTIC_PULSE, AMBIENT_GABA_UM,
                      BRAINSTEM_GLUN2B, FOREBRAIN_GLUN2B)
 
 
+# An s_max at or above this marks a DIRECT orthosteric agonist rather than an allosteric
+# modulator: PROFILES uses 1e9 to mean "no efficacy ceiling", because an agonist does not
+# require endogenous GABA and so never saturates the way a PAM does.
+DIRECT_AGONIST_CEILING = 1e6
+
+
 # ----------------------------------------------------------------------- compound
 @dataclass
 class Compound:
@@ -56,6 +62,10 @@ class Compound:
     eps: float = 0.0
     s_max: float = 2.5             # intrinsic allosteric efficacy (max EC50 shift)
     occupancy: float = 0.5         # fraction of modulator sites bound
+    # "auto" tries affinity (the BZ-site default) then gating (neurosteroid-like, which
+    # raises maximal current and so reaches shifts affinity alone cannot). Force one with
+    # "affinity" or "gating" when the mechanism is known.
+    modality: str = "auto"
     nmda_block: float = 0.0
     glun2b_sel: float = 1.0
     glyr: float = 1.0
@@ -94,8 +104,40 @@ class Compound:
         if key not in self._gains:
             from .gabaa_kinetics import fit_scheme, derive, calibrate_pam
             s = fit_scheme(verbose=False, pulse=pulse)
-            aff = calibrate_pam(s, self.s_max, "affinity",
-                                pulse=pulse, ambient_um=ambient_um)
+            # MODALITY. Not every compound in PROFILES is an affinity-type modulator, and
+            # assuming so crashed two of them. Direct orthosteric agonists carry
+            # ceiling=1e9 (they need no endogenous GABA, so they do not saturate the way a
+            # PAM does) and neurosteroids act on GATING, raising maximal current rather
+            # than apparent affinity.
+            #
+            # This was introduced by the interaction of two earlier fixes: carrying each
+            # profile's ceiling into s_max (correct) met a hard raise on unreachable
+            # affinity shifts (also correct), and together they made gaboxadol raise
+            # instead of evaluate. Neither fix was wrong; the combination was unhandled.
+            if self.s_max >= DIRECT_AGONIST_CEILING:
+                raise ValueError(
+                    f"{self.name!r} has s_max={self.s_max:g}, which marks a DIRECT "
+                    f"orthosteric agonist, not an allosteric modulator. The Markov "
+                    f"scheme's PAM machinery does not apply: an agonist opens receptors "
+                    f"without endogenous GABA, so it has no affinity-shift ceiling and no "
+                    f"tonic/phasic asymmetry of the kind modelled here. Model it as a "
+                    f"standing conductance instead -- scripts/predict_muscimol.py does "
+                    f"exactly that, and for an agonist the drug-modulatable fraction is "
+                    f"1.0 by construction since every GABA-A receptor has the orthosteric "
+                    f"site.")
+
+            kind = self.modality
+            if kind == "auto":
+                # affinity first (the BZ-site default); fall back to gating, which raises
+                # maximal current and so reaches shifts affinity alone cannot
+                kind = "affinity"
+                probe = calibrate_pam(s, self.s_max, "affinity",
+                                      pulse=pulse, ambient_um=ambient_um)
+                if not np.isfinite(probe):
+                    kind = "gating"
+            aff_kw = {kind: calibrate_pam(s, self.s_max, kind,
+                                          pulse=pulse, ambient_um=ambient_um)}
+            aff = aff_kw[kind]
             # calibrate_pam returns NaN when the requested EC50 shift is UNREACHABLE by an
             # affinity-type mechanism. Unchecked, that NaN becomes koff=NaN, then NaN
             # conductances, then NaN voltages inside the LIF integrator -- surfacing as
@@ -103,16 +145,14 @@ class Compound:
             # from the cause. Fail here, where the reason is still visible.
             if not np.isfinite(aff):
                 raise ValueError(
-                    f"s_max={self.s_max} (an EC50 left-shift of {self.s_max}x) is not "
-                    f"reachable by an affinity-type modulator in this scheme at ambient "
-                    f"{ambient_um} uM. A pure affinity shift SATURATES -- it can only move "
-                    f"the receptor up its own dose-response curve, so there is a maximum "
-                    f"shift it can produce. Classical benzodiazepine-site ligands sit "
-                    f"around 2-3x. Either lower s_max, or model a gating-type modulator "
-                    f"(which raises maximal current and is not bounded the same way) via "
-                    f"Scheme.pam(gating=...).")
-            self._gains[key] = derive(s, affinity=aff, ambient_um=ambient_um,
-                                      pulse=pulse)
+                    f"an EC50 left-shift of {self.s_max}x is not reachable by EITHER an "
+                    f"affinity-type or a gating-type mechanism in this scheme at ambient "
+                    f"{ambient_um} uM. Both saturate: a modulator can only move the "
+                    f"receptor up its own dose-response curve. Classical "
+                    f"benzodiazepine-site ligands sit around 2-3x. Lower s_max, or if this "
+                    f"compound is a direct agonist rather than a modulator, model it as a "
+                    f"standing conductance (see scripts/predict_muscimol.py).")
+            self._gains[key] = derive(s, ambient_um=ambient_um, pulse=pulse, **aff_kw)
         full = self._gains[key]
         lin = lambda g: 1.0 + self.occupancy * (g - 1.0)
         return dict(tonic=lin(full["tonic_gain"]),
@@ -350,7 +390,18 @@ def evaluate(cand: Compound, n_seed=4, reference="nonselective_bz",
                 if ("loco", s) not in _CTRL_CACHE:
                     _CTRL_CACHE[("loco", s)] = locomotion(Drug(), seed=s)
             ctrl_loco_runs = [_CTRL_CACHE[("loco", s)] for s in seeds]
-            _m = lambda runs, k: float(np.nanmean([r[k] for r in runs]))
+            def _m(runs, k):
+                """Mean over seeds, NaN-safe without the warning.
+
+                np.nanmean over an ALL-NaN list emits RuntimeWarning: Mean of empty slice
+                and returns NaN. That happens legitimately -- a high-dose sedative can
+                abolish locomotion in every seed, so step_period_ms and alternation are
+                NaN throughout -- so the warning is noise on a correct result, and noise
+                on correct results is how real warnings get ignored.
+                """
+                vals = [r[k] for r in runs
+                        if isinstance(r[k], (int, float)) and np.isfinite(r[k])]
+                return float(np.mean(vals)) if vals else float("nan")
             loco = {k: _m(loco_runs, k) for k in
                     ("step_period_ms", "alternation", "duty", "excursion_rad_INVALID")}
             loco["walking"] = bool(np.mean([r["walking"] for r in loco_runs]) >= 0.5)

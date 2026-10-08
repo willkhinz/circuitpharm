@@ -119,7 +119,27 @@ class GabaProfile:
         return tonic, phasic
 
     def subjective_index(self) -> float:
-        """Forebrain subjective drive, weighted by which subtypes carry ethanol's stimulus."""
+        """Forebrain subjective drive, weighted by which subtypes carry ethanol's stimulus.
+
+        DELIBERATELY NOT ON THE SAME SCALE AS `regional_sens("forebrain")`, and the
+        difference is a real trap worth stating. `regional_sens` multiplies by
+        `K_REGION["forebrain"]` (1.111) so a non-selective benzodiazepine reproduces the
+        regional anchor of 1.00. This function omits K, so the same compound yields 0.55 --
+        a 1.8x discrepancy between two quantities that both sound like "forebrain drug
+        engagement".
+
+        The omission is intentional: this is NOT a sensitivity. It is a weighted sum over
+        only those subtypes that carry ethanol's discriminative stimulus
+        (`SUBJECTIVE_WEIGHT` zeroes alpha1 and delta), so applying a constant fitted to
+        TOTAL regional conductance would be meaningless -- it would scale a subset by a
+        normaliser derived from the whole.
+
+        What follows is that the two must never be compared or combined, and that the
+        subjective index has NO absolute scale at all: the forebrain anchor is a unit
+        convention (see `circuitpharm.config` CALIBRATIONS, where it is recorded as
+        UNCALIBRATED for exactly this reason), so only RATIOS between compounds mean
+        anything. A "subjective target of 0.50" is a number in invented units.
+        """
         f = REGIONS["forebrain"]; e = self.eff()
         return sum(f[s] * e[s] * SUBJECTIVE_WEIGHT[s] for s in SUBTYPES)
 

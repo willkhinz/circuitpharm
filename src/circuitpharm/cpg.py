@@ -246,16 +246,42 @@ def spindle_ia(length, velocity, l0=0.0, kl=55.0, kv=70.0, bias=10.0):
 
 
 def burst_metrics(t, rate, thresh_frac=0.35):
-    """Period, duty cycle and burst onsets from a low-passed rate trace."""
+    """Period, duty cycle and burst onsets from a low-passed rate trace.
+
+    DUTY-CYCLE PAIRING. Onsets and offsets must be matched by TIME ORDER, not by index.
+    The previous version collected `on` and `off` independently and paired them as
+    `off[i] - on[i]`, which is only correct when the trace starts BELOW threshold. If it
+    starts mid-burst -- which happens routinely, since analysis windows begin after a
+    settling period at an arbitrary phase -- the first edge detected is an offset, every
+    pair is shifted by one, and `off[i] > on[i]` is False for every burst. `d` came out
+    empty and duty was silently returned as NaN for a circuit that was bursting strongly
+    and regularly.
+
+    That silence is the problem: NaN duty propagated into tuning scores (scripts/tune_rg2.py
+    treats a NaN duty as 0.0 and penalises it), so parameter sets were scored on a phase
+    accident of where their analysis window happened to open.
+
+    Each onset is now paired with the first offset that genuinely follows it.
+    """
     r = np.asarray(rate); t = np.asarray(t)
-    if r.max() <= 0: return dict(period=np.nan, duty=np.nan, n_bursts=0, onsets=[])
+    if r.size == 0 or r.max() <= 0:
+        return dict(period=np.nan, duty=np.nan, n_bursts=0, onsets=[])
     hi = r > thresh_frac * r.max()
     edges = np.diff(hi.astype(int))
-    on = t[1:][edges == 1]; off = t[1:][edges == -1]
+    on = t[1:][edges == 1]
+    off = t[1:][edges == -1]
     period = float(np.mean(np.diff(on))) if len(on) > 2 else np.nan
-    duty = np.nan
-    if len(on) > 1 and len(off) > 1:
-        n = min(len(on), len(off))
-        d = [off[i] - on[i] for i in range(n) if off[i] > on[i]]
-        if d and period == period: duty = float(np.mean(d) / period)
+
+    # pair each onset with the first offset after it; unterminated final bursts are
+    # dropped rather than paired with an earlier offset
+    durations = []
+    j = 0
+    for onset in on:
+        while j < len(off) and off[j] <= onset:
+            j += 1
+        if j < len(off):
+            durations.append(float(off[j] - onset))
+            j += 1
+    duty = (float(np.mean(durations) / period)
+            if durations and np.isfinite(period) and period > 0 else np.nan)
     return dict(period=period, duty=duty, n_bursts=int(len(on)), onsets=on.tolist())

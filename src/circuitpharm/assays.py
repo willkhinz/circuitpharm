@@ -92,7 +92,7 @@ def trajectory(q0: float, dq: float) -> list:
 
 
 def stretch_reflex(drug: Drug | None = None, q0=0.1, dq=0.45, seed=1,
-                   gaba_sens=1.0, gaba_sens_tonic=None, gaba_sens_phasic=None,
+                   gaba_sens=1.0, gaba_sens_tonic=None, gaba_sens_phasic=None, glyr_sens=1.0,
                    ia_scale=None, xml=None) -> dict:
     """Run the ramp-and-hold stretch reflex and return phase-resolved measures.
 
@@ -113,7 +113,7 @@ def stretch_reflex(drug: Drug | None = None, q0=0.1, dq=0.45, seed=1,
          for rec in ("ampa", "nmda")}
     p = JointPlant(xml or model_xml(), drug=drug or Drug(), rg_gain=0.0, seed=seed,
                    gaba_sens=gaba_sens, gaba_sens_tonic=gaba_sens_tonic,
-                   gaba_sens_phasic=gaba_sens_phasic, w=w)
+                   gaba_sens_phasic=gaba_sens_phasic, glyr_sens=glyr_sens, w=w)
     for (t, q, v) in trajectory(q0, dq):
         p.step(DT, impose=(q, v))
     A = p.arrays()
@@ -204,7 +204,7 @@ LOCO_SETTLE_S = 1.0
 
 
 def locomotion(drug: Drug | None = None, duration_s=6.0, seed=1, rg_gain=30.0,
-               gaba_sens=1.0, gaba_sens_tonic=None, gaba_sens_phasic=None,
+               gaba_sens=1.0, gaba_sens_tonic=None, gaba_sens_phasic=None, glyr_sens=1.0,
                joint="knee_L", xml=None) -> dict:
     """Free-running closed-loop locomotion. No imposed kinematics.
 
@@ -216,7 +216,8 @@ def locomotion(drug: Drug | None = None, duration_s=6.0, seed=1, rg_gain=30.0,
 
     p = JointPlant(xml or model_xml(), joint=joint, drug=drug or Drug(),
                    rg_gain=rg_gain, seed=seed, gaba_sens=gaba_sens,
-                   gaba_sens_tonic=gaba_sens_tonic, gaba_sens_phasic=gaba_sens_phasic)
+                   gaba_sens_tonic=gaba_sens_tonic, gaba_sens_phasic=gaba_sens_phasic,
+                   glyr_sens=glyr_sens)
     for _ in range(int(duration_s / DT)):
         p.step(DT)
     A = p.arrays()
