@@ -17,7 +17,7 @@ were recoverable only by accident of version control. A plan in chat is the same
 | 1 | structure → binding affinity | **ASSESSED AND DECLINED (2026-10-07).** It predicts a quantity this model does not consume — see below |
 | 2 | affinity → **functional efficacy** | **DECLINED BY DESIGN.** Not predictable from structure; taken as a measured INPUT (`Compound(a1=…, a5=…, s_max=…)`) |
 | 3 | efficacy → conductance change | **BUILT** (`gabaa_kinetics.py`). Calibration BLOCKED on wet-lab data |
-| 4 | conductance → neuron excitability | **BUILT** (`neuron.py`). Butera–Rinzel–Smith 1999 model 1, conductance-based, real I_NaP. Characterised in isolation; no circuit uses it yet |
+| 4 | conductance → neuron excitability | **BUILT** (`neuron.py`). Butera–Rinzel–Smith 1999 model 1, real I_NaP, voltage-gated inactivation, depolarisation block. In use by `PreBotC(substrate="cond")` |
 | 5 | neurons → circuit dynamics | **BUILT for the preBötC** (`PreBotC(substrate="cond")`). Published CELL, DERIVED coupling (BRS part II’s weights are unreachable). `rg2.py` / `circuit.py` still LIF-only |
 | 6 | circuit → behaviour | **BUILT for motor** — stretch reflex and closed-loop locomotion |
 
