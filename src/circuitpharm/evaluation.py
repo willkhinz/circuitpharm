@@ -227,8 +227,17 @@ def _pct_of_control(value, control):
 # scale by the same rule. So the drug-free control is completely independent of
 # gaba_sens/tonic/phasic, and depends only on the seed and the circuit configuration.
 #
-# Keyed on seed alone for that reason. If a future change makes a control depend on
+# Keyed on (endpoint, seed, SUBSTRATE). If a future change makes a control depend on
 # sensitivity, this cache becomes wrong — tests/test_evaluate.py pins the invariance.
+#
+# THE SUBSTRATE IS IN THE KEY, added with roadmap link 4. The provable-safety argument above
+# covers the DRUG parameters only; the neuron model is a different axis entirely, and it
+# changes the drug-free control completely (the conductance network's control runs at a
+# different frequency and mean output by construction, since it is anchored separately).
+# Keyed on seed alone, a conductance arm would have been normalised against a LIF control,
+# making every reported "percent of control" silently nonsense -- and the substrate
+# comparison is precisely a comparison of those percentages, so the one number the upgrade
+# exists to produce would have been the one corrupted.
 _CTRL_CACHE: dict = {}
 
 
@@ -237,11 +246,19 @@ def clear_control_cache() -> None:
     _CTRL_CACHE.clear()
 
 
-def _simulate_resp(cand: Compound, seed=0, duration_ms=14000.0, warm_ms=4000.0):
+def _simulate_resp(cand: Compound, seed=0, duration_ms=14000.0, warm_ms=4000.0,
+                   substrate="lif"):
+    """Simulate the respiratory arm. `substrate` selects the neuron model (roadmap link 4).
+
+    On 'cond' the LIF operating point is NOT passed: `drive` is in pA and the weights in nS
+    relative to the LIF cell, and PreBotC refuses the conductance substrate without an
+    operating point of its own (see config.COND_RESP_OP).
+    """
     from .resp import PreBotC, resp_metrics
     st, sp = cand.sens("prebotc")
+    kw = dict(**RESP_OP) if substrate == "lif" else dict(substrate="cond")
     b = PreBotC(drug=cand.drug("prebotc"), gaba_sens_tonic=st, gaba_sens_phasic=sp,
-                seed=seed, **RESP_OP)
+                seed=seed, **kw)
     for i in range(int(duration_ms / 0.1)):
         b.step(0.1)
         if i % 10 == 0:
@@ -251,7 +268,7 @@ def _simulate_resp(cand: Compound, seed=0, duration_ms=14000.0, warm_ms=4000.0):
 
 
 def evaluate(cand: Compound, n_seed=4, reference="nonselective_bz",
-             include_motor=True) -> ResultSet:
+             include_motor=True, substrate="lif") -> ResultSet:
     """Evaluate a compound and return tiered results.
 
     Ventilation is simulated and reported as UNCALIBRATED: the mechanism is sound but the
@@ -339,12 +356,13 @@ def evaluate(cand: Compound, n_seed=4, reference="nonselective_bz",
             promote_by="anchor both arms to ethanol dose-substitution data so they share "
                        "a scale; do not sum them before that exists"))
 
-    vent = [_simulate_resp(cand, seed=s) for s in range(n_seed)]
+    vent = [_simulate_resp(cand, seed=s, substrate=substrate) for s in range(n_seed)]
     ctrl = []
     for s in range(n_seed):
-        k = ("resp", s)
+        k = ("resp", s, substrate)
         if k not in _CTRL_CACHE:
-            _CTRL_CACHE[k] = _simulate_resp(Compound("control", occupancy=0.0), seed=s)
+            _CTRL_CACHE[k] = _simulate_resp(Compound("control", occupancy=0.0), seed=s,
+                                            substrate=substrate)
         ctrl.append(_CTRL_CACHE[k])
     pct = _pct_of_control(float(np.mean([v["mean"] for v in vent])),
                       float(np.mean([c["mean"] for c in ctrl])))

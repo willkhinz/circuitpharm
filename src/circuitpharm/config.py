@@ -30,6 +30,70 @@ RESP_OP = MappingProxyType(dict(
     w=MappingProxyType(dict(ee_ampa=0.45, ee_nmda=0.2475)),
 ))
 
+# CONDUCTANCE-SUBSTRATE RESPIRATORY OPERATING POINT (roadmap link 5).
+#
+# None means NOT YET ANCHORED, and `PreBotC(substrate="cond")` raises rather than falling
+# back to RESP_OP above. That refusal is the point: RESP_OP's `drive` is in pA and its
+# weights in nS, both relative to the LIF cell (C=200 pF, g_L=10 nS). The Butera cell is
+# C=21 pF, g_L=2.8 nS, so reusing those numbers is an order-of-magnitude error that produces
+# a running network rather than an exception -- predicted as E14.
+#
+# WHY THIS IS ANCHORED RATHER THAN INHERITED. Butera-Rinzel-Smith part II supplies network
+# coupling conductances for a population of these cells, which would have made these weights
+# published rather than ours. They are not retrievable: the journal full text returns HTTP
+# 403 and every accessible encoding (CellML, ModelDB 247647) is single-cell only. Inventing
+# them was not an option, so the weights here are OURS, anchored to a matched operating
+# point. The CELL is published; the COUPLING is not, and link 5 is partial for that reason.
+#
+# Matched operating point, not matched parameters: the same nS weight means different things
+# on the two cells, so comparing substrates at equal weights compares two differently-broken
+# networks. Each substrate is anchored independently to the SAME OBSERVABLE (control burst
+# frequency inside EUPNOEA_BAND, with a comparable duty cycle), and only then is the drug
+# applied and the fractional change from each substrate's own control compared.
+# CONDUCTANCE-SUBSTRATE RESPIRATORY OPERATING POINT (roadmap link 5).
+#
+# None means NOT ANCHORED, and `PreBotC(substrate="cond")` raises rather than falling back
+# to RESP_OP above -- whose `drive` is in pA and weights in nS relative to the LIF cell
+# (C=200 pF, g_L=10 nS) rather than the Butera cell (C=21 pF, g_L=2.8 nS).
+#
+# WHY THIS IS None AGAIN, having briefly been a registered operating point (2026-10-07).
+# Recorded in full because it is the clearest example of this project's signature failure
+# that the project has produced, and I produced it in the same session that wrote the
+# warning.
+#
+# An operating point was anchored (drive=20 pA, weights 0.9x the LIF table), verified at
+# 30 s across 4 seeds with every seed required alive, and read 1.342 +/- 0.132 Hz against
+# the LIF's 1.271 Hz. It was wrong, for two compounding reasons:
+#
+#   1. THE SEARCH NEVER VISITED THE BURSTING REGIME. The grid swept Exc drive over
+#      {5, 10, 15, 20, 25, 30} pA. The isolated Butera cell bursts at -5..0 pA and is
+#      TONIC from +5 pA upward. So every point searched held the cells depolarised out of
+#      pacemaking, and "only 3 of 50 points were alive" -- which I recorded as the correct
+#      biology of a narrow entrainment window -- was really the signature of searching
+#      almost entirely outside the regime the cell can oscillate in.
+#
+#   2. THE MEASUREMENT WAS INSIDE A TRANSIENT. tau_h is 10 SECONDS, the slowest timescale
+#      in the model by a factor of 25 against the LIF's tau_adapt = 400 ms. Every
+#      conductance measurement used a 4 s warm-up, i.e. 0.4 time constants. Measured in
+#      successive 10 s windows, the network's mean h falls 0.265 -> 0.080 over the first
+#      20 s and the rhythm then wanders: frequency 1.33, 1.33, 2.86, 2.86, 3.67, 0.82,
+#      0.31, 0.82, 0.61 Hz, alive in only 5 of 9 windows. The LIF, measured identically,
+#      holds 1.327 Hz and mean 27-29 in every window.
+#
+# So the registered number was a plausible reading of a decaying transient, produced by a
+# three-stage search with a seed-robustness check -- none of which could see the problem,
+# because all three stages measured inside the same transient.
+#
+# WHAT A VALID ANCHOR MUST DO, enforced in scripts/anchor_cond_resp.py:
+#   * search Exc drive in the range where the isolated cell BURSTS (verify with
+#     neuron.run_isolated before choosing the grid, do not assume);
+#   * warm up for at least 3 x tau_h = 30 s before measuring anything;
+#   * measure two consecutive late windows and require the frequency to AGREE between
+#     them, so a drifting network cannot pass as a stable one;
+#   * require every seed alive, as before -- necessary but, as this showed, nowhere near
+#     sufficient.
+COND_RESP_OP = None
+
 # Synaptic GABA transient seen by the PHASIC receptor pool. This particular (peak,
 # clearance) pair is one of the 9/27 cells in which the Markov scheme reproduced every
 # anchored benzodiazepine observable from a single calibrated parameter; the passing cells

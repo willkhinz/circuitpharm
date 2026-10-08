@@ -42,12 +42,19 @@ EXTRASYN_CONC = 8.0          # Beta concentration; lower = wider
 GAIN_RATIO = (3.0, 7.5)      # tonic:phasic, from the mechanism-mix sweep (7d)
 
 
-def draw_params(rng):
+def draw_params(rng, a5_floor=0.0):
     frac = {}
     for region in ("prebotc", "forebrain"):
         nom = REGIONS[region]
         alpha = np.array([max(1e-3, nom[s] * KAPPA) for s in SUBTYPES])
-        frac[region] = dict(zip(SUBTYPES, rng.dirichlet(alpha)))
+        d = rng.dirichlet(alpha)
+        # Optional floor on the drawn preBotC a5 fraction, for the prior-sensitivity check
+        # described in the verdict section. Renormalised so the fractions still sum to 1.
+        if a5_floor > 0.0 and region == "prebotc":
+            i5 = SUBTYPES.index("a5")
+            d[i5] = max(d[i5], a5_floor)
+            d = d / d.sum()
+        frac[region] = dict(zip(SUBTYPES, d))
     ex = {}
     for s in SUBTYPES:
         if s == "eps":
@@ -80,12 +87,17 @@ def score(key, frac, ex, ratio):
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--draws", type=int, default=20000)
+    ap.add_argument("--a5-floor", type=float, default=0.0,
+                    help="floor the DRAWN preBotC a5 fraction (nominal 0.02). The prior "
+                         "puts 38%% of draws below 0.002, which inflates the optimistic "
+                         "tail for a5-selective arms; use this to reproduce the "
+                         "prior-sensitivity check.")
     a = ap.parse_args()
     rng = np.random.default_rng(20261007)
 
     R = {k: [] for k in ARMS}
     for _ in range(a.draws):
-        frac, ex, ratio = draw_params(rng)
+        frac, ex, ratio = draw_params(rng, a5_floor=a.a5_floor)
         ref = score(REF, frac, ex, ratio)
         if not np.isfinite(ref) or ref <= 0:
             continue
@@ -106,8 +118,19 @@ if __name__ == "__main__":
     def _pctl(arr, q):
         return float(np.percentile(arr, q)) if len(arr) else float("nan")
 
+    # DROPPED DRAWS ARE COUNTED AND REPORTED (found 2026-10-07).
+    #
+    # A non-finite score here is not noise: for a PERFECTLY a5-selective compound the
+    # preBotC burden is proportional to the drawn preBotC a5 fraction, and the Dirichlet
+    # prior puts mass arbitrarily close to zero, so burden -> 0 and the score diverges. The
+    # isfinite filter therefore silently discards EXACTLY THE DRAWS MOST FAVOURABLE to the
+    # arm being scored. That pushes the reported numbers in the conservative direction,
+    # which is the honest direction -- but it was invisible, and an unreported discard rate
+    # is indistinguishable from no discards at all.
+    n_drop = {}
     for k in ARMS:
         v = np.array([x for x in R[k] if np.isfinite(x)])
+        n_drop[k] = len(R[k]) - len(v)
         if not len(v):
             note = "no finite draws - mechanism cannot reach its target shift"
             print(f"{PROFILES[k].name[:23]:<24}{note:>46}")
@@ -115,6 +138,13 @@ if __name__ == "__main__":
         print(f"{PROFILES[k].name[:23]:<24}{np.median(v):9.2f}"
               f"{_pctl(v,5):8.2f}{_pctl(v,95):8.2f}"
               f"{100*(v>1.0).mean():19.1f}%")
+    if any(n_drop.values()):
+        print("\ndiscarded non-finite draws (burden -> 0, i.e. the draws MOST favourable")
+        print("to the arm; discarding them makes these numbers conservative):")
+        for k in ARMS:
+            if n_drop[k]:
+                print(f"    {PROFILES[k].name[:40]:<42} {n_drop[k]:6d} of {len(R[k])} "
+                      f"({100*n_drop[k]/max(1,len(R[k])):.1f}%)")
 
     print("\nPAIRWISE: does the a5 class beat the a2/a3 class, draw by draw?")
     a5 = np.array(R["alogabat"]); a23 = np.array(R["hz_166"])
@@ -127,6 +157,36 @@ if __name__ == "__main__":
     print(f"\n  neurosteroid worse than a non-selective BZ in "
           f"{100*(ns<1.0).mean():.1f}% of draws")
 
+    # PRIOR SENSITIVITY. Measured 2026-10-07; this is the check that decides whether the
+    # headline is pharmacology or the shape of its own prior.
+    #
+    # The Dirichlet around a NOMINAL preBotC a5 of 0.02 puts 38% of draws below a tenth of
+    # that, and the forebrain:preBotC a5 ratio has a p99 of ~3.5e7. Since an a5-selective
+    # compound's respiratory burden is roughly proportional to that fraction, the score
+    # should diverge -- so the whole result could have been an artifact.
+    #
+    # It is not, for the statistic that matters. Flooring the drawn preBotC a5 at 0.005,
+    # 0.01 and the full nominal 0.02 leaves the 5th percentile UNCHANGED (alogabat 2.51 in
+    # every condition, P(>1) 99.9%, corr(score, 1/a5) = 0.02). What the near-zero tail
+    # drives is the OPTIMISTIC end: alogabat's median falls 16.05 -> 7.63 and its 95th
+    # percentile 84.9 -> 14.5 as the floor rises to nominal.
+    #
+    # CONCLUSION, and it is a restriction on what may be quoted: the 5th-percentile FLOOR
+    # and the ordering are robust. The MEDIAN and 95th percentile are prior artifacts and
+    # must not be quoted -- the previously-reported "median 33.76x, 95th 9264.80x" for the
+    # ideal a5 arm are properties of the prior's tail, not pharmacological claims. Re-run
+    # with --a5-floor to reproduce the sensitivity.
+    print("\n" + "=" * 70)
+    print("WHAT MAY AND MAY NOT BE QUOTED FROM THE TABLE ABOVE")
+    print("=" * 70)
+    print("QUOTABLE:   the 5th percentile and the ordering. Flooring the drawn preBotC a5")
+    print("            fraction at 0.005 / 0.01 / 0.02 (nominal) leaves the 5th percentile")
+    print("            unchanged at 2.51x for alogabat and P(>1) at 99.9%.")
+    print("NOT QUOTABLE: the median and 95th percentile. 38% of draws put preBotC a5 below")
+    print("            a tenth of nominal, and an a5-selective compound's burden is roughly")
+    print("            proportional to it, so the upper tail measures the prior. Flooring at")
+    print("            nominal moves alogabat's median 16.05 -> 7.63 and its 95th 84.9 -> 14.5.")
+    print(f"            Reproduce with:  --a5-floor 0.02")
     print("\n" + "=" * 70)
     print("VERDICT")
     print("=" * 70)

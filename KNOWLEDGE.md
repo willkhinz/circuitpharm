@@ -14,12 +14,35 @@ were recoverable only by accident of version control. A plan in chat is the same
 
 | # | link | status |
 |---|---|---|
-| 1 | structure → binding affinity | **not attempted.** Achievable with ~1 log unit error; worse for subtype selectivity, which is the hardest regime |
+| 1 | structure → binding affinity | **ASSESSED AND DECLINED (2026-10-07).** It predicts a quantity this model does not consume — see below |
 | 2 | affinity → **functional efficacy** | **DECLINED BY DESIGN.** Not predictable from structure; taken as a measured INPUT (`Compound(a1=…, a5=…, s_max=…)`) |
 | 3 | efficacy → conductance change | **BUILT** (`gabaa_kinetics.py`). Calibration BLOCKED on wet-lab data |
 | 4 | conductance → neuron excitability | **BUILT** (`neuron.py`). Butera–Rinzel–Smith 1999 model 1, conductance-based, real I_NaP. Characterised in isolation; no circuit uses it yet |
 | 5 | neurons → circuit dynamics | **NOT DONE.** Weights are "hand-tuned to produce alternating rhythm, NOT fitted to rat data". Unblocked by link 4; `ParamSet` now refuses a mixed cell/weight pair |
 | 6 | circuit → behaviour | **BUILT for motor** — stretch reflex and closed-loop locomotion |
+
+### Link 1 assessed and declined: it predicts the wrong quantity
+Recorded as a closed decision rather than an open option, so it is not repeatedly
+reconsidered.
+
+Link 1 predicts **binding affinity**. The model's input is **functional efficacy**:
+`PROFILES["alogabat"].eff()` is `a1 = 0.000, a5 = 1.000` — a statement about how much the
+ligand modulates each subtype, not how tightly it binds. The bridge between them is link 2,
+which is **declined by design** because efficacy is not predictable from affinity (it is the
+shift in a conformational equilibrium, and it is additionally probe-dependent).
+
+So a perfect link 1 would emit affinities that nothing downstream consumes. It is not the
+next step; it is blocked behind a link the package deliberately does not attempt.
+
+A secondary argument, in case link 2 is ever closed: even for affinity, independent
+per-subtype prediction does not reach the needed resolution. At a per-subtype error of
+σ = 0.5–1.0 log units, the a5/a1 ratio inherits σ√2 = 0.71–1.41, giving a 95% interval
+spanning a factor of **590 to 350,000**. The selectivity that distinguishes the candidate
+classes is roughly 10–100×. The prediction error would exceed the quantity by two to four
+orders of magnitude. (Relative free-energy methods within a congeneric series can beat this
+by cancelling systematic error — but subtype selectivity is precisely the regime the
+literature flags as hardest, and the cancellation is weakest across different receptor
+subtypes.)
 
 ### Link 4 is built; link 5 is the remaining half
 Link 4 gated link 5. The LIF neurons structurally cannot carry voltage-gated mechanisms
@@ -61,10 +84,13 @@ been retuned around a wrong resting drive to compensate.
 **Measured cost: 4.1× the LIF**, not the estimated ~20× — loose enough that the conductance
 arm of the substrate-independence comparison may not need reduced draws after all.
 
-**Still to do (link 5):** no circuit uses the cell yet. `resp.py`, `rg2.py` and `circuit.py`
-construct `cpg.Pop`, and they assign `g_adapt` *after* construction, which would switch
-adaptation back on and re-introduce E18 the moment a circuit is pointed at `CondPop`. The
-substrate-independence comparison — the actual deliverable — needs the network.
+**Link 5, in progress:** `PreBotC(substrate="cond")` now runs the published cell, and
+refuses to start without its own operating point rather than silently inheriting the LIF's
+pA/nS numbers. `rg2.py` and `circuit.py` are still LIF-only. The coupling weights are
+**ours, not inherited** — Butera–Rinzel–Smith part II's network conductances are not
+retrievable (journal 403; every accessible encoding is single-cell), and inventing them was
+not an option. So link 5 delivers a published CELL in a network whose COUPLING is ours,
+anchored to a matched operating point.
 
 ### Why the upgrade is not cosmetic — measured, not argued
 `scripts/diag_substrate_limits.py`. The LIF preBötC holds V in [−71, −44] mV, and:
@@ -84,11 +110,25 @@ magnitude. A scalar weight rescales a mean; it cannot turn 4.5x into 15.5x, nor 
 pool's driving force swing 9x while the other's stays flat, because both share a single
 weight-independent `E_rev` and a single V.
 
-So the exposed result is the project's central one. The tonic/phasic ratio is a conductance
-claim and stands; its *behavioural* consequence runs through g·(E−V), which this substrate
-truncates for the phasic pool. **The deliverable of links 4–5 is therefore not "a better
-neuron" — it is whether the selectivity ranking is substrate-independent as well as
-calibration-independent.** Nobody has checked. Either answer is worth having.
+The tonic/phasic ratio is a conductance claim and stands; its *behavioural* consequence runs
+through g·(E−V), which this substrate truncates for the phasic pool.
+
+**CORRECTION (2026-10-07).** This paragraph used to say the deliverable of links 4–5 was
+testing whether the **selectivity ranking** is substrate-independent. That was wrong and the
+error was mine. `scripts/ranking_robustness.py` never imports a circuit module — its `score()`
+is pure algebra over subunit fractions, efficacies and extrasynaptic fractions, and its own
+docstring says "This is analytic — no circuit simulation." The ranking is therefore
+substrate-independent **by construction**; it cannot change when the neuron model changes,
+because it never runs a neuron. **The VALIDATED headline was never at risk from the substrate,
+and links 4–5 cannot strengthen it.**
+
+What *does* run through the circuit is everything `evaluate()` simulates — the UNCALIBRATED
+respiratory and motor endpoints, where shape and **ordering between compounds** are usable and
+absolute scale is not. So the corrected question is **whether the ordering of compounds by
+simulated respiratory burden survives the substrate change.** That is genuinely at risk, it is
+what the measurements above bear on, and link 5's reach is the UNCALIBRATED tier only — a
+smaller prize than the one claimed here before. See §6 of
+`knowledge/05-design-conductance-substrate.md`.
 
 ### But sequencing matters more than the next feature right now
 Eight review passes have found **49 defects**, at a rate of 9, 11, 8, 10, 8, 3. Each review

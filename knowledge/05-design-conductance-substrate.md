@@ -270,30 +270,59 @@ constant `E_REV`), implement later.
 
 ---
 
-## 6. What this is actually for: substrate-independence of the one validated result
+## 6. What this is actually for — CORRECTED 2026-10-07, my premise was wrong
 
-The project's single VALIDATED headline is the calibration-independent selectivity ranking —
-α5 arms beat non-selective BZ in 99.9% of 20,000 draws, 5th-percentile floor ≥ 2.49×. It is
-calibration-independent. It is **not** substrate-independent, and nobody has checked.
+**This section originally said the deliverable was testing whether the selectivity ranking is
+substrate-independent. That was wrong, and the error was mine.**
 
-Running the ranking on both backends is the only way to find out, and either outcome is worth
-having:
+The claim was: "the ranking is calibration-independent; it is not substrate-independent, and
+nobody has checked." The second half is false. `scripts/ranking_robustness.py` **never imports
+a circuit module** — `score()` is pure algebra over subunit expression fractions, measured
+efficacies, extrasynaptic fractions and a gain ratio. Its own docstring says so on line 21:
+"This is analytic — no circuit simulation — so it runs at thousands of draws." I had read that
+docstring earlier in the same session and quoted another line from it.
 
-- **Holds on both** → the result is substrate-independent as well as calibration-independent,
-  which is a materially stronger claim than the one currently in the paper.
-- **Flips or narrows** → the LIF result was partly an artifact of a substrate that suppresses
-  the phasic pool's driving force by up to 9×. Better to find that ourselves.
+So the ranking is substrate-independent **by construction**: it cannot change when the neuron
+model changes, because it never runs a neuron. Running it on two backends would prove nothing.
+The headline result was never at risk from the substrate, and links 4–5 cannot strengthen it.
 
-**The comparison must be at matched operating points, not matched parameters.** §2 establishes
-that the same nS weight means different things on the two cells, so comparing at equal weights
-compares two differently-broken networks. Each substrate must first be independently anchored
-to the *same observable* — control burst frequency and duty cycle — and only then is the drug
-applied and the **fractional change from its own control** compared. Also: same random stream,
-or the substrate gets credit for seed noise. Both of these are easy to get wrong and would
-produce a confident, wrong answer.
+### The corrected deliverable
 
-Reduced draw count (~2,000) is sufficient for the conductance arm if the 5th-percentile floor
-is the statistic of interest; the full 20k stays on LIF.
+What *does* run through the circuit is everything `evaluation.evaluate()` simulates — the
+respiratory and motor endpoints, all UNCALIBRATED, where the shape and the **ordering between
+compounds** are usable and the absolute scale is not. Those go through current = g·(E−V), which
+is exactly what §1 measured the LIF truncating. So the question worth asking is:
+
+> **Does the ORDERING of compounds by simulated respiratory burden survive the substrate
+> change?**
+
+That is genuinely at risk, it is what the §1 measurements bear on, and either answer is
+informative:
+
+- **Ordering holds** → the simulated endpoints are robust to the substrate, which is a real
+  (if narrower) strengthening of the UNCALIBRATED tier.
+- **Ordering moves** → the LIF's truncated phasic driving force was shaping the simulated
+  pharmacology, and every simulated endpoint in the package inherits that.
+
+Note what this does NOT touch: the VALIDATED selectivity ranking stands unchanged either way,
+and the absolute respiratory numbers stay VOID either way. Link 5's reach is the UNCALIBRATED
+tier only. That is a smaller prize than the one this section originally claimed, and claiming
+the larger one was an error of the exact kind this project keeps making — a confident
+statement about a result whose provenance I had not checked.
+
+### The comparison must be at matched operating points, not matched parameters
+
+§2 establishes that the same nS weight means different things on the two cells, so comparing
+at equal weights compares two differently-broken networks. Each substrate must first be
+independently anchored to the *same observable* — control burst frequency and modulation depth
+(`scripts/anchor_cond_resp.py`) — and only then is the drug applied and the **fractional change
+from its own control** compared. Also: same random stream, or the substrate gets credit for
+seed noise.
+
+A further trap, found while plumbing: `evaluation._CTRL_CACHE` is keyed on **seed alone**,
+which was argued safe because a drug-free run gives `eff = 1` for any sensitivity. Substrate is
+a different axis entirely, so the cache would hand a LIF control to a conductance arm and the
+fractional changes would be silently nonsense. The key must include the substrate.
 
 ---
 

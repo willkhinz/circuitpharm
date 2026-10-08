@@ -2601,3 +2601,239 @@ Link 5. The cell is built and characterised **in isolation**; no circuit uses it
 a circuit is pointed at `CondPop`. That is link 5's first problem, not a defect in link 4.
 The substrate-independence comparison (§6), which is the actual deliverable, needs the
 network.
+
+---
+
+## Session 13 (cont.) — LINK 5: conductance cell in the network
+
+### I had the deliverable of links 4–5 wrong
+Recorded first because it is the most important thing in this session.
+
+The design doc, `KNOWLEDGE.md` and my report to the user all said the point of links 4–5 was
+testing whether **the selectivity ranking** — the project's one VALIDATED result — is
+substrate-independent as well as calibration-independent.
+
+**That is false.** `scripts/ranking_robustness.py` never imports a circuit module. Its
+`score()` is pure algebra over subunit expression fractions, measured efficacies,
+extrasynaptic fractions and a gain ratio. Its own docstring says so on line 21: *"This is
+analytic — no circuit simulation — so it runs at thousands of draws."* I had read that file
+earlier in the same session and quoted a different line from it.
+
+So the ranking is substrate-independent **by construction** — it cannot change when the
+neuron model changes, because it never runs a neuron. **The VALIDATED headline was never at
+risk from the substrate, and links 4–5 cannot strengthen it.**
+
+**Corrected deliverable.** What does run through the circuit is everything
+`evaluation.evaluate()` simulates — the UNCALIBRATED respiratory and motor endpoints, where
+shape and *ordering between compounds* are usable and absolute scale is not. Those go
+through g·(E−V), which is what the LIF truncates. So the question is **whether the ordering
+of compounds by simulated respiratory burden survives the substrate change**
+(`scripts/compare_substrates.py`). Genuinely at risk; a smaller prize. Link 5's reach is the
+UNCALIBRATED tier only. Corrected in the design doc §6 and KNOWLEDGE.md, both marked as
+corrections rather than silently rewritten.
+
+### The published coupling weights do not exist in reachable form
+Butera–Rinzel–Smith **part II** supplies network coupling conductances for a population of
+exactly these cells, which would have made link 5's weights *published* rather than ours —
+the entire point of link 5. They are not retrievable: the journal full text returns HTTP
+403, and every accessible encoding (the curated CellML, ModelDB 247647 via its GitHub
+mirror) is **single-cell only** — `g_tonic_e = 0.0`, no coupling term.
+
+Inventing them was not an option. So link 5 delivers a **published CELL in a network whose
+COUPLING is ours**, anchored to a matched operating point. Recorded as a partial completion,
+not a tick, and said plainly in `config.COND_RESP_OP` and `scripts/anchor_cond_resp.py`
+because a reader would otherwise reasonably assume the whole network came from the paper.
+
+### Plumbing: `PreBotC(substrate="cond")`
+Building the switch forced out **three LIF-scaled quantities** that would each have been
+silent:
+
+1. `drive` — pA against a C=200 pF / g_L=10 nS cell.
+2. `gaba_tonic` — nS, likewise.
+3. **A hardcoded `60.0`** supplying the entire excitatory drive to the Inh and Out
+   populations. Found *after* the first two had been moved into the operating point, which
+   is the point: two of three populations would have run at roughly the wrong order of
+   magnitude while the rhythm still looked fine.
+
+So the conductance substrate **refuses to start** without a complete operating point, and
+rejects a *partial* one too. The partial case is the dangerous one: supply `drive` and the
+excitatory weights while `ie_gaba`, `ie_gly` and `gaba_tonic` keep their LIF values, and the
+network is inconsistent by ~an order of magnitude on the **inhibitory arm — the arm the drug
+acts through**. It would run, produce a rhythm, and be wrong about pharmacology.
+
+**E18 handled:** the LIF assigned `g_adapt` after construction, so pointing it at a
+conductance cell would have switched spike-triggered adaptation back on at its LIF-tuned
+2.5 nS/spike on top of a now-real I_NaP inactivation — double-counted burst termination,
+symptom a plausible duty cycle.
+
+**E15 handled:** on the cond substrate NMDA is handed over **unevaluated** (`raw=("nmda",)`)
+so the cell applies the Mg²⁺ block at its own V each 0.05 ms substep. Pre-evaluating it at
+the step-entry voltage would have discarded the entire voltage-dependent relief, and the
+symptom would have been "the substrate change did not move the NMDA result" — a reassuring
+robustness check that is in fact the bug.
+
+**A7 verified, not assumed:** the LIF `PreBotC` trace hashes identically to the committed
+pre-refactor module (`cb808accc11db8462b7f` both sides).
+
+### A bug I was about to introduce
+`evaluation._CTRL_CACHE` is keyed on **seed alone**, argued safe because a drug-free run
+gives `eff = 1` for any sensitivity. That argument covers the *drug* parameters only;
+substrate is a different axis and changes the drug-free control completely. Keyed on seed
+alone, a conductance arm would have been normalised against a **LIF control**, making every
+percent-of-control silently nonsense — and the substrate comparison is precisely a
+comparison of those percentages, so **the one number the upgrade exists to produce would
+have been the one corrupted.** Substrate is now in the key, and a test pins it.
+
+### Anchoring: the viable window is narrow
+`scripts/anchor_cond_resp.py`, three stages. Target is the LIF's *measured* control
+(1.271 Hz, mod 4.74) rather than a literature value — the question is whether the same drug
+gives the same *fractional* change, which needs the two controls to agree on the observable
+and says nothing about either being the right absolute frequency.
+
+* **Stage 1** (50 points, 8 s): **3 alive.**
+* **Stage 2** (81 points, 12 s): **16 alive.** Best 1.356 Hz.
+* **Stage 3** (finalists, 30 s, 4 seeds, every seed required alive): in progress.
+
+**3/50 is a result, not a search artifact.** A population of intrinsically bursting Butera
+cells has a far smaller region of synchronised in-band behaviour than the LIF network did,
+because each cell is already an oscillator and the coupling has to *entrain* rather than
+*create* the rhythm. That is the correct biology for a coupled-pacemaker preBötC, and it
+means this operating point is more fragile than the LIF's.
+
+**Short sweeps are not trustworthy for frequency:** the stage-1 winner read 1.026 Hz at 8 s
+and 1.102 Hz at 12 s — a 7% move from duration alone. Hence stage 3, and hence the rule that
+a sweep winner is a *candidate*, never the answer.
+
+**Also noted:** the cond control's mean inspiratory output is ~5 against the LIF's ~29. The
+absolute level is UNCALIBRATED on both, so the comparison is unaffected, but the compressed
+range leaves less room between a drug effect and the `mean < 1.0` collapse floor. Worth
+watching when reading the comparison.
+
+---
+
+## Session 13 (cont.) — the anchoring was wrong, and the provenance hole is deeper than recorded
+
+### I produced this project's signature failure, in the session that wrote the warning
+`COND_RESP_OP` was anchored, verified across 4 seeds at 30 s with every seed required alive,
+read 1.342 ± 0.132 Hz against the LIF's 1.271, and registered. **It was wrong**, for two
+compounding reasons, and it is now `None` again with the reasoning written into `config.py`.
+
+**1. The search never visited the bursting regime.** The grid swept Exc drive over
+{5, 10, 15, 20, 25, 30} pA. Measured with `neuron.run_isolated`:
+
+| i_app (pA) | −15 | −10 | **−5** | **0** | +5 | +10 | +20 | +30 |
+|---|---|---|---|---|---|---|---|---|
+| regime | quiescent | quiescent | **bursting** | **bursting** | tonic | tonic | tonic | tonic |
+
+Every point searched held the cells depolarised out of pacemaking. And "only 3 of 50 points
+were alive", which I recorded as *the correct biology of a narrow entrainment window*, was
+really the signature of searching almost entirely outside the regime the cell can oscillate
+in. I wrote a confident mechanistic explanation for an artifact of my own grid.
+
+**2. Every measurement was inside a transient.** τ_h is **10 seconds** — the slowest
+timescale in the Butera cell, 25× the LIF's τ_adapt of 400 ms. Every conductance measurement
+used a 4 s warm-up, i.e. **0.4 time constants**. Measured in successive 10 s windows:
+
+| t₀ (s) | 0 | 10 | 20 | 30 | 40 | 50 | 60 | 70 | 80 |
+|---|---|---|---|---|---|---|---|---|---|
+| **cond** freq | 1.33 | 1.33 | 2.86 | 2.86 | 3.67 | 0.82 | 0.31 | 0.82 | 0.61 |
+| **cond** mean | 11.7 | 2.4 | 2.7 | 3.2 | 2.2 | 2.4 | 3.5 | 2.6 | 3.1 |
+| **cond** mean h | 0.265 | 0.080 | 0.080 | 0.086 | 0.082 | 0.081 | 0.087 | 0.078 | 0.090 |
+| **LIF** freq | 1.327 | 1.326 | 1.327 | 1.327 | 1.224 | 1.327 | 1.327 | 1.326 | 1.326 |
+| **LIF** mean | 28.7 | 29.1 | 29.3 | 29.4 | 28.2 | 27.0 | 27.3 | 28.2 | 29.3 |
+
+The conductance network's mean h collapses 0.265 → 0.080 over the first 20 s and the rhythm
+then wanders, alive in 5 of 9 windows. The LIF holds 1.327 Hz in every window.
+
+So the registered number was **a plausible reading of a decaying transient**, produced by a
+three-stage search with a seed-robustness check — none of which could see it, because all
+three stages measured inside the same transient. A longer verification would not have helped
+either: stage 3 used 30 s, which is still only 3 τ_h *total*, with 4 s of it as warm-up.
+
+**Consequences:** the A4 I_NaP-dissociation negative result is **withdrawn** — it was measured
+on the invalid operating point with a 4 s warm-up, so it tests nothing. The substrate
+comparison is blocked until re-anchored.
+
+**The anchoring script now:** searches drive where the isolated cell bursts (verified with
+`run_isolated`, not assumed); warms up 3 τ_h = 30 s; measures two consecutive 15 s windows and
+**gates hard on frequency agreement between them**, so a drifting network cannot pass.
+
+### A real inefficiency in `compare_substrates.py`
+`burden()` recomputed the drug-free controls **once per arm** — six times the necessary work
+on the default arm list, on the substrate that costs 4× per simulation. Controls do not depend
+on the arm. This is what made the first runs look hung rather than merely slow. Fixed, and the
+script now prints per-arm as it goes and flushes, because a twelve-minute run that prints only
+at the end is indistinguishable from a hung one.
+
+### The provenance hole: 6 of 28
+The recorded gap was "90 sources marked UNVERIFIED". That understates it by a layer.
+
+**The numbers driving the one VALIDATED result are not unverified — they are unsourced.**
+`scripts/ranking_robustness.py` scores on exactly `PROFILES[...].eff()`, `REGIONS`,
+`SUBJECTIVE_WEIGHT` and `EXTRASYN`. `subtypes.py` *appears* to cite five sources; all five —
+`alogabat`, `gl_ii_73`, `imepitoin`, `sh053`, `tpa023` — are **compound names that collide
+with source keys**. The true citation count in the module holding the project's central
+numbers is **zero**. The database could not have supplied them either: `subunit_expression`
+holds 8 rows and every one is qualitative ("predominant", "present", "enriched").
+
+`src/circuitpharm/provenance.py` now records a basis for each: **6 of 28 name a source (21%);
+18 UNSOURCED, 8 FROM_QUALITATIVE, 1 FITTED, 1 GUESS.** `tests/test_provenance.py` (12 tests)
+pins the count so it cannot move quietly in either direction, and fails if a new parameter is
+added without a record or if a record names a source absent from the database.
+
+**The worst single entry:** `REGIONS["prebotc"]["a5"] = 0.02`. An α5-selective compound's
+modelled respiratory burden is roughly proportional to it, so it sets the entire safety
+margin — and no source in the knowledge base states it.
+
+**`a5_dist` is the trap.** It is the obvious source for the regional fractions, it resolves
+perfectly by DOI (title similarity 1.00), and it **does not support them**: a 1988 study using
+a single probe for *"the alpha subunit"*, reporting TOTAL α mRNA by region (cerebellum >
+thalamus = cortex = hippocampus ≫ pons = striatum = medulla). It neither resolves subtypes nor
+measures composition — `REGIONS` rows sum to 1 by construction, so they encode composition,
+while the paper measures level. A metadata-only pipeline would have marked it VERIFIED. That
+is why `scripts/verify_sources.py` reports `METADATA_*` and `CLAIM_SUPPORT_UNASSESSED` as
+separate fields and never collapses them.
+
+### Is the headline an artifact of its prior? No — but half of it is
+The Dirichlet prior puts **38% of draws below a tenth of the nominal preBötC α5**, and the
+forebrain:preBötC α5 ratio has a p99 of ~3.5×10⁷, so the α5 arms' scores should diverge.
+Flooring the drawn fraction at 0.005 / 0.01 / 0.02 (= nominal):
+
+| floor | alogabat p5 | median | p95 |
+|---|---|---|---|
+| none | **2.51** | 16.05 | 84.9 |
+| 0.005 | **2.51** | 13.56 | 36.0 |
+| 0.01 | **2.51** | 10.83 | 23.5 |
+| 0.02 | **2.51** | 7.63 | 14.5 |
+
+`corr(score, 1/α5) = 0.02`. **The 5th-percentile floor and the ordering are robust; my
+suspicion was wrong.** But the median and p95 are prior artifacts — the previously-quoted
+*"median 33.76×, p95 9264.80×"* for the ideal α5 arm are properties of the prior's tail, not
+pharmacological claims, and are now marked NOT QUOTABLE in the script's own output.
+
+Also found: for a perfectly α5-selective compound the burden can reach zero, so the score is
+undefined, and the `isfinite` filter silently discarded **exactly the draws most favourable to
+that arm**. Conservative, which is the honest direction — but it was invisible. Now counted
+and reported.
+
+**What remains unrescued:** `KAPPA = 15` and `EXTRASYN_CONC = 8` are unsourced choices of
+mine. "Robust across 20,000 draws" means robust across a prior whose centre *and* width I
+invented.
+
+### Source verification, mechanised
+`scripts/verify_sources.py` resolves each source by DOI (Crossref) or PMID/PMCID/title
+(Europe PMC) and compares the resolved title against the recorded citation. Two bugs in my own
+script, both found because sources I had *just cited* came back UNRESOLVED:
+
+1. **URL-encoded DOIs were invisible.** PLOS writes `?id=10.1371%2Fjournal.pone.0030608`; the
+   DOI regex needs a literal slash. `pbc_eps` went UNRESOLVED → RESOLVED_MATCH after
+   URL-decoding.
+2. **Nature URLs carry the DOI suffix without the prefix.** `/articles/s41598-017-17379-x` is
+   `10.1038/s41598-017-17379-x`. `pbc_delta` and `vrodent` recovered.
+
+A verification tool that under-reports resolution is not a safe failure: it makes the
+provenance gap look worse than it is, which misleads in the opposite direction.
+
+Also added `NON_LITERATURE` for trial registries, encyclopedia pages and software resources —
+reporting a clinicaltrials.gov NCT number as UNRESOLVED conflates "could not check" with "not
+the kind of thing checked this way".

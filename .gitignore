@@ -8,3 +8,8 @@ build/
 .coverage*
 htmlcov/
 .DS_Store
+
+# Timestamped database backups written by build_kb.py / build_compounds.py /
+# verify_sources.py before any destructive write. Local safety nets, not history:
+# the committed data/pharmacology.db is the tracked copy.
+data/pharmacology.backup-*.db

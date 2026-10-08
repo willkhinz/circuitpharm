@@ -81,6 +81,14 @@ from .neuron import (  # noqa: E402
     isolated, run_isolated, spike_regime,
 )
 
+# Parameter provenance: where each load-bearing number came from. Exported because the
+# audit's headline -- 6 of 28 parameters name a source -- is a fact about the package that
+# a user should be able to query, not a footnote in a knowledge file.
+from .provenance import (  # noqa: E402
+    ALL as PARAM_PROVENANCE, Basis, Record as ProvenanceRecord,
+    audit as provenance_audit, report as provenance_report,
+)
+
 __version__ = "0.1.0"
 
 
@@ -93,5 +101,7 @@ __all__ = [
     "Compound", "evaluate", "clear_control_cache",
     "BRS1999_MODEL1", "CELLS", "CellParams", "CondPop", "ParamSet",
     "ProvenanceMismatch", "isolated", "run_isolated", "spike_regime",
+    "PARAM_PROVENANCE", "Basis", "ProvenanceRecord", "provenance_audit",
+    "provenance_report",
     "__version__",
 ]
