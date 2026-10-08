@@ -2477,3 +2477,127 @@ of this review round. But two of its three findings were in the same classes as 
 fix* — so the fall is partly the reviewer running out of new surface, not the code becoming
 clean. The gate in `knowledge/05-design-conductance-substrate.md` asks for a pass that
 finds **nothing**; 3 is not 0.
+
+---
+
+## Session 13 (cont.) — LINK 4 BUILT: conductance-based cell
+
+`src/circuitpharm/neuron.py`, `tests/test_conductance_cell.py` (21 tests). The design in
+`knowledge/05-design-conductance-substrate.md` was written first and the acceptance tests
+(A1–A7) and predicted failure modes (E13–E18) were specified before any code existed.
+
+### Reading the parameters off the source caught a real error
+The design doc flagged my recalled Butera–Rinzel–Smith values as UNVERIFIED and said "read
+them off the paper, do not recall them." Doing that found one wrong number:
+
+**E_L is −57.5 mV, not −65 mV.**
+
+That is not cosmetic. E_L is this model's bifurcation parameter — the knob that moves the
+cell quiescent → bursting → tonic. Starting from −65 mV would have put the cell in the
+wrong regime, and the rhythm would then have been retuned around a wrong resting drive,
+which is the exact shape of this project's recurring failures.
+
+How narrow that window is, measured:
+
+| E_L (mV) | −65.0 | −60.0 | **−57.5** | −55.0 | −52.5 |
+|---|---|---|---|---|---|
+| regime | **silent, 0 spikes** | tonic | **bursting** | tonic | tonic |
+
+−65 mV is not merely the wrong regime — it is a dead cell. And the bursting band is only a
+few mV wide, with tonic spiking on both sides, which is what makes this the single parameter
+most expensive to get wrong.
+ Everything else in the
+recalled set was right (C 21 pF; g_Na 28, g_K 11.2, g_NaP 2.8, g_L 2.8 nS; E_Na +50,
+E_K −85; gate θ/σ; τ̄_n 10 ms, τ̄_h 10 s), as were the current equations and exponents
+(`g_Na m∞³(1−n)`, `g_K n⁴`, `g_NaP mp∞ h`). Source: the curated CellML encoding, which is
+machine-readable; the journal full text returned HTTP 403. `test_E14_the_one_parameter_that_
+was_misremembered_is_right` pins it, and also asserts that the wrong value does **not**
+burst — so if the pin ever stops testing what it claims, that shows up too.
+
+### The acceptance tests, and one I had to replace honestly
+**A1, E7 inverted.** The E7 test asserts the LIF's V never exceeds threshold and says "if
+this ever fails, voltage-gated mechanisms become available and the modelling choice should
+be revisited." This is that revisit from the other side. Measured: **V peaks at +6.49 mV**,
+h-gate span **0.4544** against the LIF's 0.01.
+
+But the design doc pre-committed a span of **>0.5**, and the cell gives 0.454. The 0.7
+figure in the original E7 note was **never sourced** — it was my own estimate of what
+inactivation would need. So the pre-committed number would have failed a cell that is
+behaving correctly.
+
+Rather than quietly relax the bar I replaced it with a functional one, which is what the
+0.7 was a proxy for anyway: **freezing h abolishes bursting in every direction.**
+
+| h | regime | rate |
+|---|---|---|
+| free | **bursting**, 12 bursts | 4.9 Hz |
+| frozen 0.46 | quiescent | 0 Hz |
+| frozen 0.60 | tonic | 68.8 Hz |
+| frozen 0.90 | tonic | 118.9 Hz |
+
+So the rhythm comes from the mechanism claimed — slow voltage-dependent inactivation of a
+persistent sodium current — not from something incidental. The LIF can neither pass nor fail
+this test; it has no h gate to clamp. That is the acceptance criterion for link 4. The span
+assertion is kept only as a coarse floor at 30× the LIF's value, with the measured number
+recorded so drift is visible.
+
+**A2.** Bursts with `g_adapt = 0`, which is now the default (E18). The LIF cannot burst
+without spike-triggered adaptation. And `g_NaP → 0` makes the isolated cell **quiescent**,
+so the current is load-bearing. The other half of that prediction — that the NETWORK rhythm
+should *persist* without I_NaP (the pacemaker-vs-network controversy) — needs the coupled
+population and is deliberately **not** asserted yet; asserting half a prediction and calling
+it validated is how the retracted Matsuoka result happened.
+
+**A3, the published excitability sequence**, reproduced and not fitted by us:
+
+| i_app (pA) | −30 | −15 | −5 | 0 | +10 | +25 | +50 |
+|---|---|---|---|---|---|---|---|
+| regime | quiescent | quiescent | **bursting** | **bursting** | tonic | tonic | tonic |
+
+**E13.** Burst period moves **0.02%** between dt_max = 0.05 and 0.0125 ms. Converged. Note
+dt_max 0.2 and 0.1 give *identical* output at an external dt of 0.1 — both reduce to one
+substep — so that agreement is not evidence of dt-independence, and a second test pins the
+substep count to dt_max to stop that being misread.
+
+**E15.** Mg²⁺ relief now spans **11.80×** (0.071 → 0.842) against the **4.50×** measured on
+the LIF preBotC, with peak/rest 6.52×. The design doc projected 15.5× for a cell spanning
+−65..+20 mV; this cell spans −61.9..+6.5, so the realised gain is 2.6× rather than 3.4×.
+Reporting the measured value, not the projection.
+
+### Two traps found while building, both silent
+1. **The noise term.** I wrote the current-noise amplitude as `sigma/sqrt(hs)` and then
+   multiplied back by `sqrt(hs)`, so the two factors cancelled and the noise did **not scale
+   with the substep at all**. Halving dt would then have quietly changed the noise amplitude
+   and contaminated the E13 dt-convergence test with the very thing that test exists to
+   detect. Now written as the Wiener increment directly.
+2. **The i_app sign differs from the source encoding.** The CellML writes
+   `dV/dt = −(i_NaP + i_Na + i_K + i_L + i_tonic + i_app)/C`, putting i_app *inside* the
+   negated sum, so there a positive i_app **hyperpolarises**. Here it is outside, matching
+   `cpg.Pop` where a positive `Idrive` depolarises. Matching the LIF is right — the whole
+   point is that a circuit can swap substrates without changing its stepping loop — but
+   anyone comparing against published figures must flip the sign, and a sign error on the
+   bifurcation parameter would move the cell between regimes while looking plausible.
+
+### Compute: measured 4.1×, not the estimated 20×
+`CondPop` vs `cpg.Pop`, 2 s simulated: **3.67× at n=1, 4.12× at n=50.** The estimate reasoned
+"~10 transcendentals against ~1, times 2 substeps"; both factors were real, and the error was
+treating them as the whole cost. Shared per-step overhead (the receptor loop, RNG draws,
+numpy dispatch on small arrays) dominates at these population sizes. **This loosens the
+budget enough that running the conductance arm at the full 20,000 draws is plausible**, so
+§6's reduced-draw compromise should be re-examined against a timed network run rather than
+assumed.
+
+### E14: mixed cell/weight pairs are now unconstructible
+The predicted most-likely defect of this migration. The LIF cell is C=200 pF, g_L=10 nS;
+this one is C=21 pF, g_L=2.8 nS. Every synaptic weight in the package is in nS, hand-tuned
+against the LIF. `ParamSet` refuses a weight table whose provenance does not name its cell,
+so the silent order-of-magnitude error is structurally impossible rather than guarded by a
+comment.
+
+### What is NOT done
+Link 5. The cell is built and characterised **in isolation**; no circuit uses it yet.
+`resp.py`, `rg2.py` and `circuit.py` still construct `cpg.Pop`, and they assign `g_adapt`
+*after* construction — which would switch adaptation back on and re-introduce E18 the moment
+a circuit is pointed at `CondPop`. That is link 5's first problem, not a defect in link 4.
+The substrate-independence comparison (§6), which is the actual deliverable, needs the
+network.

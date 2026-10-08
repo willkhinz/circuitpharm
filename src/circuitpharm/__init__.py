@@ -73,6 +73,14 @@ from .config import (
 # hard dependency here, not an optional extra.
 from .evaluation import Compound, evaluate, clear_control_cache  # noqa: E402
 
+# Roadmap link 4: the conductance-based substrate. Exported because the LIF-vs-conductance
+# comparison is the deliverable of links 4-5, and an unexported class is one nobody runs
+# (review 4 found `Compound` and `evaluate` unexported for exactly this reason).
+from .neuron import (  # noqa: E402
+    BRS1999_MODEL1, CELLS, CellParams, CondPop, ParamSet, ProvenanceMismatch,
+    isolated, run_isolated, spike_regime,
+)
+
 __version__ = "0.1.0"
 
 
@@ -83,5 +91,7 @@ __all__ = [
     "FOREBRAIN_GLUN2B", "BRAINSTEM_GLUN2B", "EUPNOEA_BAND",
     "CALIBRATIONS", "Calibration", "calibration_report",
     "Compound", "evaluate", "clear_control_cache",
+    "BRS1999_MODEL1", "CELLS", "CellParams", "CondPop", "ParamSet",
+    "ProvenanceMismatch", "isolated", "run_isolated", "spike_regime",
     "__version__",
 ]

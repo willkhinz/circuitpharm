@@ -302,16 +302,28 @@ is the statistic of interest; the full 20k stays on LIF.
 The constraint here is wall-clock and heat, not RAM — state grows from 2 arrays of n floats
 per population to 3. Memory is a non-issue; duration is not.
 
-Per-step cost: ~10 transcendental evaluations per cell (m∞, n∞, h∞, mp∞, τ_n, τ_h) against the
-LIF's ~1, all vectorised over n ≤ 50. Step count rises 0.1 → ~0.05 ms, so 2×. Expect **~20×**
-per simulation, with the Butera three-state economy being what keeps it off the ~60× a full
-HH model would cost.
+**MEASURED: 4.1×** (`CondPop` vs `cpg.Pop`, 2 s simulated, same conductance dict, n = 1 and
+n = 50 — 3.67× and 4.12×). Rule 1 below said to measure before committing, and the estimate
+it was checking against was **~20×**, i.e. 5× too pessimistic.
+
+The estimate reasoned "~10 transcendental evaluations per cell against the LIF's ~1, times 2
+substeps." Both factors were real; the error was treating them as the whole cost. Per-step
+overhead the two substrates share — the loop over receptor conductances, RNG draws, numpy
+dispatch on small arrays — dominates at these population sizes, so the extra arithmetic is
+marginal rather than multiplicative. The Butera three-state economy (V, n, h, with `m` and
+`mp` instantaneous and Na inactivation carried by `1−n`) is what keeps it this cheap.
+
+This materially loosens the budget. At 4×, running the conductance arm at the **full** 20,000
+draws is plausible rather than out of reach, so §6's reduced-draw compromise should be
+re-examined against a timed run before being accepted.
 
 Rules, to be enforced rather than intended:
 
-1. **Measure before committing.** One calibration run, timed, before any analysis script is
-   switched over. The multiplier above is an estimate.
-2. **The Monte Carlo stays on LIF**; the conductance arm runs at reduced draws (§6).
+1. **Measure before committing.** Done, above. Re-measure for the network: the 4.1× figure is
+   for one population stepped in isolation, and link 5 changes the shape of the work.
+2. **The Monte Carlo stays on LIF** unless a timed run says otherwise — which, at 4.1×, it
+   now might. The conductance arm runs at reduced draws (§6) only if the full count proves
+   too slow in practice.
 3. **The plant tolerates this.** `plant.py` runs 2 ms physics with `n_sub=20` neural substeps
    at 0.1 ms; dt = 0.05 means `n_sub=40`. A 2× cost on the motor path is fine.
 4. **Hard rule:** if a script on the conductance backend exceeds its LIF wall-clock by more

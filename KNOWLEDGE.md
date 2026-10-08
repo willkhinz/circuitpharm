@@ -17,35 +17,54 @@ were recoverable only by accident of version control. A plan in chat is the same
 | 1 | structure → binding affinity | **not attempted.** Achievable with ~1 log unit error; worse for subtype selectivity, which is the hardest regime |
 | 2 | affinity → **functional efficacy** | **DECLINED BY DESIGN.** Not predictable from structure; taken as a measured INPUT (`Compound(a1=…, a5=…, s_max=…)`) |
 | 3 | efficacy → conductance change | **BUILT** (`gabaa_kinetics.py`). Calibration BLOCKED on wet-lab data |
-| 4 | conductance → neuron excitability | **NOT DONE.** Still LIF-only |
-| 5 | neurons → circuit dynamics | **NOT DONE.** Weights are "hand-tuned to produce alternating rhythm, NOT fitted to rat data" |
+| 4 | conductance → neuron excitability | **BUILT** (`neuron.py`). Butera–Rinzel–Smith 1999 model 1, conductance-based, real I_NaP. Characterised in isolation; no circuit uses it yet |
+| 5 | neurons → circuit dynamics | **NOT DONE.** Weights are "hand-tuned to produce alternating rhythm, NOT fitted to rat data". Unblocked by link 4; `ParamSet` now refuses a mixed cell/weight pair |
 | 6 | circuit → behaviour | **BUILT for motor** — stretch reflex and closed-loop locomotion |
 
-### The next step is 4 and 5, and they are ONE piece of work
-Link 4 gates link 5. The neurons are leaky integrate-and-fire, and **E7 established that a
-LIF structurally cannot carry voltage-gated mechanisms**: V is reset at threshold so a slow
-voltage-gated gate equilibrates at the subthreshold mean and never moves (measured h-gate
-span 0.01 against a needed 0.7). That forced spike-triggered adaptation as a lumped
-stand-in for I_NaP inactivation *plus* calcium-dependent potassium current *plus* synaptic
-depression — defensible, documented, and not the biophysics.
+### Link 4 is built; link 5 is the remaining half
+Link 4 gated link 5. The LIF neurons structurally cannot carry voltage-gated mechanisms
+(**E7**: V is reset at threshold, so a slow voltage-gated gate equilibrates at the
+subthreshold mean and never moves — measured h-gate span 0.01). That forced spike-triggered
+adaptation as a lumped stand-in for I_NaP inactivation *plus* calcium-dependent potassium
+current *plus* synaptic depression — defensible, documented, and not the biophysics. It also
+blocked link 5, because the published models worth adopting (Butera–Rinzel–Smith,
+Rybak-style locomotor CPGs) are conductance-based with a real I_NaP and cannot drop into a
+LIF substrate.
 
-It also blocks link 5. The published preBötC models worth adopting (the
-Butera–Rinzel–Smith lineage, and Rybak-style locomotor CPGs) are **conductance-based with a
-real I_NaP**, so they cannot be dropped into a LIF substrate. Upgrading the neuron model is
-the precondition for inheriting other people's validation instead of hand-tuning our own —
-which is the single largest credibility gain available WITHOUT new wet-lab data, because it
-replaces "these weights produce a rhythm" with "these are someone else's published,
-independently validated parameters."
+**`src/circuitpharm/neuron.py` now holds a conductance-based cell** — Butera–Rinzel–Smith
+1999 model 1, three state variables (V, n, h; `m` and `mp` instantaneous, Na inactivation
+via `1−n`), Rush–Larsen on the gates, 21 acceptance tests. Design and full rationale:
+`knowledge/05-design-conductance-substrate.md`.
 
-Concretely: move `Pop` to a conductance-based single-compartment neuron (Arbor or NEURON,
-or a hand-rolled Hodgkin–Huxley-style cell — the mechanisms needed are few), then replace
-the hand-tuned preBötC with a published parameter set and re-run the phenotype tests.
+What it demonstrably does that the LIF cannot:
 
-**The full design is written: `knowledge/05-design-conductance-substrate.md`.** It is design
-only, gated per below. It settles the architecture (two selectable backends, so the LIF path
-stays byte-identical and the two can be COMPARED), the cell (Butera–Rinzel–Smith Model 1 —
-three state variables, so ~20x cost rather than ~60x), six acceptance tests, six predicted
-new failure modes, and what the upgrade does NOT fix.
+* **V reaches +6.49 mV** and the h gate spans **0.4544** against the LIF's 0.01 — E7's test,
+  inverted.
+* **Freezing h abolishes bursting in every direction**: quiescent at h=0.46, tonic at 68.8
+  and 118.9 Hz at h=0.60 and 0.90. So the rhythm comes from slow voltage-dependent I_NaP
+  inactivation, not from something incidental. The LIF can neither pass nor fail this — it
+  has no h gate to clamp. *This replaced a pre-committed h-span threshold of 0.5, which the
+  cell misses at 0.454; that 0.7/0.5 figure was never sourced, and the functional test is
+  what it was a proxy for. Recorded in WORKLOG rather than quietly adjusted.*
+* **Bursts with adaptation entirely off**, and `g_NaP → 0` makes the isolated cell quiescent.
+* **Reproduces the published excitability sequence** quiescent → bursting → tonic in drive,
+  which was not fitted by us.
+* **Mg²⁺ relief spans 11.80×** against the LIF's 4.50× — the state-dependence the whole NMDA
+  arm rests on.
+
+Reading the parameters off a machine-readable source rather than reciting them caught a real
+error: **E_L is −57.5 mV, not −65 mV.** E_L is this model's bifurcation parameter, and the
+recalled value gives a **completely silent cell** — zero spikes. The bursting band is only a
+few mV wide (−60 and −55 are both tonic; only −57.5 bursts), so the rhythm would then have
+been retuned around a wrong resting drive to compensate.
+
+**Measured cost: 4.1× the LIF**, not the estimated ~20× — loose enough that the conductance
+arm of the substrate-independence comparison may not need reduced draws after all.
+
+**Still to do (link 5):** no circuit uses the cell yet. `resp.py`, `rg2.py` and `circuit.py`
+construct `cpg.Pop`, and they assign `g_adapt` *after* construction, which would switch
+adaptation back on and re-introduce E18 the moment a circuit is pointed at `CondPop`. The
+substrate-independence comparison — the actual deliverable — needs the network.
 
 ### Why the upgrade is not cosmetic — measured, not argued
 `scripts/diag_substrate_limits.py`. The LIF preBötC holds V in [−71, −44] mV, and:
