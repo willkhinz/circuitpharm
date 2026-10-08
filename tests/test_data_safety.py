@@ -20,6 +20,15 @@ REPO = pathlib.Path(__file__).resolve().parents[1]
 DB = REPO / "data" / "pharmacology.db"
 BUILDERS = ["build_kb.py", "build_compounds.py"]
 
+# These tests inspect the SOURCE of the builder scripts, so they need the repository
+# checkout rather than an installed package. Found by running the suite against a clean
+# `pip install` in /tmp, where tests/ was present and scripts/ was not -- they errored
+# instead of skipping, which would fail CI for anyone testing an installed copy.
+HAVE_SCRIPTS = (REPO / "scripts").is_dir()
+needs_repo = pytest.mark.skipif(
+    not HAVE_SCRIPTS,
+    reason="needs the repository checkout (inspects scripts/ source), not an installed copy")
+
 
 @pytest.mark.skipif(not DB.exists(), reason="no database in this checkout")
 def test_database_still_holds_the_accumulated_rows():
@@ -30,6 +39,7 @@ def test_database_still_holds_the_accumulated_rows():
     assert c.execute("select count(*) from model_facts").fetchone()[0] >= 28
 
 
+@needs_repo
 @pytest.mark.parametrize("name", BUILDERS)
 def test_builders_have_a_destruction_guard(name):
     """Any script that drops or unlinks must first compare against the live row count."""
@@ -43,6 +53,7 @@ def test_builders_have_a_destruction_guard(name):
     assert "--force" in src, f"{name} offers no explicit override"
 
 
+@needs_repo
 @pytest.mark.parametrize("name", BUILDERS)
 def test_builders_do_nothing_on_import(name):
     """Before session 8 these ran at module level, so importing them rebuilt the database.

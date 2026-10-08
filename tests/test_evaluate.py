@@ -140,6 +140,7 @@ def test_every_uncalibrated_quantity_states_how_to_promote_it_or_why_not():
 
 # ------------------------------------------------------------------ motor endpoints
 @pytest.mark.slow
+@pytest.mark.needs_plant
 def test_evaluate_includes_all_three_endpoints():
     """The package has respiratory, reflex and locomotor endpoints; the public API must
     expose all three, or users will reach past it into the modules."""
@@ -149,6 +150,7 @@ def test_evaluate_includes_all_three_endpoints():
 
 
 @pytest.mark.slow
+@pytest.mark.needs_plant
 def test_joint_excursion_is_void_in_the_api_too():
     """The invalid metric must be VOID at the API boundary, not just renamed in the assay.
     Renaming protects a careful reader; the tier protects everyone else."""

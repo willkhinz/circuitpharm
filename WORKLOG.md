@@ -2053,3 +2053,40 @@ what is missing and how to get it, with the respiratory and receptor-level resul
 rather than by hand-marking — so a newly added plant test cannot forget its marker and
 turn a healthy lean install into a red build. The regression test simulates the absence
 even when mujoco IS installed, otherwise it would pass for the wrong reason.
+
+### Clean-install verification found 5 more failures the local run hides
+The package had only ever been installed in-place in the development venv, which masks
+missing dependencies and layout assumptions. Built a fresh venv in /tmp, installed
+`"/Users/whinz/Biochemistry[dev]"` (LEAN: no plant, no chem) and ran the suite. Five
+failures, both classes real:
+
+1. **`test_evaluate_includes_all_three_endpoints`** asserted `reflex_gain` and `step_period`
+   exist, which on a lean install they legitimately do not. The conftest auto-skip missed
+   it because the heuristic looks for calls to `stretch_reflex`/`locomotion` and this test
+   never names them — it calls `evaluate()` and inspects result KEYS. So the heuristic
+   alone is insufficient; plant-dependent tests now carry an explicit
+   `@pytest.mark.needs_plant`, which the conftest honours, with the heuristic kept as a
+   safety net.
+2. **Four `test_data_safety` tests** read the SOURCE of the builder scripts via
+   `parents[1]/scripts`, so they assume a repository checkout. They errored rather than
+   skipped for anyone who pip-installs the package and runs the tests from elsewhere. Now
+   skipped behind `needs_repo`.
+
+Result after fixing: **full install 147 passed / 0 skipped; lean install 91 passed /
+18 skipped.** Both correct.
+
+### CI split into LEAN and FULL jobs
+A single job could not catch this, because whichever configuration it tested would hide
+bugs in the other. Now:
+- **lean** (3.11 and 3.12): core only, and it ASSERTS mujoco and rdkit are absent before
+  running, so the job cannot silently become a full install and stop testing what it exists
+  to test.
+- **full** (3.11): installs `.[all]` with `MUJOCO_GL=osmesa` for the headless runner, runs
+  coverage, and FAILS if anything is skipped — a skip on the full install means an optional
+  dependency silently went missing.
+
+Also `-n auto` instead of `-n 8` (eight workers each running a MuJoCo simulation thrash on
+a 2-core runner, which is likely why early CI runs sat at 17+ minutes against 2m39s
+locally), and `timeout-minutes` so a stuck runner fails instead of hanging.
+
+`CITATION.cff` added.

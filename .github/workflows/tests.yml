@@ -6,35 +6,66 @@ on:
   pull_request:
 
 jobs:
-  test:
+  # LEAN install: core only, no MuJoCo body plant and no RDKit. This is what most users
+  # will have, and it is the configuration that actually broke -- evaluate() crashed
+  # without the plant because the ImportError surfaced on first CALL rather than at import,
+  # outside the guard. It passed on a developer machine purely because MuJoCo happened to
+  # be present there. So the lean install gets its own job.
+  lean:
     timeout-minutes: 30
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
         python-version: ["3.11", "3.12"]
-
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-
-      # The MuJoCo body plant and RDKit are optional extras. The receptor, kinetic and
-      # circuit layers -- which is what the test suite covers -- need only numpy + scipy,
-      # so CI installs the lean set and stays fast.
-      - name: Install
+      - name: Install (core + test tools only)
         run: |
           python -m pip install --upgrade pip
           pip install -e ".[dev]"
-
+      - name: Confirm the optional extras really are absent
+        run: |
+          python - <<'PY'
+          for m in ("mujoco", "rdkit"):
+              try:
+                  __import__(m)
+                  raise SystemExit(f"{m} is installed; this job must test the LEAN install")
+              except ImportError:
+                  print(f"{m} absent, as intended")
+          PY
       - name: Fast tests
-        run: pytest -m "not slow" -q -n auto
-
-      # The slow tests integrate full 14-30 s circuit simulations (the strychnine
-      # phenotype, the preBotC rhythmogenesis checks). They are the ones that would
-      # actually catch a regression in the dynamics, so they run too -- just separately,
-      # so a failure says which kind it was.
+        run: pytest -m "not slow" -q -rs
       - name: Circuit integration tests
-        run: pytest -m slow -q -n auto --cov=circuitpharm --cov-report=term
+        run: pytest -m slow -q -rs
+
+  # FULL install: adds the body plant and the chemistry tools, so the reflex, locomotor and
+  # parity tests actually run instead of skipping. This is the job that exercises the
+  # published phenotypes.
+  full:
+    timeout-minutes: 45
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install everything
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[all]" pytest-xdist pytest-cov
+      - name: Full suite with coverage
+        # MuJoCo needs a software GL backend on a headless runner
+        env:
+          MUJOCO_GL: osmesa
+        run: pytest -q -rs --cov --cov-report=term
+      - name: Assert nothing was skipped
+        run: |
+          pytest -q -rs 2>&1 | tee /tmp/out.txt
+          if grep -qi "skipped" /tmp/out.txt; then
+            echo "Tests skipped on the FULL install -- an optional dependency is missing"
+            exit 1
+          fi

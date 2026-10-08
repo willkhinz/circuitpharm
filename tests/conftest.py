@@ -53,7 +53,13 @@ def pytest_collection_modifyitems(config, items):
             pass
         names = set(getattr(item.function, "__code__", None).co_names) \
             if getattr(item.function, "__code__", None) else set()
-        if names & {"stretch_reflex", "locomotion", "JointPlant", "model_xml"} \
+        # explicit marker wins; the heuristic is a safety net for tests that forget it.
+        # The heuristic alone is NOT sufficient: a test can depend on the plant without
+        # ever naming an assay -- e.g. one that calls evaluate() and asserts the motor
+        # keys are present. That case was found by running the suite against a clean
+        # install, so plant-dependent tests should carry @pytest.mark.needs_plant.
+        explicit = item.get_closest_marker("needs_plant") is not None
+        if explicit or names & {"stretch_reflex", "locomotion", "JointPlant", "model_xml"} \
            or "plant" in item.name or "walk" in item.name or "reflex" in item.name \
            or "excursion" in item.name or "locomot" in item.name:
             item.add_marker(skip)

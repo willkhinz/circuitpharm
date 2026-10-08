@@ -1,0 +1,31 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+title: "circuitpharm: receptor-resolved pharmacology coupled to spiking neural circuits, with enforced reliability tiers"
+abstract: >-
+  A multiscale instrument that takes a compound's measured receptor activity and propagates
+  it to circuit-level and motor/autonomic endpoints (respiratory rhythm, spinal stretch
+  reflex, closed-loop locomotion), attaching an explicit reliability tier to every quantity
+  it reports. Reading a quantity marked VOID raises rather than returning a caveated
+  number. The package declines to close two links in the chain from chemical structure to
+  behaviour: allosteric efficacy is taken as a measured input rather than predicted from
+  structure, and behaviour is restricted to outputs whose generating circuits are
+  biophysically modellable. Catalogued modelling failure modes are shipped as executable
+  regression tests.
+type: software
+authors:
+  - given-names: William
+    family-names: Hinz
+    email: hinzwilliam52@gmail.com
+version: 0.1.0
+date-released: "2026-10-08"
+license: MIT
+repository-code: "https://github.com/willkhinz/circuitpharm"
+keywords:
+  - computational neuroscience
+  - pharmacology
+  - GABA-A receptor
+  - respiratory rhythm
+  - preBotzinger complex
+  - spiking neural networks
+  - identifiability
+  - reproducibility
