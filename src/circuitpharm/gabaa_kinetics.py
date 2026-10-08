@@ -85,6 +85,13 @@ from dataclasses import dataclass, replace
 import numpy as np
 from scipy.integrate import solve_ivp
 
+# np.trapezoid was added in NumPy 2.0 and np.trapz was REMOVED in it, while pyproject
+# allows numpy>=1.26 -- so neither name alone works across the supported range. Resolved
+# once at import rather than per call.
+_trapz = getattr(np, "trapezoid", None) or getattr(np, "trapz", None)
+if _trapz is None:                                    # pragma: no cover
+    raise ImportError("numpy exposes neither trapezoid nor trapz")
+
 STATES = ("R", "AR", "A2R", "A2O", "A2D")
 OPEN = STATES.index("A2O")
 
@@ -212,7 +219,7 @@ class Scheme:
             c = np.polyfit(tail_t[m] - tail_t[m][0], np.log(tail_p[m]), 1)
             if c[0] < 0:
                 tau = float(-1.0 / c[0])
-        return dict(peak=pk, tau=tau, charge=float(np.trapezoid(po, t)))
+        return dict(peak=pk, tau=tau, charge=float(_trapz(po, t)))
 
     def dose_response(self, concs_um) -> np.ndarray:
         return np.array([self.po_peak(c) for c in concs_um])

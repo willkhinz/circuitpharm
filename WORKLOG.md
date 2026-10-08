@@ -2090,3 +2090,85 @@ a 2-core runner, which is likely why early CI runs sat at 17+ minutes against 2m
 locally), and `timeout-minutes` so a stuck runner fails instead of hanging.
 
 `CITATION.cff` added.
+
+---
+
+## 2026-10-07 — Session 8c: two external code reviews, 20 defects, all real
+
+Two reviews arrived. **All 20 findings were legitimate and all 20 were mine.** Several were
+scientifically consequential rather than cosmetic. Fixed, with regressions in
+`tests/test_review_regressions.py`.
+
+### Review 1 (9 findings) — worst first
+1. **Reproducibility broken.** `Pop.__post_init__` seeded its RNG with
+   `abs(hash(self.name))`, and `hash(str)` is randomised per interpreter via PYTHONHASHSEED.
+   Measured V0[0] = **-71.05, -62.73, -69.90** across three processes for the same
+   population with the same explicit seed. Every published number was irreproducible
+   between runs. Fixed with `zlib.crc32`; verified identical across processes. The
+   regression test runs in SUBPROCESSES, because within one process the hash is stable and
+   an in-process check would have passed while the bug was live.
+2. **Global class-state mutation.** The stretch-reflex assay rescaled Ia→Mn by MUTATING
+   `SpinalCircuit.W` (a class attribute) and restoring it in a `finally` — corrupting every
+   other instance in the process, permanently if an exception landed first. `SpinalCircuit`
+   now takes per-instance weights like `PreBotC` and `GroupPacemakerRG` always did.
+   Verified results identical (0.269, 0.370) and the class attribute untouched.
+3. **Motor endpoints were single-seed** (`seed=1` hard-coded) while ventilation averaged
+   over `n_seed` — recurring error **E6, committed in the public API**. Now averaged.
+4. **Booleans printed as 1/0** (`bool` subclasses `int`, so `f"{True:.4g}"` → "1").
+5. **The NMDA subjective arm was dropped** when evaluation moved out of the old simulator,
+   silently under-reporting every compound with an NMDA component — and the two-arm design
+   is the entire point. Restored, but reported SEPARATELY with the total marked **VOID**,
+   because the arms are in incommensurable units and the project's "GABA salience ≥ NMDA
+   salience" constraint compares them directly. That constraint selects the recommended
+   ratio, so the defect is load-bearing and must not hide behind a plausible total.
+6. **`max(1e-6, ia_dyn - ia_base)`** divided by 1e-6 when the Ia response was NEGATIVE,
+   turning a 0.5 Hz drop into a gain of **5,000,000**. Now NaN with a stated reason.
+7. **NaN propagation**: an unreachable `s_max` made `calibrate_pam` return NaN → NaN
+   conductances → NaN voltages, surfacing as "SVD did not converge" and raw LAPACK errors.
+   Now raises at the cause.
+8. **Over-broad skip heuristic**: any test with "reflex" or "walk" in its NAME was skipped
+   on a lean install. A test skipped when it should run is worse than a failing one.
+9. **`fail_under` in pyproject** fired on any coverage run, so `pytest -m "not slow" --cov`
+   failed at 65% with every test passing. Moved to CI on the full suite.
+
+### Review 2 (11 findings)
+1. **`np.trapezoid` is NumPy 2.0+** while pyproject allows `numpy>=1.26`; `np.trapz` was
+   removed in 2.0, so neither name alone spans the supported range. Resolved once at import.
+2. **GLYCINE SENSITIVITY WAS BOUND TO GABA-A SUBUNIT FRACTIONS** — the most serious finding
+   in either review. `sens=(gaba_sens_phasic if rec in ("gabaa", "gly") else 1.0)` scaled
+   glycinergic drug action by a fraction computed from α1/α2-3/α5 expression. Glycine
+   receptors contain no GABA-A subunits, so this is a category error. Measured: a 1.6x
+   glycine potentiation became **1.0019x** at alogabat's preBötC sensitivity — ethanol's
+   glycine mechanism and strychnine were ~99.8% deleted from the circuit, silently. Now a
+   separate `glyr_sens`, defaulting to 1.0, in `resp.py`, `rg2.py`, `circuit.py` and
+   `plant.py`.
+3. **`from_profile` discarded each compound's ceiling**, defaulting `s_max=2.5` for all:
+   imepitoin (1.25) was modelled at twice its real ceiling and the neurosteroid arm (6.0)
+   at 42% of its. Since `s_max` sets achievable effect AND overdose protection, this
+   flattened exactly the distinction the safety argument turns on.
+4. **Trajectory fencepost**: segments sampled s = 0 … T-DT, so a ramp never reached its
+   endpoint and the next segment jumped to it — a 0.018 rad step in one 2 ms timestep,
+   injecting an impulse into spindle velocity, which is the dominant Ia input. Now 0.000.
+5. **`mj_name2id` returns -1** for an unknown name and Python indexes the LAST actuator, so
+   a typo'd joint silently drove the wrong muscle. Now raises.
+6. **`reflex_panel.py` double-scaled Ia** (its own `scale` AND the assay's 0.30 default),
+   so every point on that sweep was mislabelled by >3x — and it still mutated the class
+   attribute.
+7. **`kb.py` opened the database read-write** while accepting arbitrary SQL. Now `mode=ro`.
+8. **`build_compounds.py` had no backup** and used `>` so `live == WILL_WRITE` wiped edits.
+9. **A NaN selectivity ratio was tagged VALIDATED**, printing
+   `selectivity_ratio: nan x [VALIDATED]` — unearned authority of exactly the kind the tier
+   system exists to prevent. Non-finite now VOID.
+10. **`np.int64` is not `isinstance` of `int`**, so numpy scalars lost units and precision.
+11. **CLI `--s-max` defaulted to 2.5**, overwriting every profile's ceiling.
+
+### And fixing them corrected a previously reported result
+Removing the trajectory impulse (R2 #4) and averaging over seeds changed the GluN2B
+selectivity window: **75% non-selective vs 100% selective, a 24-point window**, against the
+18 points previously recorded from single-seed runs (84% vs 102%). The window is **wider
+and cleaner** than reported. The single-seed value after the fix was 92%, which tripped my
+own threshold — reading it as the answer would have been E6 again, inside the test suite
+that exists to catch E6.
+
+**160 tests passing.** The lesson I take: every one of these 20 produced plausible output.
+Twelve sessions of scrutiny by the same eyes did not surface a single one of them.

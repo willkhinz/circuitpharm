@@ -12,6 +12,8 @@ Columns of judgement:
 """
 import sqlite3, pathlib
 import sys
+import datetime
+import shutil
 # SIDE-EFFECT GUARD added 2026-10-07. This script previously did its work at MODULE level,
 # so merely importing it ran it. For `port_muscle.py` that regenerated the MuJoCo body
 # model, and for `build_kb.py`/`build_compounds.py` it rewrote the pharmacology database --
@@ -32,10 +34,19 @@ def main():
         live = c.execute("select count(*) from compounds").fetchone()[0]
     except Exception:
         live = 0
-    if live > WILL_WRITE and "--force" not in sys.argv:
+    # `>=`, not `>`: at exactly WILL_WRITE rows the live table may still carry edits made
+    # directly to the database, and rebuilding would silently discard them. And back up
+    # unconditionally, as build_kb.py does -- this script dropped the table with no backup
+    # at all, so a --force with a wrong WILL_WRITE would have been unrecoverable.
+    if live >= WILL_WRITE and "--force" not in sys.argv:
         print(f"REFUSING: compounds has {live} rows live, this script writes {WILL_WRITE}.")
-        print("Rebuilding would discard rows added later. Use --force, or INSERT instead.")
+        print("Rebuilding would discard any rows or edits made since. Use --force, or")
+        print("INSERT into the table instead of rebuilding it.")
         return
+    if live:
+        backup = DB.with_suffix(f".backup-{datetime.datetime.now():%Y%m%d-%H%M%S}.db")
+        shutil.copy2(DB, backup)
+        print(f"backed up existing database to {backup.name}")
     c.execute("DROP TABLE IF EXISTS compounds")
     c.execute("""CREATE TABLE compounds(
       name TEXT, arm TEXT, target TEXT, status TEXT,

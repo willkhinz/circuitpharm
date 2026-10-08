@@ -69,14 +69,28 @@ class SpinalCircuit:
     def __init__(self, drug: Drug | None = None, rg_gain=RG_GAIN_PER_NEURON,
                  gaba_tonic=2.0, ia_n=25,
                  gaba_sens=1.0, gaba_sens_tonic=None, gaba_sens_phasic=None,
+                 glyr_sens=1.0,
                  drive_pf=110.0, drive_mn=100.0, drive_in=75.0,
-                 rg_kw=None, seed=0):
+                 rg_kw=None, w=None, seed=0):
         self.drug = drug or Drug()
         self.rg = GroupPacemakerRG(drug=self.drug, seed=seed, **(rg_kw or {}))
         # rg_gain maps RG output (arb units) to an equivalent TOTAL presynaptic rate,
         # i.e. it already absorbs the presynaptic population size. ia_n is kept explicit
         # because a muscle has ~25 Ia afferents and omitting that factor silently makes
         # the stretch reflex ~25x too weak to reach motoneuron threshold.
+        # PER-INSTANCE weights. `W` is still declared at class level as the documented
+        # default, but each instance now gets its own copy and an optional override --
+        # matching PreBotC and GroupPacemakerRG, which always worked this way.
+        #
+        # Why this changed: the stretch-reflex assay needs to rescale the Ia->Mn weight
+        # (recurring error E5 -- at full weight the motoneuron peak pins at the tref
+        # ceiling and every drug reads ~100% of control). With no instance copy, the only
+        # way to do that was to MUTATE THE CLASS ATTRIBUTE and restore it in a `finally`.
+        # That corrupts weights for every other instance in the process if two assays run
+        # concurrently, or if an exception lands between the assignment and the restore.
+        self.W = dict(self.W)
+        if w:
+            self.W.update(w)
         self.rg_gain = rg_gain
         self.ia_n = ia_n
         self.gaba_sens = gaba_sens
@@ -84,6 +98,9 @@ class SpinalCircuit:
         # the legacy single-pool behaviour exactly
         self.gaba_sens_tonic = gaba_sens if gaba_sens_tonic is None else gaba_sens_tonic
         self.gaba_sens_phasic = gaba_sens if gaba_sens_phasic is None else gaba_sens_phasic
+        # Glycine gets its own sensitivity -- it contains no GABA-A subunits, so a
+        # GABA-A-derived fraction says nothing about it. See resp.py for the full note.
+        self.glyr_sens = glyr_sens
         self.gaba_tonic = gaba_tonic
         self.drive = dict(PF=drive_pf, Mn=drive_mn, InPF=drive_in,
                           IaIn=drive_in, Rc=drive_in)
@@ -99,7 +116,8 @@ class SpinalCircuit:
                 for rec in ("ampa", "nmda", "gabaa", "gly"):
                     self.syn[(nm, rec)] = Syn(
                         n, rec, self.drug,
-                        sens=(self.gaba_sens_phasic if rec in ("gabaa", "gly") else 1.0))
+                        sens=(self.gaba_sens_phasic if rec == "gabaa"
+                              else self.glyr_sens if rec == "gly" else 1.0))
         self.t = 0.0
         self.trace = {k: [] for k in self.pops}
         self.trace.update(t=[], RG_F=[], RG_E=[])

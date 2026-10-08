@@ -35,6 +35,7 @@ SIMPLIFICATIONS, stated honestly:
     rat data. They are a working substrate, not a validated model. Validation against
     the four motor anchors (see knowledge/03-model-spec.md) has NOT been done.
 """
+import zlib
 from dataclasses import dataclass, field
 import numpy as np
 
@@ -145,7 +146,14 @@ class Pop:
     sigma: float = 0.20             # noise, mV/sqrt(ms)
 
     def __post_init__(self):
-        rng = np.random.default_rng(abs(hash(self.name)) % (2**32))
+        # STABLE hash, not Python's. `hash(str)` is randomised per interpreter process via
+        # PYTHONHASHSEED, so `abs(hash(self.name))` gave DIFFERENT initial membrane
+        # voltages on every run even when the caller passed an explicit seed -- measured
+        # V0[0] = -71.05, -62.73, -69.90 across three processes for the same population.
+        # That makes every result irreproducible between runs, which for a tool whose
+        # output is meant to be checked by others is fatal rather than cosmetic.
+        # crc32 is stable across processes, versions and platforms.
+        rng = np.random.default_rng(zlib.crc32(self.name.encode()) % (2**32))
         self.V = self.EL + rng.normal(0, 3.0, self.n)
         self.ref = np.zeros(self.n)
         self.a = np.zeros(self.n)            # spike-triggered adaptation (nS)

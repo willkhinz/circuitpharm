@@ -40,6 +40,7 @@ class PreBotC:
     def __init__(self, drug: Drug | None = None, n_exc=50, n_inh=20, n_out=20,
                  drive=190.0, gaba_tonic=1.5, g_adapt=1.6, tau_adapt=450.0,
                  gaba_sens=1.0, gaba_sens_tonic=None, gaba_sens_phasic=None,
+                 glyr_sens=1.0,
                  resp_drive_boost=0.0, w=None, seed=0):
         self.drug = drug or Drug()
         self.W = dict(ee_ampa=0.16, ee_nmda=0.09,     # recurrent excitation (rhythmogenic)
@@ -72,6 +73,18 @@ class PreBotC:
         # single-pool behaviour exactly.
         self.gaba_sens_tonic = gaba_sens if gaba_sens_tonic is None else gaba_sens_tonic
         self.gaba_sens_phasic = gaba_sens if gaba_sens_phasic is None else gaba_sens_phasic
+        # GLYCINE GETS ITS OWN SENSITIVITY. `gly` used to be lumped with `gabaa` and
+        # scaled by the GABA-A-derived fraction, which is a category error: glycine
+        # receptors contain no GABA-A subunits, so a fraction computed from alpha1/
+        # alpha2-3/alpha5 expression says nothing about how much of the glycinergic
+        # conductance a drug can reach. The effect was severe and silent -- at alogabat's
+        # preBotC phasic sensitivity a 1.6x glycine potentiation became 1.0019x, i.e.
+        # ethanol's glycine mechanism and strychnine were ~99.8% deleted from the circuit.
+        #
+        # Default 1.0: a glycine-site ligand reaches the glycinergic conductance. Narrow it
+        # only with a glycine-specific measurement, never with a GABA-A number.
+        self.glyr_sens = glyr_sens
+
         # EMPIRICAL OVERRIDE, not derived from this circuit.
         # Ketamine-class NMDA channel blockers do NOT depress breathing -- clinically they
         # PRESERVE respiratory drive and airway reflexes, and s-ketamine actively
@@ -93,8 +106,9 @@ class PreBotC:
             p.tref = 5.0
             self.pops[nm] = p
         self.syn = {(nm, rec): Syn(p.n, rec, self.drug,
-                                   sens=(self.gaba_sens_phasic
-                                         if rec in ("gabaa", "gly") else 1.0))
+                                   sens=(self.gaba_sens_phasic if rec == "gabaa"
+                                         else self.glyr_sens if rec == "gly"
+                                         else 1.0))
                     for nm, p in self.pops.items()
                     for rec in ("ampa", "nmda", "gabaa", "gly")}
         self.t = 0.0

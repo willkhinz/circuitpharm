@@ -26,6 +26,7 @@ full occupancy, and that saturation -- set by the ligand's own intrinsic alloste
 efficacy `s_max` -- is the only honest ceiling.
 """
 from __future__ import annotations
+import math
 from dataclasses import dataclass, field
 import numpy as np
 
@@ -62,7 +63,17 @@ class Compound:
 
     @classmethod
     def from_profile(cls, key: str, **kw) -> "Compound":
+        """Build from a named profile, CARRYING ITS CEILING into `s_max`.
+
+        `s_max` used to default to 2.5 for every profile, discarding each compound's own
+        measured efficacy ceiling: imepitoin (1.25) was modelled at twice its real ceiling
+        and the neurosteroid arm (6.0) at under half of its. Since `s_max` is what sets
+        achievable effect and overdose protection, that silently flattened the distinction
+        between a low-efficacy partial modulator and a high-efficacy one -- which is the
+        distinction the project's safety argument turns on.
+        """
         p = PROFILES[key]
+        kw.setdefault("s_max", p.ceiling)
         return cls(name=p.name, a1=p.a1, a23=p.a23, a5=p.a5,
                    d_a4=p.d_a4, eps=p.eps, **kw)
 
@@ -85,6 +96,21 @@ class Compound:
             s = fit_scheme(verbose=False, pulse=pulse)
             aff = calibrate_pam(s, self.s_max, "affinity",
                                 pulse=pulse, ambient_um=ambient_um)
+            # calibrate_pam returns NaN when the requested EC50 shift is UNREACHABLE by an
+            # affinity-type mechanism. Unchecked, that NaN becomes koff=NaN, then NaN
+            # conductances, then NaN voltages inside the LIF integrator -- surfacing as
+            # "SVD did not converge in Linear Least Squares" and raw LAPACK complaints far
+            # from the cause. Fail here, where the reason is still visible.
+            if not np.isfinite(aff):
+                raise ValueError(
+                    f"s_max={self.s_max} (an EC50 left-shift of {self.s_max}x) is not "
+                    f"reachable by an affinity-type modulator in this scheme at ambient "
+                    f"{ambient_um} uM. A pure affinity shift SATURATES -- it can only move "
+                    f"the receptor up its own dose-response curve, so there is a maximum "
+                    f"shift it can produce. Classical benzodiazepine-site ligands sit "
+                    f"around 2-3x. Either lower s_max, or model a gating-type modulator "
+                    f"(which raises maximal current and is not bounded the same way) via "
+                    f"Scheme.pam(gating=...).")
             self._gains[key] = derive(s, affinity=aff, ambient_um=ambient_um,
                                       pulse=pulse)
         full = self._gains[key]
@@ -181,8 +207,14 @@ def evaluate(cand: Compound, n_seed=4, reference="nonselective_bz",
 
     # --- VALIDATED: the calibration-independent ranking -----------------------------
     ratio = cand.selectivity_ratio(reference=reference)
+    # A NaN or infinite ratio must NOT carry the VALIDATED tier. It arises when a compound
+    # has essentially no respiratory burden, so the denominator vanishes -- an undefined
+    # quantity, not a validated one. Printing "selectivity_ratio: nan x [VALIDATED]" would
+    # be precisely the kind of unearned authority the tier system exists to prevent.
+    ratio_ok = isinstance(ratio, float) and math.isfinite(ratio)
     rs.add(Quantity(
-        name="selectivity_ratio", _value=ratio, tier=Tier.VALIDATED, units="x",
+        name="selectivity_ratio", _value=ratio,
+        tier=(Tier.VALIDATED if ratio_ok else Tier.VOID), units="x",
         provenance=f"subjective drive per unit preBotC burden, relative to {reference}; "
                    "a ratio, so the unknown lumped sensitivity factor cancels. Survives "
                    "20,000-draw propagation over every estimated parameter at the 5th pct.",
@@ -207,14 +239,48 @@ def evaluate(cand: Compound, n_seed=4, reference="nonselective_bz",
                     provenance="regional subunit composition x synaptic localisation"))
 
     subj_t, subj_p = cand.gaba.subjective_index_split()
-    delivered = subj_t * (g["tonic"] - 1.0) + subj_p * (g["phasic"] - 1.0)
-    rs.add(Quantity("subjective_index", delivered, Tier.UNCALIBRATED,
+    gaba_term = subj_t * (g["tonic"] - 1.0) + subj_p * (g["phasic"] - 1.0)
+    rs.add(Quantity("subjective_index_gaba", gaba_term, Tier.UNCALIBRATED,
                     provenance="algebra over discrimination-literature weights, NOT a "
                                "simulation; the forebrain reference sensitivity is a unit "
                                "convention so the units are arbitrary",
                     promote_by="not promotable by simulation — drug discrimination "
                                "requires an animal that learns",
                     caveats=("only ratios between compounds are interpretable",)))
+
+    # NMDA ARM OF THE SUBJECTIVE EFFECT. This was dropped when evaluation moved out of the
+    # old simulator, which silently under-reported any compound with an NMDA component --
+    # and the two-arm design is the whole point, since ethanol's discriminative stimulus is
+    # a COMPOUND stimulus (GABA-A positive modulator + NMDA antagonist) and mixtures of the
+    # two generalise to ethanol in trained rats.
+    #
+    # Reported SEPARATELY and the total marked VOID, rather than quietly summed, because
+    # the two arms are in INCOMMENSURABLE UNITS: the GABA term is a conductance-weighted
+    # quantity and the NMDA term is a blocked-receptor fraction divided by an invented
+    # scale. Summing them produces a number, and comparing them -- which is what the
+    # project's "GABA salience >= NMDA salience" substitution constraint does -- compares
+    # quantities with no common unit. That constraint is what selects the recommended
+    # ratio, so the defect is load-bearing and must not be hidden behind a plausible total.
+    if cand.nmda_block > 0:
+        fb_nmda = cand.nmda_block * (FOREBRAIN_GLUN2B * cand.glun2b_sel
+                                     + (1.0 - cand.glun2b_sel))
+        rs.add(Quantity("subjective_index_nmda_raw", fb_nmda, Tier.UNCALIBRATED,
+                        provenance="forebrain NMDA block fraction, GluN2B-weighted. A "
+                                   "receptor occupancy, NOT in the same units as the GABA "
+                                   "term above.",
+                        promote_by="an ethanol dose-substitution curve that places both "
+                                   "arms on one scale"))
+        rs.add(Quantity(
+            "subjective_index_total", float("nan"), Tier.VOID,
+            provenance="the GABA and NMDA arms are in incommensurable units (a "
+                       "conductance-weighted quantity vs a receptor-occupancy fraction "
+                       "over an invented scale), so their sum is not a quantity. The "
+                       "project's substitution constraint 'GABA salience >= NMDA salience' "
+                       "compares these two directly and therefore rests on the same "
+                       "defect -- and that constraint is what selects the recommended "
+                       "ratio.",
+            promote_by="anchor both arms to ethanol dose-substitution data so they share "
+                       "a scale; do not sum them before that exists"))
 
     vent = [_simulate_resp(cand, seed=s) for s in range(n_seed)]
     ctrl = []
@@ -253,10 +319,20 @@ def evaluate(cand: Compound, n_seed=4, reference="nonselective_bz",
         stm, spm = cand.sens("spinal")
         d = cand.drug("spinal")
         try:
-            refl = stretch_reflex(d, gaba_sens_tonic=stm, gaba_sens_phasic=spm)
-            if ("reflex", 1) not in _CTRL_CACHE:
-                _CTRL_CACHE[("reflex", 1)] = stretch_reflex(Drug())
-            ctrl_refl = _CTRL_CACHE[("reflex", 1)]
+            # AVERAGED OVER SEEDS. These were single-seed point estimates (seed=1 hard
+            # coded) while ventilation averaged over n_seed -- recurring error E6, which
+            # this project catalogued and then committed in its own public API. Motor
+            # readouts are noisier than ventilation, so a single seed is worse here.
+            seeds = range(n_seed)
+            refl_runs = [stretch_reflex(d, gaba_sens_tonic=stm, gaba_sens_phasic=spm,
+                                        seed=s) for s in seeds]
+            for s in seeds:
+                if ("reflex", s) not in _CTRL_CACHE:
+                    _CTRL_CACHE[("reflex", s)] = stretch_reflex(Drug(), seed=s)
+            ctrl_refl_runs = [_CTRL_CACHE[("reflex", s)] for s in seeds]
+            refl = {"gain": float(np.mean([r["gain"] for r in refl_runs])),
+                    "mn_dyn": float(np.mean([r["mn_dyn"] for r in refl_runs]))}
+            ctrl_refl = {"gain": float(np.mean([r["gain"] for r in ctrl_refl_runs]))}
             rs.add(Quantity(
                 "reflex_gain", 100.0 * refl["gain"] / max(1e-9, ctrl_refl["gain"]),
                 Tier.UNCALIBRATED, "% of control",
@@ -268,10 +344,17 @@ def evaluate(cand: Compound, n_seed=4, reference="nonselective_bz",
                            "was never quantitatively fitted — it was set where the "
                            "qualitative validations passed."))
 
-            loco = locomotion(d, gaba_sens_tonic=stm, gaba_sens_phasic=spm)
-            if ("loco", 1) not in _CTRL_CACHE:
-                _CTRL_CACHE[("loco", 1)] = locomotion(Drug())
-            ctrl_loco = _CTRL_CACHE[("loco", 1)]
+            loco_runs = [locomotion(d, gaba_sens_tonic=stm, gaba_sens_phasic=spm,
+                                    seed=s) for s in seeds]
+            for s in seeds:
+                if ("loco", s) not in _CTRL_CACHE:
+                    _CTRL_CACHE[("loco", s)] = locomotion(Drug(), seed=s)
+            ctrl_loco_runs = [_CTRL_CACHE[("loco", s)] for s in seeds]
+            _m = lambda runs, k: float(np.nanmean([r[k] for r in runs]))
+            loco = {k: _m(loco_runs, k) for k in
+                    ("step_period_ms", "alternation", "duty", "excursion_rad_INVALID")}
+            loco["walking"] = bool(np.mean([r["walking"] for r in loco_runs]) >= 0.5)
+            ctrl_loco = {"step_period_ms": _m(ctrl_loco_runs, "step_period_ms")}
             rs.add(Quantity(
                 "step_period", 100.0 * loco["step_period_ms"]
                 / max(1e-9, ctrl_loco["step_period_ms"]),

@@ -53,13 +53,21 @@ def pytest_collection_modifyitems(config, items):
             pass
         names = set(getattr(item.function, "__code__", None).co_names) \
             if getattr(item.function, "__code__", None) else set()
-        # explicit marker wins; the heuristic is a safety net for tests that forget it.
-        # The heuristic alone is NOT sufficient: a test can depend on the plant without
-        # ever naming an assay -- e.g. one that calls evaluate() and asserts the motor
-        # keys are present. That case was found by running the suite against a clean
-        # install, so plant-dependent tests should carry @pytest.mark.needs_plant.
-        explicit = item.get_closest_marker("needs_plant") is not None
-        if explicit or names & {"stretch_reflex", "locomotion", "JointPlant", "model_xml"} \
-           or "plant" in item.name or "walk" in item.name or "reflex" in item.name \
-           or "excursion" in item.name or "locomot" in item.name:
+        # Two signals only, both specific:
+        #   1. an explicit @pytest.mark.needs_plant
+        #   2. the test actually NAMES a plant-dependent callable
+        #
+        # The NAME of the test is deliberately NOT used any more. It was -- any test whose
+        # name contained "reflex" or "walk" got skipped -- which silently skips a test of,
+        # say, reflex arithmetic that needs no MuJoCo at all. A skipped test that should
+        # have run is worse than a failing one, because nothing reports it.
+        #
+        # The call-name check is kept as a safety net for a new test that forgets the
+        # marker, but it cannot catch everything: a test can depend on the plant without
+        # naming an assay (one that calls evaluate() and asserts the motor keys exist).
+        # That case was found by running the suite against a clean install. Hence the
+        # explicit marker is the primary mechanism.
+        PLANT_CALLS = {"stretch_reflex", "locomotion", "JointPlant", "model_xml",
+                       "REFLEX_CASES"}
+        if item.get_closest_marker("needs_plant") or (names & PLANT_CALLS):
             item.add_marker(skip)

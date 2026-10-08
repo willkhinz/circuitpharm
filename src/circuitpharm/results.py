@@ -41,6 +41,7 @@ A tier is a claim about EVIDENCE, never about precision. A number can be reporte
 decimals and still be VOID.
 """
 from __future__ import annotations
+import numbers
 from dataclasses import dataclass, field
 from enum import IntEnum
 from typing import Any
@@ -102,8 +103,19 @@ class Quantity:
             body = "VOID — not quotable"
         else:
             v = self._value
-            body = f"{v:.4g}{(' ' + self.units) if self.units else ''}" \
-                if isinstance(v, (int, float)) else str(v)
+            # bool BEFORE int: in Python `bool` subclasses `int`, so the numeric branch
+            # caught it and f"{True:.4g}" rendered as "1". Printed output read
+            # "walking: 1" and "rhythm_alive_fraction: 0", which is both ugly and
+            # genuinely ambiguous against a real 0/1 fraction.
+            if isinstance(v, bool):
+                body = str(v)
+            # numbers.Number, not (int, float): np.int64 does NOT subclass int, so a
+            # numpy integer scalar fell through to str() and lost both its units and its
+            # precision formatting.
+            elif isinstance(v, numbers.Number):
+                body = f"{v:.4g}{(' ' + self.units) if self.units else ''}"
+            else:
+                body = str(v)
         return f"{self.name}: {body}  [{self.tier.label}]"
 
     def report(self) -> str:

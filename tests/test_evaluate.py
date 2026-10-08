@@ -135,7 +135,7 @@ def test_every_uncalibrated_quantity_states_how_to_promote_it_or_why_not():
         assert q.provenance, f"{q.name} has no provenance"
     # the two headline ones must name their promotion path explicitly
     assert "P12" in rs.quantity("ventilation").promote_by
-    assert "learns" in rs.quantity("subjective_index").promote_by
+    assert "learns" in rs.quantity("subjective_index_gaba").promote_by
 
 
 # ------------------------------------------------------------------ motor endpoints

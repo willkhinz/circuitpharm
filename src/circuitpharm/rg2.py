@@ -47,7 +47,7 @@ class GroupPacemakerRG:
     # this coupling must only ever be tested by complete removal.
     def __init__(self, drug: Drug | None = None, n_exc=30, n_inh=12,
                  drive=260.0, gaba_tonic=1.0, g_adapt=1.2, tau_adapt=280.0,
-                 gaba_sens=1.0, asym=0.08, w=None, seed=0):
+                 gaba_sens=1.0, glyr_sens=1.0, asym=0.08, w=None, seed=0):
         self.drug = drug or Drug()
         self.W = dict(ee_ampa=0.55, ee_nmda=0.3025,  # recurrent excitation (rhythmogenic)
                       ei_ampa=0.80,                  # half-centre -> own interneurons
@@ -64,6 +64,9 @@ class GroupPacemakerRG:
         self.drive_half = {"F": drive * (1.0 + asym), "E": drive * (1.0 - asym)}
         self.drive, self.gaba_tonic = drive, gaba_tonic
         self.gaba_sens = gaba_sens
+        # Glycine gets its own sensitivity -- it contains no GABA-A subunits, so a
+        # GABA-A-derived fraction says nothing about it. See resp.py for the full note.
+        self.glyr_sens = glyr_sens
         self.rng = np.random.default_rng(seed)
         self.pops, self.syn = {}, {}
         for half in ("F", "E"):
@@ -75,7 +78,8 @@ class GroupPacemakerRG:
                 for rec in ("ampa", "nmda", "gabaa", "gly"):
                     self.syn[(nm, rec)] = Syn(
                         n, rec, self.drug,
-                        sens=(gaba_sens if rec in ("gabaa", "gly") else 1.0))
+                        sens=(gaba_sens if rec == "gabaa"
+                              else glyr_sens if rec == "gly" else 1.0))
         self.t = 0.0
         self.trace = {k: [] for k in list(self.pops) + ["t"]}
 

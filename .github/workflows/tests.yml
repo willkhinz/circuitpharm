@@ -63,7 +63,7 @@ jobs:
         # reads state. Setting MUJOCO_GL=osmesa would instead ADD a failure mode, since it
         # needs libosmesa6 present on the runner. (This project already hit the mirror of
         # that: MUJOCO_GL=osmesa is an invalid backend on macOS and raises at import.)
-        run: pytest -q -rs --cov --cov-report=term
+        run: pytest -q -rs --cov --cov-report=term --cov-fail-under=90
       - name: Assert nothing was skipped
         run: |
           pytest -q -rs 2>&1 | tee /tmp/out.txt

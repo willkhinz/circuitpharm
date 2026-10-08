@@ -69,8 +69,17 @@ def trajectory(q0: float, dq: float) -> list:
     out, t = [], 0.0
 
     def seg(T, f):
+        """Sample a segment at s = DT, 2*DT, ... T, i.e. INCLUDING its endpoint.
+
+        It previously sampled s = 0, DT, ... T-DT, so a ramp never reached its final
+        value: with RAMP=0.05 and DT=0.002 the last ramp sample sat at 0.96*dq and the
+        first HOLD sample jumped straight to dq. That is a 4% step in one 2 ms timestep --
+        0.018 rad here -- which injects an impulse into joint velocity and therefore into
+        the spindle's velocity term, which is the dominant input to the Ia afferent.
+        """
         nonlocal t
-        for i in range(int(T / DT)):
+        n = int(round(T / DT))
+        for i in range(1, n + 1):
             q, v = f(i * DT)
             out.append((t, q, v))
             t += DT
@@ -97,19 +106,17 @@ def stretch_reflex(drug: Drug | None = None, q0=0.1, dq=0.45, seed=1,
     from .config import IA_SCALE
 
     ia_scale = IA_SCALE if ia_scale is None else ia_scale
-    orig = dict(SpinalCircuit.W)
-    try:
-        SpinalCircuit.W = dict(orig)
-        for rec in ("ampa", "nmda"):
-            SpinalCircuit.W[("Ia", "Mn", rec)] = orig[("Ia", "Mn", rec)] * ia_scale
-        p = JointPlant(xml or model_xml(), drug=drug or Drug(), rg_gain=0.0, seed=seed,
-                       gaba_sens=gaba_sens, gaba_sens_tonic=gaba_sens_tonic,
-                       gaba_sens_phasic=gaba_sens_phasic)
-        for (t, q, v) in trajectory(q0, dq):
-            p.step(DT, impose=(q, v))
-        A = p.arrays()
-    finally:
-        SpinalCircuit.W = orig
+    # Passed as a per-instance override. This used to MUTATE SpinalCircuit.W (the class
+    # attribute) and restore it in a `finally`, which corrupts every other instance in the
+    # process if two assays run concurrently or an exception lands mid-way.
+    w = {("Ia", "Mn", rec): SpinalCircuit.W[("Ia", "Mn", rec)] * ia_scale
+         for rec in ("ampa", "nmda")}
+    p = JointPlant(xml or model_xml(), drug=drug or Drug(), rg_gain=0.0, seed=seed,
+                   gaba_sens=gaba_sens, gaba_sens_tonic=gaba_sens_tonic,
+                   gaba_sens_phasic=gaba_sens_phasic, w=w)
+    for (t, q, v) in trajectory(q0, dq):
+        p.step(DT, impose=(q, v))
+    A = p.arrays()
 
     tt = A["t"] / 1000.0
     base = (tt > 0.15) & (tt < PRE)                          # pre-stretch baseline
@@ -125,8 +132,21 @@ def stretch_reflex(drug: Drug | None = None, q0=0.1, dq=0.45, seed=1,
         f_base=abs(A["f_ext"][base].mean()), f_dyn=abs(A["f_ext"][dyn]).max(),
         f_sta=abs(A["f_ext"][sta].mean()),
     )
-    out["gain"] = ((out["mn_dyn"] - out["mn_base"])
-                   / max(1e-6, out["ia_dyn"] - out["ia_base"]))
+    # REFLEX GAIN. The denominator is the Ia afferent response to the stretch. Clamping it
+    # with max(1e-6, ...) was wrong in a way that inverts the result: if the Ia response is
+    # NEGATIVE (noise, or severe depression dropping dynamic firing below baseline) the
+    # clamp divides by 1e-6 and turns a small drop into a ~5,000,000 "gain". A reflex gain
+    # is undefined when the afferent drive did not increase, so say so instead.
+    ia_response = out["ia_dyn"] - out["ia_base"]
+    if ia_response <= IA_RESPONSE_FLOOR:
+        out["gain"] = float("nan")
+        out["gain_undefined_reason"] = (
+            f"Ia afferent response was {ia_response:+.3f} Hz, at or below the "
+            f"{IA_RESPONSE_FLOOR} Hz floor: the stretch did not drive the afferent, so "
+            "reflex gain has no denominator. Check the imposed trajectory and the spindle "
+            "parameters rather than reading the ratio.")
+    else:
+        out["gain"] = (out["mn_dyn"] - out["mn_base"]) / ia_response
     return out
 
 
@@ -176,6 +196,10 @@ REFLEX_CASES = [
 # locomotion essentially unchanged (alternation -0.66 vs -0.69 control). That is recurring
 # error E10, not a negative result -- this coupling is only informative under COMPLETE
 # removal, which at circuit level means ie_gly = 0 (see tests/test_phenotypes.py).
+# Minimum Ia afferent response (Hz) for a reflex gain to be defined. Below this the
+# denominator is noise and the ratio is meaningless rather than large.
+IA_RESPONSE_FLOOR = 1.0
+
 LOCO_SETTLE_S = 1.0
 
 

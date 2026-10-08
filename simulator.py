@@ -73,16 +73,20 @@ It RANKS compounds. It bounds nothing -- no safety margin, no overdose multiple,
 
 
 def cmd_compound(a):
-    print(evaluate(Compound.from_profile(
-        a.key, occupancy=a.occupancy, s_max=a.s_max, nmda_block=a.nmda_block,
-        glun2b_sel=a.glun2b_sel, glyr=a.glyr), n_seed=a.seeds))
+    # s_max omitted unless the user gave one, so the profile's ceiling is used
+    kw = dict(occupancy=a.occupancy, nmda_block=a.nmda_block,
+              glun2b_sel=a.glun2b_sel, glyr=a.glyr)
+    if a.s_max is not None:
+        kw["s_max"] = a.s_max
+    print(evaluate(Compound.from_profile(a.key, **kw), n_seed=a.seeds))
 
 
 def cmd_profile(a):
+    # an arbitrary profile has no ceiling of its own, so fall back to the BZ-site range
     print(evaluate(Compound(
         name=a.name, a1=a.a1, a23=a.a23, a5=a.a5, d_a4=a.d_a4, eps=a.eps,
-        occupancy=a.occupancy, s_max=a.s_max, nmda_block=a.nmda_block,
-        glun2b_sel=a.glun2b_sel, glyr=a.glyr), n_seed=a.seeds))
+        occupancy=a.occupancy, s_max=(2.5 if a.s_max is None else a.s_max),
+        nmda_block=a.nmda_block, glun2b_sel=a.glun2b_sel, glyr=a.glyr), n_seed=a.seeds))
 
 
 def main():
@@ -93,7 +97,10 @@ def main():
     def add_dose_args(p):
         p.add_argument("--occupancy", type=float, default=0.35,
                        help="fraction of modulator sites bound (NOT a mass dose)")
-        p.add_argument("--s-max", dest="s_max", type=float, default=2.5,
+        # DEFAULT None, not 2.5. A concrete default here silently overwrote each
+        # profile's own measured ceiling: `simulator.py compound neurosteroid` reported a
+        # 6.0-ceiling compound as 2.5.
+        p.add_argument("--s-max", dest="s_max", type=float, default=None,
                        help="ligand intrinsic allosteric efficacy = max GABA EC50 shift "
                             "at full occupancy (~2-3x for classical BZ-site ligands). "
                             "THIS is what determines overdose protection; it is a property "

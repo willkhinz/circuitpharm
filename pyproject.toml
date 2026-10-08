@@ -56,12 +56,16 @@ source = ["circuitpharm"]
 omit = ["*/chirality.py"]
 
 [tool.coverage.report]
-# Measured 95% at session 8, after extracting the rejected all-spiking HalfCentreCPG to
-# scripts/archive (108 lines of dead code reachable only from archived scripts, which alone
-# took cpg.py from 67% to 94%). The uncovered remainder is in branches needing the optional
-# body plant and in error paths of the model-path resolver. Raise this floor, never lower
-# it: a drop means either dead code has crept back in or something shipped untested.
-fail_under = 90
+# NO fail_under HERE, deliberately. A threshold in this file fires on ANY coverage run, so
+# `pytest -m "not slow" --cov` failed at 65% with every test passing -- the fast subset
+# legitimately does not exercise the circuit integration, so that failure carried no
+# information and would have trained people to pass --no-cov.
+#
+# The threshold is enforced in CI on the FULL suite instead, via --cov-fail-under=90 (see
+# .github/workflows/tests.yml), which is where it means something. Measured 95% after
+# extracting the rejected HalfCentreCPG (108 lines of dead code reachable only from
+# archived scripts, which alone took cpg.py from 67% to 94%). Raise that CI floor over
+# time, never lower it: a drop means dead code crept back or something shipped untested.
 exclude_also = [
   "if __name__ == .__main__.:",
   "raise FileNotFoundError",

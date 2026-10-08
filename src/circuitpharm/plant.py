@@ -23,7 +23,8 @@ class JointPlant:
 
     def __init__(self, xml, joint="knee_L", drug=None, rg_gain=900.0,
                  mn_sat=80.0, ia_kl=55.0, ia_kv=70.0, ia_bias=12.0, seed=0,
-                 gaba_sens=1.0, gaba_sens_tonic=None, gaba_sens_phasic=None, **kw):
+                 gaba_sens=1.0, gaba_sens_tonic=None, gaba_sens_phasic=None,
+                 glyr_sens=1.0, **kw):
         self.m = mujoco.MjModel.from_xml_path(xml)
         self.d = mujoco.MjData(self.m)
         self.joint = joint
@@ -33,6 +34,19 @@ class JointPlant:
         self.lo, self.hi = self.m.jnt_range[self.jid]
         aid = lambda n: mujoco.mj_name2id(self.m, mujoco.mjtObj.mjOBJ_ACTUATOR, n)
         self.a_ext, self.a_flx = aid(f"{joint}_ext"), aid(f"{joint}_flx")
+        # mj_name2id returns -1 for an unknown name, and Python's negative indexing then
+        # silently reads and WRITES the LAST actuator in the model instead of raising. A
+        # typo'd joint name would have produced plausible-looking output from the wrong
+        # muscle. Same for the joint itself.
+        for label, idx, name in (("joint", self.jid, joint),
+                                 ("actuator", self.a_ext, f"{joint}_ext"),
+                                 ("actuator", self.a_flx, f"{joint}_flx")):
+            if idx < 0:
+                raise ValueError(
+                    f"{label} {name!r} not found in {xml}. mj_name2id returned -1, which "
+                    f"Python would index as the LAST element -- so this is raised rather "
+                    f"than silently driving the wrong actuator. Check the joint name, or "
+                    f"rebuild the muscle model with scripts/port_muscle.py.")
         self.LR = {h: self.m.actuator_lengthrange[a].copy()
                    for h, a in (("E", self.a_ext), ("F", self.a_flx))}
         # tonic/phasic sensitivities are named explicitly rather than riding in **kw:
@@ -42,7 +56,8 @@ class JointPlant:
         self.circuit = SpinalCircuit(drug=drug, rg_gain=rg_gain, seed=seed,
                                      gaba_sens=gaba_sens,
                                      gaba_sens_tonic=gaba_sens_tonic,
-                                     gaba_sens_phasic=gaba_sens_phasic, **kw)
+                                     gaba_sens_phasic=gaba_sens_phasic,
+                                     glyr_sens=glyr_sens, **kw)
         self.mn_sat = mn_sat          # Hz of Mn pool rate mapped to activation 1.0
         self.ia = dict(kl=ia_kl, kv=ia_kv, bias=ia_bias)
         self.log = {k: [] for k in

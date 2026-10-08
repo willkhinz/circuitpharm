@@ -1,5 +1,11 @@
 #!/usr/bin/env python3
-"""Query helper for data/pharmacology.db. Usage: kb.py <view> | kb.py sql "<query>" """
+"""Read-only query helper for the pharmacology database.
+
+OPENED READ-ONLY (`mode=ro`). This used to connect read-write while accepting arbitrary
+SQL from the command line, so `kb.py sql "DROP TABLE sources"` would have worked. Given
+that this project has already destroyed 48 sources and 41 findings once by running a
+rebuild script, a query tool that can write is not a theoretical risk.
+Query helper for data/pharmacology.db. Usage: kb.py <view> | kb.py sql "<query>" """
 import sqlite3, sys, pathlib, textwrap
 
 DB = pathlib.Path(__file__).resolve().parent.parent / "data" / "pharmacology.db"
@@ -35,7 +41,7 @@ VIEWS = {
 }
 
 def show(sql):
-    c = sqlite3.connect(DB); c.row_factory = sqlite3.Row
+    c = sqlite3.connect(f"file:{DB}?mode=ro", uri=True); c.row_factory = sqlite3.Row
     rows = c.execute(sql).fetchall()
     if not rows: print("(no rows)"); return
     for i, r in enumerate(rows, 1):

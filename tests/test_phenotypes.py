@@ -163,18 +163,34 @@ def test_benzodiazepine_depresses_the_reflex():
 def test_glun2b_selectivity_window_spares_the_spinal_reflex():
     """THE MECHANISM THE WHOLE NMDA ARM RESTS ON. At the same 60% block, a GluN2B-selective
     antagonist must spare the spinal reflex (low local GluN2B fraction) where a
-    non-selective one depresses it. If this collapses, there is no selectivity window."""
+    non-selective one depresses it. If this collapses, there is no selectivity window.
+
+    AVERAGED OVER SEEDS. This test originally read single seeds and asserted
+    `nonsel < 0.92 * ctrl`. After the trajectory fencepost fix (which removed a 0.018 rad
+    step discontinuity injecting an impulse into spindle velocity) a single seed returned
+    92% and the test failed -- but the 4-seed mean is 75%, so the single-seed number was
+    noise, and the window is in fact WIDER than previously reported: 24 percentage points,
+    against the 18 recorded from single-seed runs (84% vs 102%).
+
+    Reading one seed is recurring error E6, committed here inside the test suite that
+    exists to catch it.
+    """
     from circuitpharm.assays import stretch_reflex
     from circuitpharm.cpg import Drug
-    ctrl = stretch_reflex(Drug())["gain"]
-    nonsel = stretch_reflex(Drug(nmda_block=0.6, glun2b_selectivity=0.0))["gain"]
-    sel = stretch_reflex(Drug(nmda_block=0.6, glun2b_selectivity=1.0,
-                              glun2b_fraction=0.15))["gain"]
-    assert nonsel < 0.92 * ctrl, "non-selective NMDA block should depress the reflex"
+    mean = lambda d: float(np.mean([stretch_reflex(d, seed=s)["gain"]
+                                    for s in range(4)]))
+    ctrl = mean(Drug())
+    nonsel = mean(Drug(nmda_block=0.6, glun2b_selectivity=0.0))
+    sel = mean(Drug(nmda_block=0.6, glun2b_selectivity=1.0, glun2b_fraction=0.15))
+
+    assert nonsel < 0.85 * ctrl, (
+        f"non-selective NMDA block left the reflex at {100*nonsel/ctrl:.0f}% of control; "
+        "it should depress it clearly")
     assert sel > 0.95 * ctrl, (
         f"GluN2B-selective block depressed the reflex to {100*sel/ctrl:.0f}% of control; "
         "the selectivity window has collapsed")
-    assert sel > nonsel
+    assert (sel - nonsel) / ctrl > 0.15, (
+        f"selectivity window is only {100*(sel-nonsel)/ctrl:.0f} percentage points")
 
 
 @pytest.mark.slow

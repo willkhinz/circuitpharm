@@ -30,17 +30,28 @@ CASES = [
 ]
 
 def job(args):
+    """Sweep the Ia->Mn weight scale.
+
+    TWO BUGS FIXED HERE (2026-10-07):
+
+    1. DOUBLE SCALING. This mutated SpinalCircuit.W by `scale` and then called R.run,
+       which is `stretch_reflex` -- and that applies its OWN `ia_scale`, defaulting to
+       config.IA_SCALE = 0.30. The weight actually reaching the plant was therefore
+       scale * 0.30, i.e. over 3x weaker than the swept value, so every point on this
+       sweep was mislabelled. Now the scale is passed through as `ia_scale`, the single
+       place it is applied.
+
+    2. GLOBAL CLASS-STATE MUTATION. Rewriting SpinalCircuit.W corrupts weights for every
+       other instance in the process and leaks permanently if an exception lands before
+       the `finally`. SpinalCircuit now takes per-instance weights, so nothing is mutated.
+
+    The reflex gain is taken from `stretch_reflex` rather than recomputed, so it inherits
+    the guard that returns NaN when the Ia response is non-positive instead of dividing by
+    1e-6 and reporting a ~5,000,000 gain.
+    """
     scale, ci, seed = args
-    orig = dict(SpinalCircuit.W)
-    try:
-        SpinalCircuit.W = dict(orig)
-        SpinalCircuit.W[("Ia","Mn","ampa")] = orig[("Ia","Mn","ampa")]*scale
-        SpinalCircuit.W[("Ia","Mn","nmda")] = orig[("Ia","Mn","nmda")]*scale
-        r = R.run(CASES[ci][1], seed=seed)
-        gain = (r['mn_dyn']-r['mn_base'])/max(1e-6, r['ia_dyn']-r['ia_base'])
-        return (scale, ci, seed, gain, r['mn_dyn'], r['mn_sta'])
-    finally:
-        SpinalCircuit.W = orig
+    r = R.run(CASES[ci][1], seed=seed, ia_scale=scale)
+    return (scale, ci, seed, r["gain"], r["mn_dyn"], r["mn_sta"])
 
 if __name__ == "__main__":
     jobs = list(itertools.product(SCALES, range(len(CASES)), range(N_SEED)))
