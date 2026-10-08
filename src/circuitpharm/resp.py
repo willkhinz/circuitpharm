@@ -38,13 +38,25 @@ EUPNOEA_BAND = (0.30, 2.50)
 
 class PreBotC:
     def __init__(self, drug: Drug | None = None, n_exc=50, n_inh=20, n_out=20,
-                 drive=190.0, gaba_tonic=1.5, g_adapt=1.6, tau_adapt=450.0,
+                 drive=None, gaba_tonic=1.5, g_adapt=None, tau_adapt=None,
                  gaba_sens=1.0, gaba_sens_tonic=None, gaba_sens_phasic=None,
                  glyr_sens=1.0,
                  resp_drive_boost=0.0, w=None, seed=0):
         self.drug = drug or Drug()
-        self.W = dict(ee_ampa=0.16, ee_nmda=0.09,     # recurrent excitation (rhythmogenic)
-                      ei_ampa=0.55, ei_nmda=0.0,      # exc -> inh  (see DISINHIBITION below)
+        # DEFAULTS COME FROM config.RESP_OP, not from literals here. They used to be
+        # drive=190, g_adapt=1.6, tau_adapt=450, ee_ampa=0.16, ee_nmda=0.09 -- an obsolete
+        # untuned set with ~3x weaker recurrent excitation than the calibrated operating
+        # point. Every analysis passes **RESP_OP, so this was invisible in project results,
+        # but any caller writing a plain PreBotC() silently got the wrong network.
+        from .config import RESP_OP as _OP
+        if drive is None:
+            drive = _OP["drive"]
+        if g_adapt is None:
+            g_adapt = _OP["g_adapt"]
+        if tau_adapt is None:
+            tau_adapt = _OP["tau_adapt"]
+        self.W = dict(_OP["w"])                       # recurrent excitation (rhythmogenic)
+        self.W.update(ei_ampa=0.55, ei_nmda=0.0,      # exc -> inh (see DISINHIBITION below)
                       ie_gaba=0.45, ie_gly=0.35,      # inh -> exc
                       eo_ampa=0.70, eo_nmda=0.30)     # exc -> output (phrenic analogue)
         # DISINHIBITION PATHWAY. ei_nmda defaults to 0.0, which reproduces the model as it

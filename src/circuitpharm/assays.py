@@ -205,7 +205,7 @@ LOCO_SETTLE_S = 1.0
 
 def locomotion(drug: Drug | None = None, duration_s=6.0, seed=1, rg_gain=30.0,
                gaba_sens=1.0, gaba_sens_tonic=None, gaba_sens_phasic=None, glyr_sens=1.0,
-               joint="knee_L", xml=None) -> dict:
+               ia_scale=None, joint="knee_L", xml=None) -> dict:
     """Free-running closed-loop locomotion. No imposed kinematics.
 
     `rg_gain` converts the rhythm generator's PER-NEURON rate in Hz into an equivalent
@@ -214,10 +214,21 @@ def locomotion(drug: Drug | None = None, duration_s=6.0, seed=1, rg_gain=30.0,
     """
     from .plant import JointPlant
 
+    # Ia WEIGHTS ARE SCALED HERE TOO. This ran with the UNSCALED weights while
+    # stretch_reflex scaled them by IA_SCALE=0.30, so the same circuit received 3.33x
+    # stronger afferent feedback in locomotion than in the reflex assay -- an
+    # inconsistency between two assays over one model, not a modelling choice. IA_SCALE is
+    # a MEASUREMENT fix (it keeps the motoneuron readout off its tref ceiling, error E5),
+    # so it belongs wherever that readout is used. Pass ia_scale=1.0 to opt out.
+    from .config import IA_SCALE
+    from .circuit import SpinalCircuit      # local: assays must import without mujoco
+    ia_scale = IA_SCALE if ia_scale is None else ia_scale
+    w = {("Ia", "Mn", rec): SpinalCircuit.W[("Ia", "Mn", rec)] * ia_scale
+         for rec in ("ampa", "nmda")}
     p = JointPlant(xml or model_xml(), joint=joint, drug=drug or Drug(),
                    rg_gain=rg_gain, seed=seed, gaba_sens=gaba_sens,
                    gaba_sens_tonic=gaba_sens_tonic, gaba_sens_phasic=gaba_sens_phasic,
-                   glyr_sens=glyr_sens)
+                   glyr_sens=glyr_sens, w=w)
     for _ in range(int(duration_s / DT)):
         p.step(DT)
     A = p.arrays()

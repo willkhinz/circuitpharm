@@ -73,7 +73,27 @@ class SpinalCircuit:
                  drive_pf=110.0, drive_mn=100.0, drive_in=75.0,
                  rg_kw=None, w=None, seed=0):
         self.drug = drug or Drug()
-        self.rg = GroupPacemakerRG(drug=self.drug, seed=seed, **(rg_kw or {}))
+        # separate tonic/phasic sensitivities; both default to gaba_sens, which reproduces
+        # the legacy single-pool behaviour exactly
+        self.gaba_sens_tonic = gaba_sens if gaba_sens_tonic is None else gaba_sens_tonic
+        self.gaba_sens_phasic = gaba_sens if gaba_sens_phasic is None else gaba_sens_phasic
+        # Glycine gets its own sensitivity -- it contains no GABA-A subunits, so a
+        # GABA-A-derived fraction says nothing about it. See resp.py for the full note.
+        self.glyr_sens = glyr_sens
+        # FORWARD THE SENSITIVITIES. These were not passed at all, so the rhythm
+        # generator always ran at gaba_sens=1.0 / glyr_sens=1.0 -- fully drug-sensitive --
+        # while the pattern-formation and motoneuron layers used the calibrated spinal
+        # values. Under sedation the RG therefore saw ~7.2x tonic conductance where the
+        # rest of the circuit saw ~1.5x, so the locomotor rhythm slowed or arrested far
+        # earlier than the tissue pharmacology implies, and every drug effect on step
+        # period and coordination was overstated.
+        #
+        # `rg_kw` still wins, so a caller can override deliberately.
+        rg_defaults = dict(gaba_sens_tonic=self.gaba_sens_tonic,
+                           gaba_sens_phasic=self.gaba_sens_phasic,
+                           glyr_sens=self.glyr_sens)
+        rg_defaults.update(rg_kw or {})
+        self.rg = GroupPacemakerRG(drug=self.drug, seed=seed, **rg_defaults)
         # rg_gain maps RG output (arb units) to an equivalent TOTAL presynaptic rate,
         # i.e. it already absorbs the presynaptic population size. ia_n is kept explicit
         # because a muscle has ~25 Ia afferents and omitting that factor silently makes
@@ -94,13 +114,6 @@ class SpinalCircuit:
         self.rg_gain = rg_gain
         self.ia_n = ia_n
         self.gaba_sens = gaba_sens
-        # separate tonic/phasic sensitivities; both default to gaba_sens, which reproduces
-        # the legacy single-pool behaviour exactly
-        self.gaba_sens_tonic = gaba_sens if gaba_sens_tonic is None else gaba_sens_tonic
-        self.gaba_sens_phasic = gaba_sens if gaba_sens_phasic is None else gaba_sens_phasic
-        # Glycine gets its own sensitivity -- it contains no GABA-A subunits, so a
-        # GABA-A-derived fraction says nothing about it. See resp.py for the full note.
-        self.glyr_sens = glyr_sens
         self.gaba_tonic = gaba_tonic
         self.drive = dict(PF=drive_pf, Mn=drive_mn, InPF=drive_in,
                           IaIn=drive_in, Rc=drive_in)

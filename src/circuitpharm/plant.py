@@ -7,10 +7,24 @@ The CPG integrates at 0.1 ms and MuJoCo at 2 ms, so the circuit takes 20 substep
 physics step. Muscle length is normalised against the actuator's own lengthrange, so the
 spindle sees a dimensionless fascicle length in [0,1] with velocity in units of 1/s.
 
-Joint convention: for a joint-transmission muscle, actuator_length = gear * qpos and
-actuator_velocity = gear * qvel, so '_ext' (gear +1) lengthens as qpos rises and '_flx'
-(gear -1) shortens. Each muscle's own spindle therefore reports ITS fascicle length,
-which is what reciprocal Ia inhibition needs.
+JOINT AND SIGN CONVENTION. For a joint-transmission muscle,
+actuator_length = gear * qpos and actuator_velocity = gear * qvel, so '_ext' (gear +1)
+LENGTHENS as qpos rises and '_flx' (gear -1) shortens. Each muscle's own spindle therefore
+reports ITS fascicle length, which is what reciprocal Ia inhibition needs.
+
+CORRECTED 2026-10-07 -- the force sign was documented backwards. MuJoCo muscle actuators
+are PULL-ONLY: actuator_force is always <= 0. The generalised joint force is
+gear * actuator_force, so
+
+    '_ext'  gear +1, force <= 0  ->  NEGATIVE joint torque (drives qpos down)
+    '_flx'  gear -1, force <= 0  ->  POSITIVE joint torque (drives qpos up)
+
+Earlier comments here and in scripts/port_muscle.py claimed "_ext drives qpos positive",
+which is the opposite. The PHYSICS was always right -- nothing in the simulation depended
+on the comment -- but anyone reasoning about torque direction from the documentation, or
+adding a new joint by analogy, would have had the sign inverted. In the stretch-reflex ramp
+the extensor lengthens and its activation produces negative torque OPPOSING the imposed
+positive stretch, which is the correct resisting reflex.
 """
 import numpy as np
 import mujoco

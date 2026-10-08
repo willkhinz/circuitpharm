@@ -2,7 +2,7 @@
 import numpy as np
 import pytest
 
-from circuitpharm.evaluate import Compound, evaluate
+from circuitpharm.evaluation import Compound, evaluate
 from circuitpharm.results import Tier, VoidQuantityError
 from circuitpharm.subtypes import PROFILES
 
@@ -190,7 +190,7 @@ def test_drugfree_control_is_independent_of_sensitivity():
 
 
 def test_control_cache_can_be_cleared():
-    from circuitpharm.evaluate import _CTRL_CACHE, clear_control_cache
+    from circuitpharm.evaluation import _CTRL_CACHE, clear_control_cache
     _CTRL_CACHE[("probe", 0)] = "x"
     clear_control_cache()
     assert not _CTRL_CACHE
@@ -225,7 +225,7 @@ def test_evaluate_degrades_gracefully_without_the_body_plant():
         builtins.__import__ = fake
         for m in saved:
             del sys.modules[m]
-        from circuitpharm.evaluate import Compound as C, evaluate as ev
+        from circuitpharm.evaluation import Compound as C, evaluate as ev
         rs = ev(C.from_profile("alogabat", occupancy=0.35), n_seed=1)
         names = [q.name for q in rs.items]
         assert "ventilation" in names, "respiratory endpoint lost on a lean install"

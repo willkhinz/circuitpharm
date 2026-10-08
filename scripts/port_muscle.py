@@ -12,7 +12,7 @@ for pharmacology in three ways:
 
 Each hindlimb DOF becomes two muscles: <joint>_ext (gear +1) and <joint>_flx (gear -1).
 MuJoCo muscles pull only (force in [-F,0]), so the opposing gears span both directions.
-NOTE: _ext/_flx is a SIGN convention (ext drives qpos positive); the anatomical
+NOTE: _ext/_flx is a LENGTH convention: ext LENGTHENS as qpos rises (gear +1). NOTE muscles are pull-only (force <= 0), so gear +1 yields NEGATIVE joint torque -- see circuitpharm/plant.py; an earlier comment here had this sign backwards; the anatomical
 flexor/extensor assignment must be validated against joint kinematics before mapping
 motoneuron pools onto it. Non-hindlimb actuators are left untouched.
 """

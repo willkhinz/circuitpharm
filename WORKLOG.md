@@ -2240,3 +2240,75 @@ your own diff.
 
 This is now the strongest argument in the repo for external review before publication, and
 it belongs in the paper's methods rather than being quietly fixed.
+
+### Review 4 (10 findings) — 38 defects total across four reviews
+All 10 legitimate. The rate of genuine findings has not dropped across four passes.
+
+1. **`SpinalCircuit` never forwarded ANY sensitivity to its rhythm generator.** It accepted
+   `gaba_sens`, `gaba_sens_tonic/phasic` and `glyr_sens` and passed none of them to
+   `GroupPacemakerRG`, which therefore always ran at **1.0** — fully drug-sensitive — while
+   the pattern-formation and motoneuron layers used the calibrated spinal values. Under
+   sedation the RG saw ~7.2x tonic conductance where the rest of the circuit saw ~1.5x, so
+   the locomotor rhythm slowed or arrested far earlier than the tissue pharmacology implies
+   and **every drug effect on step period and coordination was overstated.** Verified:
+   circuit tonic 0.08 → RG 1.0.
+2. **`GroupPacemakerRG` had no tonic/phasic split** — one lumped `gaba_sens` applied to both
+   pools, which differ ~200x in PAM headroom. **E12 again**, reintroduced in the locomotor
+   RG after being fixed everywhere else.
+3. **`PreBotC` defaults diverged from `config.RESP_OP`**: drive 190 vs 170, g_adapt 1.6 vs
+   2.5, tau_adapt 450 vs 400, ee_ampa **0.16 vs 0.45** — ~3x weaker recurrent excitation.
+   Invisible in project results (everything passes `**RESP_OP`) but any caller writing a
+   plain `PreBotC()` silently got an obsolete untuned network. Defaults now come from config.
+4. **`max(1e-9, nan)` returns 1e-9**, so a NaN control turned an ordinary value into
+   **150,000,000,000%**. A control reflex gain IS legitimately NaN when the Ia response does
+   not exceed noise, so this path is reachable. Now a helper that propagates NaN.
+5. **`nmda_scale()` returned NEGATIVE** for `nmda_block > 1` (verified: -0.05 at 1.5),
+   reachable from an optimiser sweep or a sampling tail. A negative `w_scale` makes an
+   excitatory conductance negative, which drives positive-feedback voltage divergence
+   rather than failing visibly. Now clipped.
+6. **The muscle force-sign convention was documented backwards.** MuJoCo muscle actuators
+   are PULL-ONLY (force <= 0), so `gear=+1` ('_ext') yields NEGATIVE joint torque, not
+   positive as the docstrings claimed. The physics was always right — nothing depended on
+   the comment — but anyone reasoning about torque direction from the docs, or adding a
+   joint by analogy, would have had the sign inverted.
+7. **`burst_metrics` NaN guard never fired**: `np.nan <= 0` is False, so a NaN-containing
+   trace slid past, `r > thresh_frac * nan` gave an all-False mask, and the function
+   returned plausible empty results instead of declaring the input unusable.
+8. **Locomotion ran with UNSCALED Ia weights** while `stretch_reflex` scaled them by
+   `IA_SCALE=0.30` — the same circuit received **3.33x stronger afferent feedback** in one
+   assay than the other. IA_SCALE is a measurement fix (keeping the motoneuron readout off
+   its tref ceiling, E5), so it belongs wherever that readout is used. **This changed the
+   locomotion numbers: step period 1250 → 1001 ms, alternation -0.67 → -0.79.**
+9. **`subtypes.py` CLI printed un-normalised ratios** mixing the two forebrain scales — the
+   exact comparison the `subjective_index` docstring warns against, printed by the module
+   that contains the warning. Now normalised to a non-selective benzodiazepine.
+10. **`Compound` and `evaluate` were not exported**, so `from circuitpharm import
+    Compound, evaluate` raised ImportError.
+
+### My fix for #10 was wrong TWICE before it was right
+Worth recording in full, because both wrong versions looked fine.
+
+* **Attempt 1, lazy via `from . import evaluate`** → infinite recursion. The submodule
+  `circuitpharm.evaluate` and the function `evaluate` share a name, so the `from` form
+  re-entered `__getattr__` on the same attribute until the stack died.
+* **Attempt 2, lazy via `importlib`** → stopped the recursion but produced something
+  **worse than the original ImportError**: `from circuitpharm import evaluate` bound to the
+  **MODULE**, which is not callable, and which of the two you got depended on import order.
+  Verified: `callable(evaluate)` was False.
+* **Attempt 3** — renamed the submodule to `circuitpharm.evaluation` and imported eagerly,
+  removing the collision instead of working around it. `callable(evaluate)` is now True.
+
+A fix that replaces a loud failure with a quiet wrong answer is worse than no fix, and I
+shipped that state briefly.
+
+**175 tests passing.**
+
+### Four reviews: what the pattern says
+38 defects. Every one produced plausible output. My own scrutiny across twelve sessions
+found none of them, and each review found defects created or left incomplete by the
+previous round's fixes. The findings-per-review rate has not fallen: 9, 11, 8, 10.
+
+That last number is the important one. It does not support "the code is nearly clean now";
+it supports "this code has a defect density my own review cannot measure." Any claim that
+this is publishable needs at least one review pass that finds nothing, and that has not
+happened yet.

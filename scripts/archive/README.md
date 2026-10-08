@@ -22,7 +22,7 @@ invalidated a prediction this project had to retract.
 All pass a single `gaba_sens` to the circuits, so one gain is applied to both the tonic and
 phasic receptor pools. The GABA-A Markov scheme shows those gains differ by ~7x, so these
 are wrong by about sevenfold on whichever pool they were not calibrated against. Superseded
-by `circuitpharm.evaluate`.
+by `circuitpharm.evaluation`.
 
 **One-off result runs** — `final2.py`, `final_combo.py`, `confirm.py`, `margin.py`,
 `optimise.py`, `overdose.py`

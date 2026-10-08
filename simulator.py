@@ -8,7 +8,7 @@
     python simulator.py rank                   # the calibration-independent ranking
 
 This is deliberately a THIN wrapper: all evaluation logic lives in
-`circuitpharm.evaluate`, so the library is usable without the CLI and the CLI cannot drift
+`circuitpharm.evaluation`, so the library is usable without the CLI and the CLI cannot drift
 away from the library. The previous version carried its own evaluation code and had drifted
 in three ways that all flattered the model -- a single sensitivity applied to both receptor
 pools (wrong by ~7x on one of them), dose escalation clipped at a hand-set ceiling, and an
@@ -25,7 +25,7 @@ no mg/kg, no brain:plasma ratio, no time course.
 """
 import argparse
 
-from circuitpharm.evaluate import Compound, evaluate
+from circuitpharm.evaluation import Compound, evaluate
 from circuitpharm.config import calibration_report
 from circuitpharm.subtypes import (PROFILES, REGIONS, SUBTYPES, EXTRASYN,
                                    SUBJECTIVE_WEIGHT)

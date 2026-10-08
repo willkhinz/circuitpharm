@@ -59,12 +59,29 @@ from .config import (
     CALIBRATIONS, Calibration, calibration_report,
 )
 
+# Imported EAGERLY, and the module is named `evaluation` rather than `evaluate`.
+#
+# Two earlier attempts here were both wrong, which is the part worth recording. Lazy
+# loading via `from . import evaluate` recursed infinitely: the submodule and the function
+# shared a name, so the `from` form re-entered __getattr__ on the same attribute until the
+# stack died. Routing around that with importlib stopped the recursion but left something
+# WORSE than the original ImportError -- `from circuitpharm import evaluate` bound to the
+# MODULE, which is not callable, and which of the two you got depended on import order.
+#
+# Renaming the submodule removes the collision rather than working around it, so the name
+# binds unambiguously to the function. Eager import costs nothing worth saving: scipy is a
+# hard dependency here, not an optional extra.
+from .evaluation import Compound, evaluate, clear_control_cache  # noqa: E402
+
 __version__ = "0.1.0"
+
+
 
 __all__ = [
     "Tier", "Quantity", "ResultSet", "VoidQuantityError",
     "RESP_OP", "SYNAPTIC_PULSE", "AMBIENT_GABA_UM", "IA_SCALE",
     "FOREBRAIN_GLUN2B", "BRAINSTEM_GLUN2B", "EUPNOEA_BAND",
     "CALIBRATIONS", "Calibration", "calibration_report",
+    "Compound", "evaluate", "clear_control_cache",
     "__version__",
 ]

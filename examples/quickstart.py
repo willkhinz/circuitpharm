@@ -4,7 +4,7 @@
 Run:  python examples/quickstart.py
 """
 from circuitpharm import calibration_report, Tier
-from circuitpharm.evaluate import Compound, evaluate
+from circuitpharm.evaluation import Compound, evaluate
 from circuitpharm.results import VoidQuantityError
 
 

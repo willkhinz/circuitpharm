@@ -214,10 +214,24 @@ def table():
         subj = p.subjective_index()
         resp = p.regional_sens("prebotc")
         mot = p.regional_sens("spinal")
+        # RATIOS ARE NORMALISED to a non-selective benzodiazepine. The raw quotient
+        # subj/resp mixes two different scales: `subjective_index` omits
+        # K_REGION["forebrain"] (it is a weighted SUBSET of subtypes) while `regional_sens`
+        # includes it, so the bare number is in invented units and was printed as though
+        # it meant something -- directly contradicting the warning in
+        # `subjective_index`'s own docstring. Dividing by the reference compound's quotient
+        # cancels both the K factor and the lumped sensitivity scale, which is the same
+        # construction `Compound.selectivity_ratio` uses and the only form that is
+        # interpretable.
         rows.append(dict(key=key, name=p.name, subj=subj, resp=resp, motor=mot,
-                         ratio_resp=(subj / resp if resp > 1e-9 else float("inf")),
-                         ratio_motor=(subj / mot if mot > 1e-9 else float("inf")),
+                         raw_resp=(subj / resp if resp > 1e-9 else float("inf")),
+                         raw_motor=(subj / mot if mot > 1e-9 else float("inf")),
                          ceiling=p.ceiling))
+    ref = next(r for r in rows if r["key"] == "nonselective_bz")
+    for r in rows:
+        for k, rk in (("ratio_resp", "raw_resp"), ("ratio_motor", "raw_motor")):
+            r[k] = (r[rk] / ref[rk] if ref[rk] not in (0.0, float("inf"))
+                    and r[rk] != float("inf") else float("inf"))
     return rows
 
 
@@ -226,8 +240,11 @@ if __name__ == "__main__":
     for r in ("prebotc", "spinal", "forebrain"):
         print(f"  {r:<10} K={K_REGION[r]:7.4f}  anchor={ANCHOR[r]}")
     print()
+    print("ratios are NORMALISED to a non-selective benzodiazepine (= 1.0), because the")
+    print("raw quotient mixes two scales and is in invented units. See subjective_index().")
+    print()
     print(f"{'compound':<46} {'subj':>6} {'resp':>6} {'motor':>6} "
-          f"{'subj/resp':>10} {'subj/motor':>11}")
+          f"{'vs BZ resp':>11} {'vs BZ motor':>12}")
     print("-" * 92)
     for r in sorted(table(), key=lambda r: -r["ratio_resp"]):
         rr = f"{r['ratio_resp']:10.1f}" if r['ratio_resp'] != float("inf") else f"{'inf':>10}"

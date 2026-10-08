@@ -47,7 +47,8 @@ class GroupPacemakerRG:
     # this coupling must only ever be tested by complete removal.
     def __init__(self, drug: Drug | None = None, n_exc=30, n_inh=12,
                  drive=260.0, gaba_tonic=1.0, g_adapt=1.2, tau_adapt=280.0,
-                 gaba_sens=1.0, glyr_sens=1.0, asym=0.08, w=None, seed=0):
+                 gaba_sens=1.0, gaba_sens_tonic=None, gaba_sens_phasic=None,
+                 glyr_sens=1.0, asym=0.08, w=None, seed=0):
         self.drug = drug or Drug()
         self.W = dict(ee_ampa=0.55, ee_nmda=0.3025,  # recurrent excitation (rhythmogenic)
                       ei_ampa=0.80,                  # half-centre -> own interneurons
@@ -64,6 +65,13 @@ class GroupPacemakerRG:
         self.drive_half = {"F": drive * (1.0 + asym), "E": drive * (1.0 - asym)}
         self.drive, self.gaba_tonic = drive, gaba_tonic
         self.gaba_sens = gaba_sens
+        # TONIC/PHASIC SPLIT, as PreBotC and SpinalCircuit already had. One lumped
+        # `gaba_sens` applied the same fraction to the standing extrasynaptic conductance
+        # and the phasic synaptic one, although the two pools differ ~200x in how much a
+        # PAM can do to them -- recurring error E12, reintroduced here in the locomotor
+        # rhythm generator after being fixed everywhere else.
+        self.gaba_sens_tonic = gaba_sens if gaba_sens_tonic is None else gaba_sens_tonic
+        self.gaba_sens_phasic = gaba_sens if gaba_sens_phasic is None else gaba_sens_phasic
         # Glycine gets its own sensitivity -- it contains no GABA-A subunits, so a
         # GABA-A-derived fraction says nothing about it. See resp.py for the full note.
         self.glyr_sens = glyr_sens
@@ -78,8 +86,8 @@ class GroupPacemakerRG:
                 for rec in ("ampa", "nmda", "gabaa", "gly"):
                     self.syn[(nm, rec)] = Syn(
                         n, rec, self.drug,
-                        sens=(gaba_sens if rec == "gabaa"
-                              else glyr_sens if rec == "gly" else 1.0))
+                        sens=(self.gaba_sens_phasic if rec == "gabaa"
+                              else self.glyr_sens if rec == "gly" else 1.0))
         self.t = 0.0
         self.trace = {k: [] for k in list(self.pops) + ["t"]}
 
@@ -102,7 +110,7 @@ class GroupPacemakerRG:
             # affinity-type PAM potentiates the standing extrasynaptic conductance far
             # more than the near-saturated synaptic one. Identical to the old behaviour
             # whenever gaba_a_gain_tonic is None.
-            eff = 1.0 + self.gaba_sens * (self.drug.gaba_scale_tonic() - 1.0)
+            eff = 1.0 + self.gaba_sens_tonic * (self.drug.gaba_scale_tonic() - 1.0)
             g["gabaa"] = g["gabaa"] + self.gaba_tonic * eff
             Id = (self.drive_half[nm[-1]] * drive_scale if nm.startswith("RG") else 70.0)
             p.step(dt, g, E, Id, self.rng)

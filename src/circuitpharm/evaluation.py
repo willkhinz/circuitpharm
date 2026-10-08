@@ -199,6 +199,23 @@ class Compound:
         return score(self.gaba) / score(PROFILES[reference])
 
 
+
+def _pct_of_control(value, control):
+    """value as a percentage of control, NaN-safe.
+
+    `100.0 * v / max(1e-9, control)` was wrong in a way that manufactures an enormous
+    number from a missing one: NaN comparisons are False, so max(1e-9, nan) returns 1e-9
+    and a perfectly ordinary value divided by it becomes ~1.5e11 percent. A control reflex
+    gain IS legitimately NaN when the Ia response did not exceed noise, so this path is
+    reachable, and an undefined ratio must stay undefined.
+    """
+    if value is None or control is None:
+        return float("nan")
+    if not (np.isfinite(value) and np.isfinite(control)) or abs(control) < 1e-9:
+        return float("nan")
+    return 100.0 * value / control
+
+
 # ------------------------------------------------------------------- simulation
 # CONTROL-RUN CACHE. Every evaluation needs drug-free controls to normalise against, and
 # recomputing them per call made evaluate() six simulations deep; the test suite grew from
@@ -329,7 +346,8 @@ def evaluate(cand: Compound, n_seed=4, reference="nonselective_bz",
         if k not in _CTRL_CACHE:
             _CTRL_CACHE[k] = _simulate_resp(Compound("control", occupancy=0.0), seed=s)
         ctrl.append(_CTRL_CACHE[k])
-    pct = 100.0 * np.mean([v["mean"] for v in vent]) / np.mean([c["mean"] for c in ctrl])
+    pct = _pct_of_control(float(np.mean([v["mean"] for v in vent])),
+                      float(np.mean([c["mean"] for c in ctrl])))
     rs.add(Quantity("ventilation", pct, Tier.UNCALIBRATED, "% of control",
                     provenance="preBotC minute-ventilation proxy, tonic/phasic resolved",
                     promote_by="muscimol or GABA concentration-response on burst frequency "
@@ -374,7 +392,7 @@ def evaluate(cand: Compound, n_seed=4, reference="nonselective_bz",
                     "mn_dyn": float(np.mean([r["mn_dyn"] for r in refl_runs]))}
             ctrl_refl = {"gain": float(np.mean([r["gain"] for r in ctrl_refl_runs]))}
             rs.add(Quantity(
-                "reflex_gain", 100.0 * refl["gain"] / max(1e-9, ctrl_refl["gain"]),
+                "reflex_gain", _pct_of_control(refl["gain"], ctrl_refl["gain"]),
                 Tier.UNCALIBRATED, "% of control",
                 provenance="ramp-and-hold stretch reflex, mirroring the servo-imposed "
                            "experiment; reproduces strychnine hyperreflexia and "
@@ -407,8 +425,7 @@ def evaluate(cand: Compound, n_seed=4, reference="nonselective_bz",
             loco["walking"] = bool(np.mean([r["walking"] for r in loco_runs]) >= 0.5)
             ctrl_loco = {"step_period_ms": _m(ctrl_loco_runs, "step_period_ms")}
             rs.add(Quantity(
-                "step_period", 100.0 * loco["step_period_ms"]
-                / max(1e-9, ctrl_loco["step_period_ms"]),
+                "step_period", _pct_of_control(loco["step_period_ms"], ctrl_loco["step_period_ms"]),
                 Tier.UNCALIBRATED, "% of control",
                 provenance="free-running closed loop: receptor -> circuit -> muscle -> "
                            "joint -> spindle feedback, nothing imposed. Slowing is a valid "

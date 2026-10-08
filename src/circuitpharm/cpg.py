@@ -123,7 +123,13 @@ class Drug:
         """
         s = np.clip(self.glun2b_selectivity, 0.0, 1.0)
         accessible = s * self.glun2b_fraction + (1.0 - s) * 1.0
-        return float(1.0 - self.nmda_block * accessible)
+        # CLIP THE BLOCK. An nmda_block above 1.0 -- reachable from an optimiser sweep or a
+        # sampling tail -- made this return a NEGATIVE surviving fraction
+        # (Drug(nmda_block=1.5).nmda_scale() was -0.05). A negative w_scale turns an
+        # excitatory NMDA conductance into a negative one, which is unphysical and drives
+        # positive-feedback voltage divergence rather than failing visibly.
+        blocked = float(np.clip(self.nmda_block, 0.0, 1.0))
+        return float(max(0.0, 1.0 - blocked * accessible))
 
 
 # ------------------------------------------------------------------------ population
@@ -264,7 +270,12 @@ def burst_metrics(t, rate, thresh_frac=0.35):
     Each onset is now paired with the first offset that genuinely follows it.
     """
     r = np.asarray(rate); t = np.asarray(t)
-    if r.size == 0 or r.max() <= 0:
+    # `not np.isfinite(...)` FIRST: `np.nan <= 0` is False, so a NaN-containing trace slid
+    # past the old guard, `r > thresh_frac * nan` gave an all-False mask, and the function
+    # proceeded through edge detection on nothing -- returning plausible-looking empty
+    # results instead of declaring the input unusable.
+    peak = r.max() if r.size else np.nan
+    if r.size == 0 or not np.isfinite(peak) or peak <= 0:
         return dict(period=np.nan, duty=np.nan, n_bursts=0, onsets=[])
     hi = r > thresh_frac * r.max()
     edges = np.diff(hi.astype(int))

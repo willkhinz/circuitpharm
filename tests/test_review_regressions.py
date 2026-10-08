@@ -12,7 +12,7 @@ import pytest
 from circuitpharm.cpg import Pop, Drug
 from circuitpharm.circuit import SpinalCircuit
 from circuitpharm.results import Quantity, Tier
-from circuitpharm.evaluate import Compound
+from circuitpharm.evaluation import Compound
 
 
 # ===================================================== 1. reproducibility (worst)
@@ -66,7 +66,7 @@ def test_motor_endpoints_average_over_seeds():
     """Motor readouts hard-coded seed=1 while ventilation averaged over n_seed -- recurring
     error E6, committed in this project's own public API. Motor output is noisier than
     ventilation, so a single seed is worse there, not better."""
-    from circuitpharm.evaluate import evaluate, clear_control_cache
+    from circuitpharm.evaluation import evaluate, clear_control_cache
     clear_control_cache()
     a = evaluate(Compound.from_profile("alogabat", occupancy=0.35), n_seed=1)
     clear_control_cache()
@@ -94,7 +94,7 @@ def test_nmda_arm_is_reported_and_the_total_is_void():
     The arms are reported separately and the total is VOID rather than summed, because they
     are in incommensurable units. The project's 'GABA salience >= NMDA salience'
     constraint compares them directly and so rests on the same defect."""
-    from circuitpharm.evaluate import evaluate
+    from circuitpharm.evaluation import evaluate
     rs = evaluate(Compound.from_profile("alogabat", occupancy=0.35, nmda_block=0.3),
                   n_seed=1, include_motor=False)
     assert rs.quantity("subjective_index_gaba").value > 0
@@ -103,7 +103,7 @@ def test_nmda_arm_is_reported_and_the_total_is_void():
 
 
 def test_no_nmda_arm_means_no_nmda_quantities():
-    from circuitpharm.evaluate import evaluate
+    from circuitpharm.evaluation import evaluate
     rs = evaluate(Compound.from_profile("alogabat", occupancy=0.35), n_seed=1,
                   include_motor=False)
     with pytest.raises(KeyError):
@@ -276,7 +276,7 @@ def test_abolished_locomotion_does_not_emit_a_numpy_warning():
     warning is noise on a correct result, and noise on correct results is how real
     warnings get ignored."""
     import warnings
-    from circuitpharm.evaluate import evaluate, clear_control_cache
+    from circuitpharm.evaluation import evaluate, clear_control_cache
     clear_control_cache()
     with warnings.catch_warnings():
         warnings.simplefilter("error", RuntimeWarning)
