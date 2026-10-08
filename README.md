@@ -107,11 +107,16 @@ Requires Python 3.11 or 3.12.
 ## Tests
 
 ```bash
-pytest                             # full suite
-pytest -m "not slow"               # skip circuit integrations
+pytest                             # full suite, parallel by default (~2.5 min)
+pytest -m "not slow"               # skip circuit integrations (~15 s)
+pytest -n 0                        # serial, for debugging (xdist hides stdout)
 ```
 
-The suite is in three parts, and the middle one is the point:
+97 tests. The suite is dominated by circuit integration and is embarrassingly parallel —
+every test builds its own network with its own seed and shares no state — so it runs on
+8 workers by default (2m35s versus 7m16s serial).
+
+It is in five parts, and the second and fifth are the point:
 
 - `test_identities.py` — exact identities (the tonic/phasic split is a partition; legacy
   single-pool behaviour is reproduced exactly; the GluN2B selectivity bound; each region's
@@ -123,6 +128,13 @@ The suite is in three parts, and the middle one is the point:
   possible (the mechanism is engaged, *and* it would disengage if the error returned).
 - `test_tiers.py` — the refusal machinery, including that VOID values never leak into
   printed output
+- `test_evaluate.py` — the public API: occupancy linearity, scale-invariance of the
+  ranking, and the invariance the control cache rests on
+- `test_phenotypes.py` — **the only tests that check biology rather than code.** Published
+  results the circuits were not fitted to: strychnine hyperreflexia (138% of control),
+  benzodiazepine reflex depression (77%), the GluN2B selectivity window (84% non-selective
+  versus 102% selective at the *same* 60% block), adaptation-not-inhibition
+  rhythmogenesis, closed-loop walking, and sedative-induced coordination loss
 
 ## Repository layout
 

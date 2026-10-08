@@ -29,11 +29,11 @@ jobs:
           pip install -e ".[dev]"
 
       - name: Fast tests
-        run: pytest -m "not slow" -q
+        run: pytest -m "not slow" -q -n auto
 
       # The slow tests integrate full 14-30 s circuit simulations (the strychnine
       # phenotype, the preBotC rhythmogenesis checks). They are the ones that would
       # actually catch a regression in the dynamics, so they run too -- just separately,
       # so a failure says which kind it was.
       - name: Circuit integration tests
-        run: pytest -m slow -q
+        run: pytest -m slow -q -n auto

@@ -134,6 +134,26 @@ class Compound:
 
 
 # ------------------------------------------------------------------- simulation
+# CONTROL-RUN CACHE. Every evaluation needs drug-free controls to normalise against, and
+# recomputing them per call made evaluate() six simulations deep; the test suite grew from
+# ~4.5 to ~9.5 minutes as endpoints were added.
+#
+# Caching them is SAFE FOR A PROVABLE REASON, not an approximation. A drug-free `Drug()`
+# has gaba_scale == gaba_scale_tonic == nmda_scale == glyr_gain == 1, and every sensitivity
+# enters as eff = 1 + sens*(x - 1). With x == 1 that is 1 for ANY sens, and the decay taus
+# scale by the same rule. So the drug-free control is completely independent of
+# gaba_sens/tonic/phasic, and depends only on the seed and the circuit configuration.
+#
+# Keyed on seed alone for that reason. If a future change makes a control depend on
+# sensitivity, this cache becomes wrong — tests/test_evaluate.py pins the invariance.
+_CTRL_CACHE: dict = {}
+
+
+def clear_control_cache() -> None:
+    """Drop cached drug-free controls. Call after changing circuit configuration."""
+    _CTRL_CACHE.clear()
+
+
 def _simulate_resp(cand: Compound, seed=0, duration_ms=14000.0, warm_ms=4000.0):
     from .resp import PreBotC, resp_metrics
     st, sp = cand.sens("prebotc")
@@ -197,8 +217,12 @@ def evaluate(cand: Compound, n_seed=4, reference="nonselective_bz",
                     caveats=("only ratios between compounds are interpretable",)))
 
     vent = [_simulate_resp(cand, seed=s) for s in range(n_seed)]
-    ctrl = [_simulate_resp(Compound("control", occupancy=0.0), seed=s)
-            for s in range(n_seed)]
+    ctrl = []
+    for s in range(n_seed):
+        k = ("resp", s)
+        if k not in _CTRL_CACHE:
+            _CTRL_CACHE[k] = _simulate_resp(Compound("control", occupancy=0.0), seed=s)
+        ctrl.append(_CTRL_CACHE[k])
     pct = 100.0 * np.mean([v["mean"] for v in vent]) / np.mean([c["mean"] for c in ctrl])
     rs.add(Quantity("ventilation", pct, Tier.UNCALIBRATED, "% of control",
                     provenance="preBotC minute-ventilation proxy, tonic/phasic resolved",
@@ -230,8 +254,9 @@ def evaluate(cand: Compound, n_seed=4, reference="nonselective_bz",
         d = cand.drug("spinal")
         try:
             refl = stretch_reflex(d, gaba_sens_tonic=stm, gaba_sens_phasic=spm)
-            ctrl_refl = stretch_reflex(Drug(), gaba_sens_tonic=stm,
-                                       gaba_sens_phasic=spm)
+            if ("reflex", 1) not in _CTRL_CACHE:
+                _CTRL_CACHE[("reflex", 1)] = stretch_reflex(Drug())
+            ctrl_refl = _CTRL_CACHE[("reflex", 1)]
             rs.add(Quantity(
                 "reflex_gain", 100.0 * refl["gain"] / max(1e-9, ctrl_refl["gain"]),
                 Tier.UNCALIBRATED, "% of control",
@@ -244,7 +269,9 @@ def evaluate(cand: Compound, n_seed=4, reference="nonselective_bz",
                            "qualitative validations passed."))
 
             loco = locomotion(d, gaba_sens_tonic=stm, gaba_sens_phasic=spm)
-            ctrl_loco = locomotion(Drug(), gaba_sens_tonic=stm, gaba_sens_phasic=spm)
+            if ("loco", 1) not in _CTRL_CACHE:
+                _CTRL_CACHE[("loco", 1)] = locomotion(Drug())
+            ctrl_loco = _CTRL_CACHE[("loco", 1)]
             rs.add(Quantity(
                 "step_period", 100.0 * loco["step_period_ms"]
                 / max(1e-9, ctrl_loco["step_period_ms"]),

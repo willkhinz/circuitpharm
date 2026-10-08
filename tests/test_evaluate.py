@@ -168,3 +168,27 @@ def test_motor_endpoints_can_be_skipped():
     assert rs.quantity("ventilation") is not None
     with pytest.raises(KeyError):
         rs.quantity("reflex_gain")
+
+
+def test_drugfree_control_is_independent_of_sensitivity():
+    """PINS THE ASSUMPTION THE CONTROL CACHE RESTS ON.
+
+    Controls are cached on seed alone, which is only valid because a drug-free Drug()
+    gives eff = 1 + sens*(x-1) with x == 1, i.e. 1 for ANY sensitivity. If a future change
+    makes a drug-free control depend on sensitivity, the cache silently returns the wrong
+    normaliser and every percentage shifts. This test fails first.
+    """
+    from circuitpharm.cpg import Drug, Syn, TAU
+    d = Drug()
+    for sens in (0.0, 0.05, 0.5, 1.0):
+        for kind in ("gabaa", "gly", "nmda", "ampa"):
+            syn = Syn(4, kind, d, sens=sens)
+            assert syn.w_scale == pytest.approx(1.0), (kind, sens)
+            assert syn.tau == pytest.approx(TAU[kind]), (kind, sens)
+
+
+def test_control_cache_can_be_cleared():
+    from circuitpharm.evaluate import _CTRL_CACHE, clear_control_cache
+    _CTRL_CACHE[("probe", 0)] = "x"
+    clear_control_cache()
+    assert not _CTRL_CACHE

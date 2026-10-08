@@ -35,5 +35,10 @@ where = ["src"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-# the circuit tests integrate 14 s of network activity; they are slow by nature
+# the circuit tests integrate 14-30 s of network activity; they are slow by nature
 markers = ["slow: integrates a full circuit simulation (seconds to minutes)"]
+# Parallel by default. The suite is embarrassingly parallel (every test builds its own
+# network with its own seed and shares no state), and it is dominated by circuit
+# integration, so this is the difference between 7m16s and 2m35s on 8 workers.
+# Override with `-p no:xdist` or `-n 0` when debugging, since xdist hides stdout.
+addopts = "-n 8"
