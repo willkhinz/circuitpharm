@@ -5,6 +5,54 @@
 
 ---
 
+## ROADMAP — the chain from compound to behaviour, and where it stands
+
+Recorded here because it previously existed only in conversation. This project has already
+been bitten twice by results living outside the repo: the tuned locomotor RG parameters sat
+in a past run's stdout while the module shipped untuned defaults, and the destroyed KB rows
+were recoverable only by accident of version control. A plan in chat is the same failure.
+
+| # | link | status |
+|---|---|---|
+| 1 | structure → binding affinity | **not attempted.** Achievable with ~1 log unit error; worse for subtype selectivity, which is the hardest regime |
+| 2 | affinity → **functional efficacy** | **DECLINED BY DESIGN.** Not predictable from structure; taken as a measured INPUT (`Compound(a1=…, a5=…, s_max=…)`) |
+| 3 | efficacy → conductance change | **BUILT** (`gabaa_kinetics.py`). Calibration BLOCKED on wet-lab data |
+| 4 | conductance → neuron excitability | **NOT DONE.** Still LIF-only |
+| 5 | neurons → circuit dynamics | **NOT DONE.** Weights are "hand-tuned to produce alternating rhythm, NOT fitted to rat data" |
+| 6 | circuit → behaviour | **BUILT for motor** — stretch reflex and closed-loop locomotion |
+
+### The next step is 4 and 5, and they are ONE piece of work
+Link 4 gates link 5. The neurons are leaky integrate-and-fire, and **E7 established that a
+LIF structurally cannot carry voltage-gated mechanisms**: V is reset at threshold so a slow
+voltage-gated gate equilibrates at the subthreshold mean and never moves (measured h-gate
+span 0.01 against a needed 0.7). That forced spike-triggered adaptation as a lumped
+stand-in for I_NaP inactivation *plus* calcium-dependent potassium current *plus* synaptic
+depression — defensible, documented, and not the biophysics.
+
+It also blocks link 5. The published preBötC models worth adopting (the
+Butera–Rinzel–Smith lineage, and Rybak-style locomotor CPGs) are **conductance-based with a
+real I_NaP**, so they cannot be dropped into a LIF substrate. Upgrading the neuron model is
+the precondition for inheriting other people's validation instead of hand-tuning our own —
+which is the single largest credibility gain available WITHOUT new wet-lab data, because it
+replaces "these weights produce a rhythm" with "these are someone else's published,
+independently validated parameters."
+
+Concretely: move `Pop` to a conductance-based single-compartment neuron (Arbor or NEURON,
+or a hand-rolled Hodgkin–Huxley-style cell — the mechanisms needed are few), then replace
+the hand-tuned preBötC with a published parameter set and re-run the phenotype tests.
+
+### But sequencing matters more than the next feature right now
+Four external reviews found **38 defects**, at a rate of 9, 11, 8, 10 — flat. Each review
+found defects created or left incomplete by the previous round's fixes. My own scrutiny
+across twelve sessions found none of them.
+
+A conductance-based rewrite of the neuron model plus a circuit swap is a large new surface
+on a base whose defect density I cannot measure. **Get one review pass that finds nothing
+first.** Until that happens, more model is more unvalidated model, and the flat findings
+rate is better evidence about this codebase than any amount of added mechanism.
+
+---
+
 ## THE TOOL (session 8) — what exists now
 
 The code is packaged as **`circuitpharm`** and is the durable output of this project,
