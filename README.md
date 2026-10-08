@@ -124,7 +124,7 @@ pytest -n 0                        # serial, for debugging (xdist hides stdout)
 
 97 tests. The suite is dominated by circuit integration and is embarrassingly parallel —
 every test builds its own network with its own seed and shares no state — so it runs on
-8 workers by default (2m35s versus 7m16s serial).
+as many workers as the host has (about 2.5 min here versus 7m16s serial).
 
 It is in five parts, and the second and fifth are the point:
 
