@@ -2036,3 +2036,20 @@ formatting the pattern missed.
 ### Pushed
 Remote `willkhinz/circuitpharm` (**private**) already existed with my history through
 `c86bfdb`. Fast-forward, no force, nothing overwritten. CI runs on 3.11 and 3.12.
+
+### A bug that passed locally and would have failed CI
+Simulating a lean install (hiding `mujoco`) showed `evaluate()` **crashes** without the
+body plant. The guard wrapped only the IMPORT of the assay functions — but `assays`
+imports mujoco lazily INSIDE each function, so on a lean install that import succeeds and
+the `ImportError` surfaces on the first CALL, outside the guard, where only
+`FileNotFoundError` was caught.
+
+This is the install CI uses (`.[dev]`, no plant extra), and it passed here only because
+mujoco happens to be present on this machine. Fixed by catching `ImportError` at the call
+site; a lean install now returns 10 quantities including a `motor_endpoints` notice saying
+what is missing and how to get it, with the respiratory and receptor-level results intact.
+
+`tests/conftest.py` auto-skips plant-dependent tests by inspecting what each test calls,
+rather than by hand-marking — so a newly added plant test cannot forget its marker and
+turn a healthy lean install into a red build. The regression test simulates the absence
+even when mujoco IS installed, otherwise it would pass for the wrong reason.

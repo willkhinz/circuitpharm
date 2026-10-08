@@ -192,3 +192,48 @@ def test_control_cache_can_be_cleared():
     _CTRL_CACHE[("probe", 0)] = "x"
     clear_control_cache()
     assert not _CTRL_CACHE
+
+
+def test_evaluate_degrades_gracefully_without_the_body_plant():
+    """A lean install must still get the respiratory and receptor-level results.
+
+    REGRESSION TEST for a bug that passed locally and would have failed CI. The guard in
+    evaluate() originally wrapped only the IMPORT of the assay functions -- but `assays`
+    imports mujoco lazily INSIDE each function, so on a lean install that import succeeds
+    and the ImportError surfaces on the first CALL, outside the guard. evaluate() therefore
+    crashed on exactly the install CI uses (`.[dev]`, no plant extra) while passing on this
+    machine, where mujoco happens to be present.
+
+    Simulated here by hiding the module, so the test is meaningful even WITH mujoco
+    installed -- otherwise it would silently pass for the wrong reason on a full install.
+    """
+    import builtins
+    import sys
+
+    real_import = builtins.__import__
+
+    def fake(name, *a, **k):
+        if name.split(".")[0] in ("mujoco", "dm_control"):
+            raise ImportError(f"No module named {name!r} (simulated lean install)")
+        return real_import(name, *a, **k)
+
+    saved = {m: sys.modules[m] for m in list(sys.modules)
+             if m.split(".")[0] in ("mujoco", "dm_control", "circuitpharm")}
+    try:
+        builtins.__import__ = fake
+        for m in saved:
+            del sys.modules[m]
+        from circuitpharm.evaluate import Compound as C, evaluate as ev
+        rs = ev(C.from_profile("alogabat", occupancy=0.35), n_seed=1)
+        names = [q.name for q in rs.items]
+        assert "ventilation" in names, "respiratory endpoint lost on a lean install"
+        assert "selectivity_ratio" in names
+        assert "motor_endpoints" in names, "no notice that motor endpoints are unavailable"
+        assert not {"reflex_gain", "step_period"} & set(names)
+        assert "plant" in rs.quantity("motor_endpoints").promote_by
+    finally:
+        builtins.__import__ = real_import
+        for m in list(sys.modules):
+            if m.split(".")[0] in ("mujoco", "dm_control", "circuitpharm"):
+                del sys.modules[m]
+        sys.modules.update(saved)

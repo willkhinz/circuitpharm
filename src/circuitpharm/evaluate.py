@@ -303,9 +303,19 @@ def evaluate(cand: Compound, n_seed=4, reference="nonselective_bz",
                            "collapse against.",
                 promote_by="a whole-body preparation with ground reaction forces; this "
                            "cannot be fixed by reweighting the metric"))
-        except FileNotFoundError as e:
-            rs.add(Quantity("motor_endpoints", None, Tier.UNCALIBRATED,
-                            provenance=f"body model not found: {e}"))
+        except (ImportError, FileNotFoundError) as e:
+            # ImportError MUST be caught HERE, not only around the import of the assay
+            # functions above. `assays` imports mujoco lazily INSIDE each function, so the
+            # import above succeeds on a lean install and the failure surfaces on the
+            # first CALL -- which is outside the earlier guard. That made evaluate() crash
+            # on exactly the install CI uses (`.[dev]`, no plant extra), while passing
+            # locally where mujoco happens to be present.
+            rs.add(Quantity(
+                "motor_endpoints", None, Tier.UNCALIBRATED,
+                provenance=f"body plant unavailable ({type(e).__name__}: {e}). The "
+                           "respiratory and receptor-level results above are unaffected.",
+                promote_by="pip install -e '.[plant]' for the reflex and locomotor "
+                           "endpoints"))
 
     # --- VOID: quantities that rest on something invalid ----------------------------
     rs.add(Quantity(
