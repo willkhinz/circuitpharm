@@ -365,3 +365,39 @@ def test_seeding_is_stable_across_processes():
     a, b = CondPop(n=6, name="Exc0"), CondPop(n=6, name="Exc0")
     assert np.array_equal(a.V, b.V)
     assert not np.array_equal(a.V, CondPop(n=6, name="Inh0").V)
+
+
+# ========================= the substrate has an UPPER bound on drive; the LIF has none
+def test_conductance_cell_shows_depolarisation_block_and_the_LIF_does_not():
+    """A substrate difference with no LIF analogue, and the one that broke the network.
+
+    Measured on an isolated cell with g_NaP = 0 (as the Inh and Out populations are built):
+    39 Hz at 40 pA rising to 136 Hz at 150 pA, then SILENT at 300 pA. At that potential the
+    Na inactivation term (1-n) is nearly zero, so no spike can be produced however much
+    current is injected.
+
+    The LIF cannot do this. More drive means a higher rate, capped only by tref. So any
+    reasoning of the form "output collapsed, therefore increase the drive" is valid on the
+    LIF substrate and WRONG on this one -- which is exactly the mistake made when first
+    deriving a conductance operating point, where `drive_other` was raised to 40-70 pA on a
+    threshold calculation while the Out population was already in block at 25 pA plus
+    synaptic input.
+    """
+    no_nap = replace(P, g_nap=0.0)
+    firing = run_isolated(seconds=6.0, params=no_nap, i_app=150.0)
+    blocked = run_isolated(seconds=6.0, params=no_nap, i_app=300.0)
+    assert firing["rate_hz"] > 50.0, (
+        f"the no-I_NaP cell should fire briskly at 150 pA, got {firing['rate_hz']:.1f} Hz")
+    assert blocked["rate_hz"] == 0.0, (
+        f"expected depolarisation block at 300 pA, got {blocked['rate_hz']:.1f} Hz. If this "
+        f"cell no longer blocks, the Out-population diagnosis needs revisiting.")
+
+    # The LIF, driven far harder, keeps firing: it has no inactivation to lose.
+    lif = Pop(n=4, name="blockprobe")
+    rng = np.random.default_rng(0)
+    n_spk = 0
+    for _ in range(20000):
+        n_spk += int(Pop.step(lif, 0.1, {}, {}, 2000.0, rng).sum())
+    assert n_spk > 0, (
+        "the LIF stopped firing at very high drive, so it has acquired a block mechanism "
+        "and no longer provides the contrast this test documents")

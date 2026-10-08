@@ -18,7 +18,7 @@ were recoverable only by accident of version control. A plan in chat is the same
 | 2 | affinity → **functional efficacy** | **DECLINED BY DESIGN.** Not predictable from structure; taken as a measured INPUT (`Compound(a1=…, a5=…, s_max=…)`) |
 | 3 | efficacy → conductance change | **BUILT** (`gabaa_kinetics.py`). Calibration BLOCKED on wet-lab data |
 | 4 | conductance → neuron excitability | **BUILT** (`neuron.py`). Butera–Rinzel–Smith 1999 model 1, conductance-based, real I_NaP. Characterised in isolation; no circuit uses it yet |
-| 5 | neurons → circuit dynamics | **NOT DONE.** Weights are "hand-tuned to produce alternating rhythm, NOT fitted to rat data". Unblocked by link 4; `ParamSet` now refuses a mixed cell/weight pair |
+| 5 | neurons → circuit dynamics | **BUILT for the preBötC** (`PreBotC(substrate="cond")`). Published CELL, DERIVED coupling (BRS part II’s weights are unreachable). `rg2.py` / `circuit.py` still LIF-only |
 | 6 | circuit → behaviour | **BUILT for motor** — stretch reflex and closed-loop locomotion |
 
 ### Link 1 assessed and declined: it predicts the wrong quantity
@@ -84,13 +84,47 @@ been retuned around a wrong resting drive to compensate.
 **Measured cost: 4.1× the LIF**, not the estimated ~20× — loose enough that the conductance
 arm of the substrate-independence comparison may not need reduced draws after all.
 
-**Link 5, in progress:** `PreBotC(substrate="cond")` now runs the published cell, and
-refuses to start without its own operating point rather than silently inheriting the LIF's
-pA/nS numbers. `rg2.py` and `circuit.py` are still LIF-only. The coupling weights are
-**ours, not inherited** — Butera–Rinzel–Smith part II's network conductances are not
-retrievable (journal 403; every accessible encoding is single-cell), and inventing them was
-not an option. So link 5 delivers a published CELL in a network whose COUPLING is ours,
-anchored to a matched operating point.
+### Link 5 is built for the preBötC, and it produced the project's first substrate-independent result
+
+`PreBotC(substrate="cond")` runs the published cell at an anchored operating point
+(`config.COND_RESP_OP`): control **0.279 ± 0.015 Hz**, modulation **4.44** (the LIF's is
+4.736), drift **0.0%**, alive in 4/4 seeds. The coupling weights are **ours, derived from the
+cell's own properties** — BRS part II's network conductances are unreachable (journal HTTP
+403; every accessible encoding is single-cell, `g_tonic_e = 0`), and inventing them was not an
+option. So link 5 delivers a published CELL with DERIVED coupling.
+
+**THE RESULT.** Comparing each substrate's drug response as a fractional change from its own
+control (`scripts/compare_substrates.py`):
+
+> **The ordering of the five subtype-selective arms is identical on both substrates.
+> Spearman = +1.0000.**
+> `neurosteroid > mp_iii_022 > ideal_a5 > alogabat > hz_166`
+
+Two neuron models sharing almost no mechanism — one with a real I_NaP, voltage-gated
+inactivation, an 11.8× Mg²⁺ relief span and depolarisation block; the other with none of them
+— rank the subtype-selective compounds the same way. That is a genuine strengthening of the
+UNCALIBRATED tier, and the first result in this project to survive a change of substrate.
+
+**Exactly one arm moves, and only because its sign flips.** The non-selective BZ goes from
++0.079 (a 7.9% reduction in output) to −**0.377** (a 38% *increase*) — confirmed by two
+independent methods, with the LIF going the other way. It carries the largest α1 efficacy
+against a preBötC the model treats as α1-predominant, so the flip is largest exactly where the
+drug effect is largest. **The simulated respiratory response of a non-selective
+benzodiazepine cannot be quoted without naming its substrate.**
+
+What the flip *is*: a change in how much of the time the network is active (duty +65.5% cond
+vs −6.7% LIF), with peak burst height essentially unchanged on both. Whether that is more
+bursts or longer bursts is **not established** — see WORKLOG for the retracted frequency
+mechanism and why `burst_metrics` cannot answer it.
+
+**A4 (riluzole dissociation) is NOT reproduced**, and that is an *inherited* limitation.
+Removing I_NaP abolishes the network rhythm (0/3 seeds) as well as the isolated cell's. BRS
+model 1 *is* the pacemaker hypothesis, and the riluzole experiments are the principal
+published argument against pacemaker-driven rhythmogenesis — so a faithful implementation
+must fail this test. Not retuned.
+
+**Still LIF-only:** `rg2.py` and `circuit.py`, so the motor endpoints cannot yet be
+substrate-compared.
 
 ### Why the upgrade is not cosmetic — measured, not argued
 `scripts/diag_substrate_limits.py`. The LIF preBötC holds V in [−71, −44] mV, and:

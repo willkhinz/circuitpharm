@@ -452,3 +452,60 @@ Stating this because the adjacent error — thinking a substrate upgrade unblock
 Steps 4–6 are the bulk and have nothing to do with neurons; they are the reason this is
 described as a large new surface. Step 8 is the only step that produces a result worth
 publishing, which is an argument for not stopping at step 7 and calling the model improved.
+
+---
+
+## 11. What the migration actually cost (added 2026-10-08, from doing it)
+
+§8 predicted six new failure modes. Five were real and are now tests. The predictions missed
+the thing that actually consumed the work, so it is recorded here.
+
+### The LIF -> conductance change is NOT a rescaling
+
+§2 said the cell and its weights are "one atomic unit" and that a mixed pair is an
+order-of-magnitude error. True, but it implied a single scale factor would carry a weight
+table across. It will not. **Three distinct quantities each need a different
+transformation**, and getting two of them wrong produced a network that collapsed at every
+one of 48 operating points with a single uninformative diagnosis:
+
+| quantity | correct transformation | what went wrong |
+|---|---|---|
+| synaptic conductances, `gaba_tonic` | **× the g_L ratio (2.8/10 = 0.28)** | swept as a free "weight-block scale" 0.5-2.0, i.e. 1.8-5.4× too strong |
+| Exc `drive` (pA) | **set from the cell's bursting window**, plus compensation for the tonic conductance | swept 5-30 pA, entirely inside the tonic regime |
+| Inh/Out `drive_other` (pA) | **small bias**; these populations are recruited synaptically | first swept too high, then *derived* too high from a threshold calculation |
+
+A conductance means "this fraction of the cell's leak". `gaba_tonic = 1.5 nS` is 15% of the
+LIF's 10 nS and 54% of the Butera cell's 2.8 nS. The silenced network sat at exactly
+−57.8 mV, which is the steady state of `2.8(V+57.5) + 1.5(V+75) = 25` — the tonic GABA
+cancelling the drive to the millivolt.
+
+### The missed failure mode: an upper bound on drive
+
+**E19 (unpredicted).** This cell has a *maximum* drive. With `gaba_tonic = 0` the Out
+population sat at −17.8 mV firing at 0 Hz — depolarisation block, because `(1−n)` goes to
+zero. Isolated, a no-I_NaP cell rises 39 → 136 Hz over 40-150 pA and is **silent at 300 pA**.
+
+**The LIF has no such bound**: more drive means a higher rate, capped only by `tref`. So the
+inference *"output collapsed, therefore raise the drive"* is correct on the LIF substrate and
+wrong on this one. I made exactly that inference, in the derived grid, after having already
+measured the block.
+
+Worse, the two causes operated **simultaneously and in opposite directions** — tonic GABA
+silencing Exc from below, `drive_other` plus `eo_ampa` blocking Out from above. Either one
+read alone yields the wrong correction. That is why the sweep could only ever report
+"mean output collapsed": a scalar score over a grid cannot separate two opposing causes, and
+no amount of widening the grid would have found it. It took stripping components one at a
+time on a single point.
+
+### Corrected sequencing advice
+
+§10 put the network at step 7 and the comparison at step 8. Insert before both:
+
+> **6b. Derive the operating point, do not search for it.** Compute each class of quantity
+> from the cell's own properties — conductances from the g_L ratio, drive from the measured
+> bursting window, biases from what the synapses already supply — and verify each against an
+> isolated-cell measurement BEFORE running any network sweep. A grid search over a network is
+> the most expensive possible way to discover a unit error, and its score cannot tell you
+> which of several causes you are looking at.
+
+Two anchoring attempts, three stages each, were spent learning this.

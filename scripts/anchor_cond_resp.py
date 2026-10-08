@@ -40,11 +40,59 @@ import numpy as np
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent / "src"))
 
-from circuitpharm.config import RESP_OP                      # noqa: E402
+from circuitpharm.config import INVITRO_BAND, RESP_OP        # noqa: E402
 from circuitpharm.resp import PreBotC, REQUIRED_W, resp_metrics  # noqa: E402
 
-# The LIF control, measured. Re-measured by --verify rather than trusted.
+# The LIF control, measured. Kept for reporting the contrast, NOT as a target any more.
 TARGET = dict(freq=1.271, mod=4.736, mean=29.303)
+
+# THE CONDUCTANCE ARM IS ANCHORED TO ITS OWN PREPARATION, not to the LIF's frequency.
+#
+# Three attempts tried to force it to 1.271 Hz and all three failed the same way: the only
+# stable, deeply modulated points (drift 0%, modulation 2.5-9.9) sat at 0.27-0.34 Hz, while
+# every point reaching the in vivo band had modulation collapsed to 0.2-0.9 and drift of
+# 40-164%. The target was wrong, not the network.
+#
+# EUPNOEA_BAND is an IN VIVO rat band (1-2 Hz). The Butera-Rinzel-Smith cell is neonatal
+# rodent IN VITRO, where control inspiratory burst frequency is 6.6 +/- 3.1 to 14.6 +/- 2.0
+# bursts/min = ~0.11-0.24 Hz (source pbc_invitro_freq: Revill et al. 2021,
+# Front Physiol 12:626470). Forcing it 5-12x above that is what destroyed the rhythm.
+#
+# So frequency is now a RANGE the rhythm must fall in, taken from the source, and the thing
+# being optimised is rhythm QUALITY -- modulation depth and stationarity. The two substrates
+# therefore do not share a frequency, which is correct: only fractional change from each
+# substrate's own control is comparable between them (design doc section 6).
+INVITRO_TARGET = (0.11, 0.24)       # sourced control baseline range, Hz
+
+# MINIMUM CONTROL OUTPUT, derived from resp_metrics' own gates rather than chosen.
+#
+# resp_metrics declares an arm dead on EITHER an absolute floor (mean < 1.0, "mean output
+# collapsed") or a relative one (mean < 0.2 * control). For the relative gate to be the
+# binding one -- i.e. for there to be a GRADED range between full control and dead -- we
+# need 0.2 * ctrl > 1.0, so ctrl mean > 5.0.
+#
+# Why it matters here: the best-scoring point of the first successful sweep had control mean
+# 4.3, which puts "dead" at the absolute floor of 1.0 and leaves just 3.3 of range for a
+# drug effect to live in. The LIF's 29.3 leaves 23.4. A deep, stationary, correctly-banded
+# rhythm that no drug effect can be measured against is not a usable operating point, and
+# optimising modulation alone selected exactly that.
+#
+# THE GATE IS THE DERIVED 5.0. The margin is a PREFERENCE, not a veto, and that
+# distinction was corrected after it did damage.
+#
+# This was first set to 10.0 "for margin". At verification the best rhythm in the finalist
+# set -- modulation 4.44, closest to the LIF's 4.736, and the tightest frequency SD of the
+# four (0.015 Hz) -- came in at mean 9.5 and was DISQUALIFIED for being 0.5 below a number
+# I had chosen, while satisfying the derived criterion comfortably (7.6 of graded range
+# against the 1.0 absolute floor). The margin was overriding the thing it existed to
+# protect, and the selection then fell to a point with modulation 2.43.
+#
+# So: hard gate at the derived 5.0; shortfall against 10 costs a little score instead of
+# vetoing. Recorded in full because adjusting a threshold after seeing which candidate it
+# excludes is exactly the move that needs a reason on the record -- and because the reason
+# has to be that 5.0 is derived and 10.0 was not, rather than that I preferred the outcome.
+MIN_CTRL_MEAN = 5.0
+PREFERRED_CTRL_MEAN = 10.0
 
 # The LIF weight table, as PreBotC assembles it. The search scales this as a block, so the
 # RATIOS between pathways are held at the LIF's and only the overall scale moves. Holding the
@@ -56,10 +104,35 @@ LIF_W.update(ei_ampa=0.55, ei_nmda=0.0, ie_gaba=0.45, ie_gly=0.35,
              eo_ampa=0.70, eo_nmda=0.30)
 
 
-def make_op(scale, drive, drive_other, gaba_tonic):
+# RECEPTOR TYPES NEED DIFFERENT SCALES, and this is the finding that made the network work.
+#
+# tau_nmda is 100 ms, 20x the AMPA tau, so with lumped population weights the NMDA
+# conductance accumulates 20x more per unit firing rate. The LIF's weights were tuned on a
+# substrate where the Mg2+ block held NMDA at a MEASURED mean relief of 0.063
+# (scripts/diag_substrate_limits.py). A depolarised conductance cell reaches ~0.70, so the
+# same weight delivers ~11x more NMDA -- and relief RISES with depolarisation, making it
+# positive feedback into depolarisation block rather than a simple scale error.
+#
+# So:   AMPA, GABA, glycine  ->  x (g_L ratio) = 0.28
+#       NMDA                 ->  x (g_L ratio) x (0.063/0.70) = 0.025
+#
+# Derived, then confirmed by prediction: of twelve points probed across both scales, the
+# single one that produced a living rhythm was exactly (0.280, 0.025).
+GL_RATIO = 2.8 / 10.0
+RELIEF_RATIO = 0.063 / 0.70
+
+
+def make_op(s_ampa, s_nmda, s_inh, drive, drive_other, gaba_tonic):
+    w = {}
+    for k in REQUIRED_W:
+        if k.endswith("_nmda"):
+            w[k] = LIF_W[k] * s_nmda
+        elif k.endswith("_ampa"):
+            w[k] = LIF_W[k] * s_ampa
+        else:                                   # ie_gaba, ie_gly
+            w[k] = LIF_W[k] * s_inh
     return dict(drive=float(drive), drive_other=float(drive_other),
-                gaba_tonic=float(gaba_tonic),
-                w={k: LIF_W[k] * scale for k in REQUIRED_W})
+                gaba_tonic=float(gaba_tonic), w=w)
 
 
 # tau_h is 10 s, the slowest timescale in the Butera cell and 25x the LIF's tau_adapt.
@@ -77,10 +150,11 @@ def evaluate(args):
     perfectly well over any single window -- which is exactly how the first anchoring
     attempt passed a three-stage search with a seed-robustness check.
     """
-    scale, drive, drive_other, gaba_tonic, _seconds, seed = args
-    op = make_op(scale, drive, drive_other, gaba_tonic)
+    s_ampa, s_nmda, s_inh, drive, drive_other, gaba_tonic, _seconds, seed = args
+    op = make_op(s_ampa, s_nmda, s_inh, drive, drive_other, gaba_tonic)
     total_ms = SETTLE_MS + 2.0 * WINDOW_MS
-    base = dict(scale=scale, drive=drive, drive_other=drive_other, gaba_tonic=gaba_tonic)
+    base = dict(s_ampa=s_ampa, s_nmda=s_nmda, s_inh=s_inh, drive=drive,
+                drive_other=drive_other, gaba_tonic=gaba_tonic)
     try:
         net = PreBotC(substrate="cond", op=op, seed=seed)
         for i in range(int(round(total_ms / 0.1))):
@@ -92,7 +166,8 @@ def evaluate(args):
         for k in (0, 1):
             lo = SETTLE_MS + k * WINDOW_MS
             m = (A["t"] >= lo) & (A["t"] < lo + WINDOW_MS)
-            halves.append(resp_metrics(A["t"][m], A["Out"][m], A["Exc"][m]))
+            halves.append(resp_metrics(A["t"][m], A["Out"][m], A["Exc"][m],
+                                       band=INVITRO_BAND))
     except Exception as exc:                      # a diverged cell must not kill the sweep
         return dict(**base, score=float("inf"), freq=float("nan"), mod=float("nan"),
                     mean=float("nan"), alive=False, drift=float("nan"),
@@ -112,16 +187,28 @@ def evaluate(args):
                                        else halves[1]["reason"])[:50]
     elif drift > 0.20:
         score, reason = float("inf"), f"drifting: {f1:.2f} then {f2:.2f} Hz"
+    elif mean < MIN_CTRL_MEAN:
+        # Hard gate, not a penalty: a rhythm with too little output cannot host a graded
+        # drug measurement however good it looks otherwise, and a penalty term would let a
+        # beautifully modulated but unmeasurable point win.
+        score, reason = float("inf"), f"output too low to measure against: {mean:.1f} < {MIN_CTRL_MEAN}"
     else:
-        score = (abs(freq - TARGET["freq"]) / TARGET["freq"]
-                 + 0.20 * abs(np.log(max(mod, 1e-6) / TARGET["mod"])))
+        # Frequency must land in the sourced in vitro baseline range; outside it (but still
+        # inside INVITRO_BAND) costs proportionally. Within it, what is optimised is
+        # MODULATION DEPTH -- a rhythm that only just clears the 0.8 modulation gate is one
+        # noise realisation from being reported dead, and leaves no range to measure a drug
+        # against.
+        lo, hi = INVITRO_TARGET
+        off = 0.0 if lo <= freq <= hi else (lo - freq) / lo if freq < lo else (freq - hi) / hi
+        short = max(0.0, (PREFERRED_CTRL_MEAN - mean) / PREFERRED_CTRL_MEAN)
+        score = off + 2.0 / max(mod, 1e-6) + 0.5 * short
         reason = "alive, stable"
     return dict(**base, score=float(score), freq=freq, mod=mod, mean=mean,
                 alive=alive, drift=float(drift), reason=reason)
 
 
 def sweep(grid, seconds, procs, seed=0):
-    jobs = [(s, d, do, gt, seconds, seed) for s, d, do, gt in grid]
+    jobs = [(sa, sn, si, d, do, gt, seconds, seed) for sa, sn, si, d, do, gt in grid]
     if procs > 1:
         with mp.Pool(procs) as pool:
             return pool.map(evaluate, jobs)
@@ -130,14 +217,15 @@ def sweep(grid, seconds, procs, seed=0):
 
 def report(rows, n=12):
     rows = sorted(rows, key=lambda r: r["score"])
-    print(f"\n{'scale':>6}{'drive':>7}{'d_oth':>7}{'gtonic':>7} | "
+    print(f"\n{'ampa':>6}{'nmda':>7}{'inh':>6}{'drive':>7}{'d_oth':>7}{'gtonic':>7} | "
           f"{'freq':>7}{'mod':>7}{'mean':>8}{'drift':>7} {'alive':>6}{'score':>8}  reason")
-    print("-" * 104)
+    print("-" * 112)
     for r in rows[:n]:
         sc = "inf" if not np.isfinite(r["score"]) else f"{r['score']:.4f}"
-        print(f"{r['scale']:6.2f}{r['drive']:7.1f}{r['drive_other']:7.1f}"
-              f"{r['gaba_tonic']:7.2f} | {r['freq']:7.3f}{r['mod']:7.2f}{r['mean']:8.1f}"
-              f"{100*r['drift']:6.1f}% {str(r['alive']):>6}{sc:>8}  {r['reason']}")
+        print(f"{r['s_ampa']:6.3f}{r['s_nmda']:7.4f}{r['s_inh']:6.3f}{r['drive']:7.1f}"
+              f"{r['drive_other']:7.1f}{r['gaba_tonic']:7.2f} | {r['freq']:7.3f}"
+              f"{r['mod']:7.2f}{r['mean']:8.1f}{100*r['drift']:6.1f}% "
+              f"{str(r['alive']):>6}{sc:>8}  {r['reason']}")
     alive = [r for r in rows if r["alive"]]
     print(f"\n{len(alive)}/{len(rows)} points produced a living rhythm")
     return rows[0] if rows and np.isfinite(rows[0]["score"]) else None
@@ -149,25 +237,28 @@ def report(rows, n=12):
 # what decides -- longer runs, several seeds, and a requirement that every seed be alive.
 # Picking on a single short run would be choosing an operating point partly on seed noise.
 FINALISTS = [
-    #  scale  drive  d_other  gaba_tonic      (stage-2 12 s reading)
-    (0.90,   20.0,   30.0,    1.20),          # 1.356 Hz, mod 6.29
-    (1.00,   20.0,   20.0,    1.50),          # 1.102 Hz, mod 5.87
-    (1.00,   15.0,   15.0,    1.20),          # 1.017 Hz, mod 4.39
-    (1.10,   20.0,   30.0,    1.20),          # 1.441 Hz, mod 3.50
+    # (s_ampa, s_nmda, s_inh, drive, drive_other, gaba_tonic)
+    # From the stage-2 output (41/48 alive). Only points that passed every hard gate --
+    # alive in the in vitro band, drift <= 20%, control mean >= 10 -- are carried forward.
+    (0.40, 0.025, 0.21, 2.0,  5.0, 0.21),   # 0.270 Hz, mod 4.11, mean 10.3, drift 0.0%
+    (0.28, 0.025, 0.21, 0.0, 12.0, 0.21),   # 0.270 Hz, mod 2.42, mean 15.5, drift 0.0%
+    (0.28, 0.025, 0.21, 0.0,  5.0, 0.21),   # 0.270 Hz, mod 2.39, mean 13.3, drift 0.0%
+    (0.28, 0.025, 0.21, 2.0,  5.0, 0.21),   # 0.270 Hz, mod 2.03, mean 16.2, drift 0.0%
 ]
 
 
 def verify(a):
     """Re-measure the finalists at length, across seeds. Every seed must be alive."""
     print(f"stage 3: {len(FINALISTS)} finalists x {a.seeds} seeds, {a.seconds:.0f} s each")
-    print(f"target (the LIF's measured control): freq {TARGET['freq']} Hz, "
-          f"mod {TARGET['mod']}\n")
-    print(f"{'scale':>6}{'drive':>7}{'d_oth':>7}{'gtonic':>7} | {'alive':>7}"
+    print(f"target: frequency in {INVITRO_TARGET[0]}-{INVITRO_TARGET[1]} Hz (band "
+          f"{INVITRO_BAND[0]}-{INVITRO_BAND[1]}), control mean >= {MIN_CTRL_MEAN}, "
+          f"maximising modulation.\n")
+    print(f"{'ampa':>6}{'nmda':>7}{'inh':>6}{'drive':>7}{'d_oth':>7}{'gtonic':>7} | {'alive':>7}"
           f"{'freq':>9}{'sd':>7}{'mod':>7}{'mean':>8}{'|dfreq|':>9}")
     print("-" * 82)
     best = None
-    for scale, drive, do, gt in FINALISTS:
-        jobs = [(scale, drive, do, gt, a.seconds, s) for s in range(a.seeds)]
+    for sa, sn, si, drive, do, gt in FINALISTS:
+        jobs = [(sa, sn, si, drive, do, gt, a.seconds, s) for s in range(a.seeds)]
         if a.procs > 1:
             with mp.Pool(min(a.procs, len(jobs))) as pool:
                 rows = pool.map(evaluate, jobs)
@@ -177,29 +268,47 @@ def verify(a):
         fq = np.array([r["freq"] for r in rows], float)
         md = float(np.mean([r["mod"] for r in rows]))
         mn = float(np.mean([r["mean"] for r in rows]))
-        dfreq = abs(float(fq.mean()) - TARGET["freq"]) / TARGET["freq"]
-        print(f"{scale:6.2f}{drive:7.1f}{do:7.1f}{gt:7.2f} | {n_alive:4d}/{a.seeds}"
+        # Scored against the SOURCED in vitro range, not the LIF's frequency: the two
+        # substrates represent different preparations and must not share a frequency target.
+        lo, hi = INVITRO_TARGET
+        fmean = float(fq.mean())
+        dfreq = (0.0 if lo <= fmean <= hi
+                 else (lo - fmean) / lo if fmean < lo else (fmean - hi) / hi)
+        print(f"{sa:6.3f}{sn:7.4f}{si:6.3f}{drive:7.1f}{do:7.1f}{gt:7.2f} | "
+              f"{n_alive:4d}/{a.seeds}"
               f"{fq.mean():9.3f}{fq.std():7.3f}{md:7.2f}{mn:8.1f}{100*dfreq:8.1f}%")
         # EVERY SEED MUST BE ALIVE. An operating point that is alive in 3 of 4 seeds is
         # not a usable control: the drug arms would then be compared against a baseline
         # that sometimes does not exist, and a drug would get credit for a seed that was
         # already dead.
-        if n_alive == a.seeds and (best is None or dfreq < best[0]):
-            best = (dfreq, scale, drive, do, gt, float(fq.mean()), md, mn)
+        # EVERY hard gate must hold in EVERY seed, then modulation decides. Ranking on
+        # frequency proximity alone would reselect the deep-but-unmeasurable family.
+        ok = (n_alive == a.seeds and mn >= MIN_CTRL_MEAN
+              and all(abs(x - fmean) / max(fmean, 1e-9) <= 0.20 for x in fq))
+        short = max(0.0, (PREFERRED_CTRL_MEAN - mn) / PREFERRED_CTRL_MEAN)
+        rank = dfreq + 2.0 / max(md, 1e-6) + 0.5 * short
+        if ok and (best is None or rank < best[0]):
+            best = (rank, sa, sn, si, drive, do, gt, fmean, md, mn)
 
     if best is None:
-        print("\nNO finalist was alive in every seed. Do not register any of them; widen "
-              "the stage-2 grid instead. Do NOT lower the seed requirement.")
+        print("\nNO finalist passed every gate in every seed. Do not register any of them; "
+              "widen the grid instead. Do NOT lower the seed requirement or MIN_CTRL_MEAN "
+              "-- that value is derived from resp_metrics' own dead-arm criteria, not "
+              "chosen, and is the one threshold here that must not move.")
         return
-    dfreq, scale, drive, do, gt, fq, md, mn = best
+    rank, sa, sn, si, drive, do, gt, fq, md, mn = best
     print("\nREGISTER THIS:\n")
     print("COND_RESP_OP = MappingProxyType(dict(")
     print(f"    drive={drive}, drive_other={do}, gaba_tonic={gt},")
+    wb = make_op(sa, sn, si, drive, do, gt)["w"]
     print("    w=MappingProxyType(dict("
-          + ", ".join(f"{k}={LIF_W[k]*scale:.6g}" for k in REQUIRED_W) + ")),")
+          + ", ".join(f"{k}={v:.6g}" for k, v in wb.items()) + ")),")
     print("))")
-    print(f"\n# weight-block scale {scale} x the LIF table; control {fq:.3f} Hz vs the "
-          f"LIF's {TARGET['freq']} ({100*dfreq:.1f}% off), mod {md:.2f}, mean {mn:.1f}")
+    print(f"\n# s_ampa {sa}, s_nmda {sn}, s_inh {si}; control {fq:.3f} Hz "
+          f"({60*fq:.1f} bursts/min, sourced in vitro range {60*INVITRO_TARGET[0]:.1f}-"
+          f"{60*INVITRO_TARGET[1]:.1f}/min), mod {md:.2f} (LIF {TARGET['mod']}), "
+          f"mean {mn:.1f}. The LIF's {TARGET['freq']} Hz is a DIFFERENT preparation and is "
+          f"not a target.")
 
 
 def main():
@@ -214,54 +323,57 @@ def main():
     if a.stage == 3:
         return verify(a)
     if a.stage == 1:
-        # COARSE. Scale the whole weight block and move the two drives. gaba_tonic tracks
-        # the scale, since it is an inhibitory conductance in the same units.
-        # EXC DRIVE IS SEARCHED WHERE THE ISOLATED CELL BURSTS: -5..0 pA, verified with
-        # neuron.run_isolated (quiescent at -10, bursting at -5 and 0, TONIC from +5 up).
-        # The first version swept {5..30} pA -- entirely inside the tonic regime -- which is
-        # why it found almost nothing alive and what it did find was a transient.
-        #
-        # The range extends below -5 because network cells also receive recurrent AMPA and
-        # NMDA excitation on top of `drive`, so the external drive that puts a COUPLED cell
-        # in the bursting regime is lower than for an isolated one.
-        grid = [(s, d, do, 1.5 * s)
-                for s, d, do in itertools.product(
-                    (0.5, 0.75, 1.0, 1.5),            # weight-block scale
-                    (-12.0, -8.0, -5.0, -2.0, 0.0, 3.0),   # Exc drive, pA
-                    (10.0, 25.0))]                    # Inh/Out drive, pA (no I_NaP there)
+        # THE DEEP-MODULATION REGION. At s_inh 0.14 the network gave modulation 7.2-9.9
+        # (better than the LIF's 4.74) with zero drift, at 0.30-0.34 Hz -- which read as
+        # dead only because it was being gated against an in vivo band. Searching around
+        # there now, with the correct band and quality-based scoring.
+        grid = [(0.28, 0.025, si, d, 5.0, gt)
+                for si, d, gt in itertools.product(
+                    (0.10, 0.14, 0.17),             # inhibitory scale
+                    (-2.0, 0.0, 2.0, 4.0),          # Exc drive, pA
+                    (0.14, 0.21, 0.30))]            # gaba_tonic, nS
     else:
-        # REFINE around the stage-1 winner, which was scale 1.00 / drive 20 / drive_other 20
-        # / gaba_tonic 1.50, giving 1.026 Hz against the 1.271 Hz target.
+        # STAGE 2: find a point that is deep AND measurable. The first successful sweep gave
+        # two families, and neither passed both requirements:
         #
-        # Stage 1 found only 3 of 50 points alive, all at scale 1.00. That narrowness is a
-        # result, not a search artifact: a population of intrinsically bursting Butera cells
-        # has a much smaller region of synchronised, in-band behaviour than the LIF network
-        # did, because each cell is already an oscillator and the coupling has to entrain
-        # rather than create the rhythm. Reported rather than widened away.
-        grid = [(s, d, do, gt)
-                for s, d, do, gt in itertools.product(
-                    (0.9, 1.0, 1.1),
-                    (15.0, 20.0, 25.0),
-                    (15.0, 20.0, 30.0),
-                    (1.2, 1.5, 1.8))]
+        #   mod 7.0-9.7, mean 1.8-6.5  at 0.135 Hz  -> deep but unmeasurable
+        #   mod 2.1-2.5, mean 18.8-22.5 at 0.270 Hz -> measurable but shallow
+        #
+        # `eo_ampa`/`eo_nmda` set the Out population's output and are scaled by s_ampa, so
+        # s_ampa is the lever on mean. It is bounded above by depolarisation block (Out sat
+        # at -19.9 mV firing 0 Hz at s_ampa 0.28 before the NMDA correction), so this
+        # searches upward carefully and the drift and block gates do the rejecting.
+        grid = [(sa, 0.025, si, d, do, gt)
+                for sa, si, d, do, gt in itertools.product(
+                    (0.28, 0.40, 0.55),             # AMPA scale -- the lever on mean output
+                    (0.17, 0.21),                   # inhibitory scale
+                    (0.0, 2.0),                     # Exc drive, pA
+                    (5.0, 12.0),                    # Inh/Out bias, pA
+                    (0.21, 0.30))]                  # gaba_tonic, nS
 
     print(f"stage {a.stage}: {len(grid)} operating points, {a.seconds:.0f} s each, "
           f"{a.procs} procs")
-    print(f"target (the LIF's measured control): freq {TARGET['freq']} Hz, "
-          f"mod {TARGET['mod']}, mean {TARGET['mean']}")
+    print(f"target: frequency in the SOURCED in vitro baseline range "
+          f"{INVITRO_TARGET[0]}-{INVITRO_TARGET[1]} Hz (validity band "
+          f"{INVITRO_BAND[0]}-{INVITRO_BAND[1]}), maximising modulation depth.")
+    print(f"the LIF control, for contrast only: {TARGET['freq']} Hz, mod {TARGET['mod']}, "
+          f"mean {TARGET['mean']}  -- NOT a target; different preparation.")
     best = report(sweep(grid, a.seconds, a.procs))
     if best is None:
         print("\nNO operating point produced a living rhythm in band. Widen the grid; do "
               "NOT relax EUPNOEA_BAND to make a point qualify.")
         return
     print("\nBEST:")
-    print(f"  COND_RESP_OP = dict(")
+    print("  COND_RESP_OP = dict(")
     print(f"      drive={best['drive']}, drive_other={best['drive_other']},")
     print(f"      gaba_tonic={best['gaba_tonic']},")
-    print(f"      w={{" + ", ".join(f"{k!r}: {LIF_W[k]*best['scale']:.6g}"
-                                    for k in REQUIRED_W) + "},")
-    print(f"  )   # freq {best['freq']:.3f} Hz vs LIF {TARGET['freq']}, "
-          f"mod {best['mod']:.2f} vs {TARGET['mod']}, scale {best['scale']}")
+    wb = make_op(best["s_ampa"], best["s_nmda"], best["s_inh"],
+                 best["drive"], best["drive_other"], best["gaba_tonic"])["w"]
+    print("      w={" + ", ".join(f"{k!r}: {v:.6g}" for k, v in wb.items()) + "},")
+    print("  )")
+    print(f"  # s_ampa {best['s_ampa']}, s_nmda {best['s_nmda']}, s_inh {best['s_inh']}; "
+          f"freq {best['freq']:.3f} Hz vs LIF {TARGET['freq']}, mod {best['mod']:.2f} "
+          f"vs {TARGET['mod']}, drift {100*best['drift']:.1f}%")
     print("\nVerify at a longer duration and several seeds before registering it.")
 
 

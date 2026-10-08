@@ -246,15 +246,41 @@ def clear_control_cache() -> None:
     _CTRL_CACHE.clear()
 
 
-def _simulate_resp(cand: Compound, seed=0, duration_ms=14000.0, warm_ms=4000.0,
+# THREE THINGS CHANGE TOGETHER WITH THE SUBSTRATE, and getting any one of them wrong is
+# silent. Kept in one table so they cannot drift apart.
+#
+#   operating point  -- pA and nS are relative to the cell (C=200 pF/g_L=10 nS vs
+#                       C=21 pF/g_L=2.8 nS), so the LIF's RESP_OP must not be reused.
+#   validity band    -- EUPNOEA_BAND is an IN VIVO rat band; the Butera cell is neonatal
+#                       rodent IN VITRO, where control burst frequency is ~0.11-0.24 Hz.
+#                       Gating a cond run against the in vivo band reports every healthy
+#                       rhythm as dead (frequency out of band).
+#   settling time    -- tau_h is 10 s on the conductance cell, 25x the LIF's tau_adapt of
+#                       400 ms. A 4 s warm-up is 0.4 time constants and measures a decaying
+#                       transient: mean h falls 0.265 -> 0.080 over the first 20 s while the
+#                       frequency reading looks perfectly stable. That produced a confident,
+#                       seed-verified, WRONG operating point once already.
+_SUBSTRATE = {
+    "lif":  dict(band=None, warm_ms=4000.0,  duration_ms=14000.0),
+    "cond": dict(band="invitro", warm_ms=30000.0, duration_ms=60000.0),
+}
+
+
+def _simulate_resp(cand: Compound, seed=0, duration_ms=None, warm_ms=None,
                    substrate="lif"):
     """Simulate the respiratory arm. `substrate` selects the neuron model (roadmap link 4).
 
-    On 'cond' the LIF operating point is NOT passed: `drive` is in pA and the weights in nS
-    relative to the LIF cell, and PreBotC refuses the conductance substrate without an
-    operating point of its own (see config.COND_RESP_OP).
+    `duration_ms` and `warm_ms` default PER SUBSTRATE (see `_SUBSTRATE`): the conductance
+    cell's slowest timescale is 25x the LIF's, so it needs a far longer warm-up. Explicit
+    values still override, but the defaults must not be shared.
     """
+    from .config import INVITRO_BAND
     from .resp import PreBotC, resp_metrics
+    cfg = _SUBSTRATE[substrate]
+    warm_ms = cfg["warm_ms"] if warm_ms is None else warm_ms
+    duration_ms = cfg["duration_ms"] if duration_ms is None else duration_ms
+    band = INVITRO_BAND if cfg["band"] == "invitro" else None
+
     st, sp = cand.sens("prebotc")
     kw = dict(**RESP_OP) if substrate == "lif" else dict(substrate="cond")
     b = PreBotC(drug=cand.drug("prebotc"), gaba_sens_tonic=st, gaba_sens_phasic=sp,
@@ -264,7 +290,7 @@ def _simulate_resp(cand: Compound, seed=0, duration_ms=14000.0, warm_ms=4000.0,
         if i % 10 == 0:
             b.record()
     A = b.arrays(); m = A["t"] > warm_ms
-    return resp_metrics(A["t"][m], A["Out"][m], A["Exc"][m])
+    return resp_metrics(A["t"][m], A["Out"][m], A["Exc"][m], band=band)
 
 
 def evaluate(cand: Compound, n_seed=4, reference="nonselective_bz",

@@ -92,7 +92,51 @@ RESP_OP = MappingProxyType(dict(
 #     them, so a drifting network cannot pass as a stable one;
 #   * require every seed alive, as before -- necessary but, as this showed, nowhere near
 #     sufficient.
-COND_RESP_OP = None
+# ANCHORED 2026-10-08, sixth attempt. scripts/anchor_cond_resp.py, verified across 4 seeds
+# at 60 s each with every hard gate required to hold in EVERY seed.
+#
+#   control 0.279 +/- 0.015 Hz  = 16.7 bursts/min
+#   modulation 4.44             (the LIF's is 4.736 -- comparable)
+#   mean output 9.5             (graded measurement range 7.6; see MIN_CTRL_MEAN below)
+#   drift 0.0% between two consecutive 15 s windows after a 30 s settle
+#
+# THE FREQUENCY IS NOT THE LIF'S, BY DESIGN. The LIF runs at 1.271 Hz, an IN VIVO rat
+# eupnoeic frequency. The Butera-Rinzel-Smith cell is neonatal rodent IN VITRO, where control
+# inspiratory burst frequency is 6.6 +/- 3.1 to 14.6 +/- 2.0 bursts/min (`pbc_invitro_freq`).
+# Three earlier attempts tried to force this network to 1.271 Hz and all three destroyed the
+# rhythm -- modulation fell to 0.2-0.9 and drift reached 40-164%. Adopting a parameter set
+# adopts its preparation.
+#
+# CONSEQUENCE, which must travel with these numbers: the two substrates do NOT share a
+# frequency, so absolute frequency comparisons between them are meaningless. Only FRACTIONAL
+# change from each substrate's own control is comparable.
+#
+# HONEST CAVEAT: 16.7 bursts/min is ~16% ABOVE the sourced control-baseline range
+# (6.6-14.4/min). It is inside INVITRO_BAND and inside the broader voltage-dependent
+# pacemaker span (~0.05-1 Hz) reported for these cells, but it is outside the specific
+# baseline range cited. Stated rather than rounded into the range.
+#
+# THE WEIGHTS ARE OURS, NOT PUBLISHED. Butera-Rinzel-Smith part II gives network coupling
+# conductances for a population of exactly these cells, which would have made these numbers
+# citable. They are not retrievable (journal HTTP 403; every accessible encoding -- CellML,
+# ModelDB 247647 -- is single-cell only, g_tonic_e = 0). So the CELL is published and the
+# COUPLING is ours, derived from the cell's own properties:
+#
+#   AMPA / GABA / glycine  x (g_L ratio 2.8/10)                  = 0.28   (here 0.40 AMPA)
+#   NMDA                   x (g_L ratio) x (0.063/0.70)          = 0.025
+#   Exc drive              from the measured bursting window (-5..0 pA) + tonic compensation
+#   Inh/Out bias           small; bounded ABOVE by depolarisation block
+#
+# The NMDA factor is the ratio of the LIF's MEASURED mean Mg2+ relief (0.063) to a
+# depolarised conductance cell's (~0.70). The design document named that 0.063 as the LIF's
+# central defect; fixing it correctly made the inherited NMDA weights 11x too strong, and
+# because relief RISES with depolarisation it is positive feedback into block rather than a
+# simple scale error.
+COND_RESP_OP = MappingProxyType(dict(
+    drive=2.0, drive_other=5.0, gaba_tonic=0.21,
+    w=MappingProxyType(dict(ee_ampa=0.18, ee_nmda=0.0061875, ei_ampa=0.22, ei_nmda=0.0,
+                            ie_gaba=0.0945, ie_gly=0.0735, eo_ampa=0.28, eo_nmda=0.0075)),
+))
 
 # Synaptic GABA transient seen by the PHASIC receptor pool. This particular (peak,
 # clearance) pair is one of the 9/27 cells in which the Markov scheme reproduced every
@@ -120,6 +164,37 @@ BRAINSTEM_GLUN2B = 0.15
 # reports ~4 Hz, which is not tachypnoea but a disintegrated rhythm. Because `alive` is
 # what the overdose scan keys on, omitting this gate made overdose indices optimistic.
 EUPNOEA_BAND = (0.30, 2.50)
+
+# IN VITRO band, for the conductance substrate. A SEPARATE constant, not a widening of the
+# one above, and the distinction is the point.
+#
+# EUPNOEA_BAND is an IN VIVO rat band (eupnoea 1-2 Hz, 60-120 breaths/min) and is correct
+# for the LIF network, which was tuned to 1.27 Hz. The Butera-Rinzel-Smith cell is neonatal
+# rodent IN VITRO (~P0-P4), and adopting a parameter set adopts its preparation. Control
+# inspiratory burst frequency in conventional preBotC slices from neonatal rat is
+# 6.6 +/- 3.1 to 14.6 +/- 2.0 bursts/min, i.e. ~0.11-0.24 Hz, with pacemaker burst frequency
+# spanning ~0.05-1 Hz as a function of baseline membrane potential
+# (source `pbc_invitro_freq`: Revill et al. 2021, Front Physiol 12:626470,
+# DOI 10.3389/fphys.2021.626470).
+#
+# WHY THIS IS NOT MOVING A GOALPOST, which is exactly what it could be mistaken for. Three
+# anchoring attempts tried to force the conductance network to the LIF's 1.271 Hz. The
+# measurements said, consistently, that frequency and rhythm quality trade off against each
+# other there: the only STABLE, deeply modulated points (drift 0%, modulation 2.5-9.9 against
+# the LIF's 4.7) sat at 0.27-0.34 Hz, and every point that reached the in vivo band had
+# modulation collapsed to 0.2-0.9 and drift of 40-164%. Forcing an in vitro preparation to
+# 5-12x its own physiological frequency is what destroyed the rhythm.
+#
+# So the target was wrong, not the network -- and the evidence was collected and the source
+# read BEFORE this constant was introduced, not after a point failed to qualify. The band
+# below still EXCLUDES the fragmented 3.8-4.9 Hz rhythms that the gate exists to catch.
+#
+# THE CONSEQUENCE, which must travel with it: the two substrates no longer share a frequency.
+# Absolute frequency comparisons between them are therefore meaningless, and only FRACTIONAL
+# change from each substrate's own control is comparable -- which is what
+# knowledge/05-design-conductance-substrate.md section 6 required all along. Matching the
+# frequencies was an addition of mine, and an invalid one.
+INVITRO_BAND = (0.05, 1.00)
 
 
 # ----------------------------------------------------------------- calibrations

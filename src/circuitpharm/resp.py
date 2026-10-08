@@ -270,7 +270,7 @@ class PreBotC:
         return {k: np.asarray(v) for k, v in self.trace.items()}
 
 
-def resp_metrics(t, out, exc, ctrl_mean=None):
+def resp_metrics(t, out, exc, ctrl_mean=None, band=None):
     """Robust respiratory metrics. Rat eupnoea is ~1-2 Hz (60-120 breaths/min).
 
     A RELATIVE threshold (frac * signal.max()) fails catastrophically here: when a drug
@@ -293,6 +293,13 @@ def resp_metrics(t, out, exc, ctrl_mean=None):
     and `frag` is reported so the caller can see which failure mode occurred. This makes the
     overdose index strictly more conservative, which is the honest direction.
     """
+    # THE BAND IS A PROPERTY OF THE PREPARATION, not of the metric. EUPNOEA_BAND is an
+    # in vivo rat band and the default, so every existing caller is unchanged. The
+    # conductance substrate passes config.INVITRO_BAND, because the Butera cell is neonatal
+    # rodent in vitro and its network's physiological frequency is ~0.1-0.3 Hz; see the long
+    # note on INVITRO_BAND in config.py for why that is a preparation difference and not a
+    # relaxed gate.
+    band_lo, band_hi = EUPNOEA_BAND if band is None else band
     t = np.asarray(t, float); o = np.asarray(out, float)
     dt_ms = float(t[1] - t[0]) if len(t) > 1 else 1.0
     w = max(1, int(100.0 / max(1e-9, dt_ms)))          # ~100 ms smoothing
@@ -308,21 +315,29 @@ def resp_metrics(t, out, exc, ctrl_mean=None):
     dtr = (t[1] - t[0]) / 1000.0 if len(t) > 1 else dt_ms / 1000.0
     x = (sm - sm.mean()) * np.hanning(len(sm))
     F = np.abs(np.fft.rfft(x)); fr = np.fft.rfftfreq(len(sm), dtr)
-    band = (fr > 0.25) & (fr < 5.0)
+    # The FFT SEARCH range must reach below the validity band's floor, or a rhythm
+    # inside the in vitro band (down to 0.05 Hz) cannot be found at all -- the peak would
+    # be picked from whatever sits above 0.25 Hz, which is noise or a harmonic.
+    # 0.25 Hz for the in vivo default, so the LIF path is untouched; lowered only when the
+    # validity band itself reaches below it. My first version wrote min(0.25, 0.5*band_lo),
+    # which LOWERS the floor to 0.15 Hz for the in vivo band too -- changing the search
+    # range on the substrate whose results must stay byte-identical, for no reason.
+    fft_lo = 0.25 if band_lo >= 0.25 else 0.5 * band_lo
+    band = (fr > fft_lo) & (fr < 5.0)
     freq = float(fr[band][np.argmax(F[band])]) if band.any() else 0.0
     thr = p5 + 0.5 * (p95 - p5)                         # midpoint of the ACTUAL range
     n = int((np.diff((sm > thr).astype(int)) == 1).sum())
     # physiological plausibility gate -- see E4 SECOND FORM in the docstring
-    frag = bool(freq > EUPNOEA_BAND[1])
+    frag = bool(freq > band_hi)
     ok_mod = mod > 0.8
     ok_n = n >= 3
     ok_mean = ctrl_mean is None or mean > 0.2 * ctrl_mean
-    ok_band = EUPNOEA_BAND[0] <= freq <= EUPNOEA_BAND[1]
+    ok_band = band_lo <= freq <= band_hi
     alive = bool(ok_mod and ok_n and ok_mean and ok_band)
     reason = ("alive" if alive else
               "mean below 20% of control" if not ok_mean else
-              f"frequency {freq:.2f} Hz outside eupnoea band "
-              f"{EUPNOEA_BAND[0]}-{EUPNOEA_BAND[1]} Hz "
+              f"frequency {freq:.2f} Hz outside band "
+              f"{band_lo}-{band_hi} Hz "
               f"({'fragmented rhythm' if frag else 'too slow'})" if not ok_band else
               "modulation collapsed" if not ok_mod else "too few bursts")
     return dict(freq=freq, amp=float(p95), mod=mod,

@@ -2837,3 +2837,272 @@ provenance gap look worse than it is, which misleads in the opposite direction.
 Also added `NON_LITERATURE` for trial registries, encyclopedia pages and software resources —
 reporting a clinicaltrials.gov NCT number as UNRESOLVED conflates "could not check" with "not
 the kind of thing checked this way".
+
+### Why the conductance network collapsed: two causes at once, pulling opposite ways
+The corrected anchoring (bursting-regime drive, 30 s warm-up, drift gate) found **0 of 48
+points alive**, every one "mean output collapsed". Diagnosed rather than widened, by probing
+one point and stripping components:
+
+| configuration | Exc | Inh | Out |
+|---|---|---|---|
+| as searched (gaba_tonic 1.5, d_oth 25) | 0 Hz (−61.9 mV) | 0 (−57.8) | 0 (−57.8) |
+| **gaba_tonic = 0** | 34.5 Hz (−28.4) | 57.1 (−29.3) | **0 (−17.8)** |
+| gaba_tonic = 0, no synaptic inhibition | 11.3 (−22.9) | 111.3 (−32.9) | **0 (−22.1)** |
+
+**Cause 1 — a conductance cannot be carried between cells by a weight scale.** The silenced
+voltage is exactly predictable: with `g_L = 2.8 nS` to −57.5 mV, `gaba_tonic = 1.5 nS` to
+−75 mV and +25 pA, steady state is `2.8(V+57.5) + 1.5(V+75) = 25` → **V = −57.8 mV**, which
+is what was measured. The tonic GABA was cancelling the drive exactly.
+
+A conductance means "this fraction of the cell's leak". The LIF's `gaba_tonic = 1.5 nS` is
+**15% of its 10 nS leak**; on the Butera cell it is **54% of 2.8 nS**. The correct scale
+factor is the g_L ratio, **0.28** — so 1.5 nS becomes 0.42 nS. My grids searched 0.75–2.25 nS,
+i.e. **1.8× to 5.4× too strong**. The "weight-block scale" of 0.5–2.0 I had been sweeping
+cannot fix this, because what matters is the ratio to g_L and that differs by 3.6× between
+the cells.
+
+**Cause 2 — this cell has an UPPER bound on drive, and the LIF has none.** With
+`gaba_tonic = 0`, `Out` sits at **−17.8 mV and fires at 0 Hz**: depolarisation block. At that
+potential the Na inactivation term `(1−n)` is nearly zero, so no spike can be produced however
+much current is injected. **The LIF cannot do this at all** — more drive simply means a higher
+rate, capped only by `tref`.
+
+So `mean output collapsed` had two distinct causes operating simultaneously and in **opposite
+directions**: tonic GABA silencing Exc from below, and `drive_other` blocking Out from above.
+A one-dimensional reading of either leads to the wrong correction — and my first *derived*
+grid did exactly that, raising `drive_other` to 40–70 pA on a threshold calculation, which
+would have driven Out further into block. Corrected to 5–20 pA, with Inh and Out recruited by
+`eo_ampa`/`ei_ampa` from Exc rather than by injected current.
+
+This is the clearest single lesson of the migration: **the LIF→conductance change is not a
+rescaling.** Three distinct quantities (conductances, the Exc drive, the Inh/Out bias) each
+need a different transformation, and two of them are bounded above as well as below.
+
+### The cause: NMDA, and it is the §1 finding biting back
+Two derived grids failed (0/48, 0/72), both "mean output collapsed". Diagnosed by
+instrumenting per-population state across the range instead of sweeping further:
+
+| scale | Exc | Inh | Out |
+|---|---|---|---|
+| 0.056 | 112–119 Hz, V −30 | 0.6–56 Hz | 124–127 Hz, V −27 |
+| 0.280 | 85–87 Hz, V −27 | 125 Hz | **0 Hz, V −19.9** |
+
+Two regimes, neither usable: at 0.28 `Out` is in **depolarisation block**; at 0.056 everything
+fires **tonically at 110–127 Hz**. `Exc` never bursts at any scale — V sits at −27 to −31 mV,
+far above its bursting range.
+
+**The cause is NMDA, and the arithmetic is exact.** `tau_nmda` is **100 ms, 20× the AMPA
+tau**, so with lumped population weights (`inject` adds `w × total_spike_count` to every
+postsynaptic cell) the NMDA conductance accumulates 20× more per unit firing rate. At scale
+0.28 and 112 Hz/cell:
+
+```
+g_ampa  =  0.126 nS × 5600 spikes/s × 0.005 s =  3.53 nS
+g_nmda  =  0.069 nS × 5600 spikes/s × 0.100 s = 38.8 nS  (unblocked)
+```
+
+against `g_L = 2.8 nS`. Whether that silences the cell depends entirely on the Mg²⁺ relief:
+
+| Mg relief | total g | V_ss |
+|---|---|---|
+| **0.063** — the LIF's measured mean | 5.97 nS | −18.4 mV |
+| **0.70** — a depolarised conductance cell | 30.7 nS | **−4.8 mV** |
+
+**So the weights were tuned on a substrate where NMDA was effectively 6% of nominal.** §1 of
+the design document identified precisely this as the LIF's central defect: *"NMDA conductance
+is held in near-permanent Mg²⁺ block — mean relief 0.063, dynamic range 4.5× against the
+15.5× a spiking cell has."* Fixing that defect — correctly, by evaluating the block at the
+cell's own voltage each substep (E15) — made the inherited NMDA weights **11× too strong.**
+
+And it is positive feedback, not merely a scale error: relief *rises* with depolarisation, so
+more NMDA current depolarises further, relieving more block. The network runs away into
+depolarisation block, which the LIF cannot do at all.
+
+**Derived correction — the receptor types need different scales:**
+
+```
+ee_ampa_cond = ee_ampa_LIF × (g_L ratio)                     = LIF × 0.280
+ee_nmda_cond = ee_nmda_LIF × (0.063/0.70) × (g_L ratio)      = LIF × 0.025
+```
+
+**an 11× difference between AMPA and NMDA.** This is the third and sharpest instance of the
+same lesson: a single multiplicative weight scale cannot carry a weight table between these
+two cells. The quantities needing independent transformation are now four — conductances by
+the g_L ratio, NMDA additionally by the relief ratio, the Exc drive from the bursting window,
+and the Inh/Out bias bounded above by depolarisation block.
+
+Worth stating plainly: **the LIF's respiratory NMDA results were produced with NMDA at ~6% of
+its nominal conductance and unable to relieve.** That does not overturn them — the weights
+were fitted in that regime, so the *net* excitation was right — but it means the NMDA arm's
+state-dependence was absent, which is exactly what the already-VOID NMDA respiratory
+contribution was declared VOID for. The substrate change does not rescue that result; it
+explains why it was unrescuable.
+
+### The conductance preBötC is anchorable. Six causes, five silent, each needing a different fix
+Six anchoring attempts. Each step came from a diagnosis, not a wider grid — and the one time
+I widened derivedly instead of diagnosing, I made it worse.
+
+| attempt | alive | cause found |
+|---|---|---|
+| 1 | 3/50 | searched outside the bursting regime **and** measured inside a 10 s transient |
+| 2 | 0/48 | tonic GABA 1.8–5.4× too strong — conductances scale by the **g_L ratio**, not a free weight scale |
+| 3 | 0/72 | `Out` in **depolarisation block** — this cell has an *upper* bound on drive; the LIF has none |
+| 4 | 9/81 | **NMDA 11× too strong** — τ=100 ms, and the LIF's weights were tuned against 6% Mg relief |
+| 5 | 16/36 | anchored to an **in vivo** frequency; the Butera cell is neonatal **in vitro** |
+| 6 | **41/48** | optimising modulation alone selected a rhythm no drug could be measured against |
+
+**What the attempts 2–4 share:** a single multiplicative weight scale cannot carry a weight
+table between these two cells. Four quantities need four different transformations:
+
+```
+AMPA / GABA / glycine  ->  x (g_L ratio)              = 0.28
+NMDA                   ->  x (g_L ratio) x (0.063/0.70) = 0.025      <- 11x smaller
+Exc drive (pA)         ->  set from the measured bursting window
+Inh/Out bias (pA)      ->  small; bounded ABOVE by depolarisation block
+```
+
+The NMDA factor is the interesting one: it is the ratio of the LIF's *measured* mean Mg²⁺
+relief (0.063) to a depolarised conductance cell's (~0.70). **The design document's §1 named
+that 0.063 as the LIF's central defect; fixing it correctly made the inherited weights 11×
+too strong.** And because relief rises with depolarisation it is positive feedback, not a
+scale error — the network runs away into block, which the LIF cannot do.
+
+**Attempt 5 was a wrong target, not a wrong network.** `EUPNOEA_BAND` (0.30–2.50 Hz) is an
+*in vivo* rat band and correct for the LIF, tuned to 1.27 Hz. Neonatal rat preBötC slices
+run at 6.6 ± 3.1 to 14.6 ± 2.0 bursts/min ≈ 0.11–0.24 Hz (`pbc_invitro_freq`: Revill et al.
+2021, Front Physiol 12:626470). Forcing an in vitro preparation 5–12× above its own physiology
+is what destroyed modulation (0.9 vs the LIF's 4.7) and stationarity (drift 40–164%). The
+source was read and entered in the knowledge base *before* the band was introduced, the new
+`INVITRO_BAND` is a separate constant, `EUPNOEA_BAND` is untouched, and the new band still
+excludes the fragmented 3.8–4.9 Hz rhythms the gate exists to catch. A test
+(`test_the_in_vitro_band_is_sourced_not_convenient`) fails unless that source carries a
+hand-read verdict — because a band added to rescue a failing point looks identical in code to
+one added because the preparation differs, and only the record distinguishes them.
+
+**The consequence that travels with it:** the two substrates no longer share a frequency, so
+absolute frequency comparisons between them are meaningless. Only fractional change from each
+substrate's own control is comparable — which design doc §6 required all along. Matching the
+frequencies was my addition, and invalid.
+
+**Attempt 6 and a threshold I had to correct against myself.** `resp_metrics` calls an arm
+dead below `max(1.0, 0.2 × control)`, so a graded measurement range exists only when
+`ctrl_mean > 5.0`. That is derived. I set the gate at **10.0** "for margin", and at
+verification it disqualified the best rhythm in the finalist set — modulation 4.44 (closest to
+the LIF's 4.736) and the tightest frequency SD of the four (0.015 Hz) — for coming in at mean
+9.5, i.e. **0.5 below a number I had chosen**, while satisfying the derived criterion with 7.6
+of graded range. Selection then fell to a rhythm with modulation 2.43.
+
+The gate is now the derived 5.0 with 10.0 as a scored preference. Recorded in the code and
+here because adjusting a threshold after seeing which candidate it excludes is precisely the
+move that needs its reason on the record, and the reason must be that 5.0 is derived and 10.0
+was not — not that I preferred the outcome. I could see which point the change favoured before
+making it. `MIN_CTRL_MEAN` is now marked as the one threshold that must not move.
+
+### Also fixed: the three substrate-coupled settings
+`_simulate_resp(substrate="cond")` was still using the in vivo band and the LIF's 4 s warm-up,
+so every conductance evaluation would have mis-gated healthy rhythms as dead *and* measured
+inside the transient. Operating point, validity band and settling time now live in one
+`_SUBSTRATE` table with four tests pinning the coupling, including that the cond warm-up is at
+least 3 τ_h.
+
+### A4: the dissociation is NOT reproduced, and that is an inherited limitation, not a bug
+Re-run on the anchored operating point, 60 s with a 30 s settle, gated against the in vitro
+band:
+
+| | alive | freq | mean | mod |
+|---|---|---|---|---|
+| isolated cell, g_NaP 2.8 nS | bursting, 37 bursts | — | — | h-span 0.4544 |
+| isolated cell, g_NaP 0 | **quiescent** | — | — | h-span 0.0820 |
+| network, g_NaP 2.8 nS | **3/3** | 0.280 Hz | 9.73 | 4.24 |
+| network, g_NaP 0 | **0/3** | 0.000 | collapsed | 0.00 |
+
+In vitro, riluzole abolishes isolated-cell pacemaking while the **network rhythm persists**.
+Here it abolishes both. The dissociation is not reproduced.
+
+**This was predicted before the run**, in `anchor_cond_resp.py`'s stage-2 comment: *"if the
+viable scale turns out to be this low, the rhythm in this network IS pacemaker-driven, and A4
+will fail STRUCTURALLY rather than numerically."* The viable coupling is NMDA × 0.025 and
+AMPA × 0.40 — weak recurrent excitation — so the rhythm rests entirely on the cells' intrinsic
+pacemaking. Remove I_NaP and the cells cannot fire at all, so there is nothing for the network
+to synchronise.
+
+**And it is an inherited limitation rather than an implementation defect.** Butera–Rinzel–Smith
+model 1 *is* the pacemaker hypothesis: bursting arises from fast activation and slow
+inactivation of I_NaP in individual cells. The riluzole experiments are the principal published
+argument *against* pacemaker-driven rhythmogenesis. A faithful implementation of a pacemaker
+model therefore *must* fail this test — passing it would mean we had implemented something
+other than the model we adopted.
+
+So A4 is evidence that the implementation is faithful, and simultaneously a real limitation of
+what link 5 bought: the network reproduces a published *cell* correctly, including that cell
+model's known inability to account for the riluzole result. Reaching rhythm persistence under
+I_NaP block would need either much stronger recurrent excitation (which depolarisation block
+forbids on this cell) or a burst-terminating mechanism independent of I_NaP — Ca-dependent K
+current, or synaptic depression. Both are additions beyond link 5.
+
+**Not retuned.** Fitting the coupling until the rhythm survives and then citing the survival as
+validation is how the Matsuoka locomotor prediction had to be retracted.
+
+### THE DELIVERABLE: the subtype ordering is substrate-independent; the non-selective BZ's SIGN is not
+`scripts/compare_substrates.py`, 3 seeds, occupancy 1.0, each arm as a fractional reduction
+in mean inspiratory output from **its own** substrate's control.
+
+| arm | LIF | COND | Δ |
+|---|---|---|---|
+| neurosteroid | +0.610 | +0.994 *(alive 0/3)* | +0.384 |
+| mp_iii_022 | +0.020 | +0.071 | +0.051 |
+| ideal_a5 | +0.005 | +0.051 | +0.046 |
+| alogabat | +0.002 | +0.043 | +0.041 |
+| hz_166 | +0.001 | −0.100 | −0.101 |
+| **nonselective_bz** | **+0.079** | **−0.377** | **−0.456** |
+
+The script's verdict ("ORDERING MOVED", Spearman +0.43) buries the actual result:
+
+* **Spearman over the five SUBTYPE-SELECTIVE arms = +1.0000.** Identical order on both
+  substrates: neurosteroid > mp_iii_022 > ideal_a5 > alogabat > hz_166. Two neuron models
+  that differ in every mechanism — real I_NaP, voltage-gated inactivation, 11.8× Mg²⁺ relief
+  span, depolarisation block, versus none of those — give the same ranking.
+* **Exactly one arm moves, and only because its sign flips.** The non-selective BZ goes from
+  2nd-most-burdensome (+0.079) to least (−0.377, a 38% *increase* in output). It is the arm
+  with the largest α1 efficacy, acting on a preBötC the model treats as α1-predominant
+  (`REGIONS` α1 = 0.60) — so the flip is largest exactly where the drug effect is largest.
+
+So the ordering result is a genuine (if narrow) strengthening of the UNCALIBRATED tier for
+subtype-selective compounds, and a clear warning for the non-selective reference arm.
+
+### A mechanism I claimed, then had to retract on resolution grounds
+I attributed the flip to GABA-A shunting shortening bursts → less I_NaP inactivation → faster
+recovery → higher rate, and presented frequency readings as confirming it:
+
+| | difference | FFT bins |
+|---|---|---|
+| COND 0.302 → 0.336 Hz | 0.034 Hz | **1.02 bins** |
+| LIF 1.327 → 1.327 Hz | 0.000 Hz | below 1 bin (0.102 Hz = 7.7%) |
+
+**Both at the resolution limit.** The conductance "+11.1%" is one bin, indistinguishable from
+quantisation; the LIF's "+0.0%" means only "under 7.7%", not "frequency-insensitive". I had
+stated both as findings. Retracted.
+
+### Direct burst counting: what survives, and a fourth inherited-protocol failure
+`burst_metrics` over 180 s (cond) / 90 s (LIF) instead of the FFT:
+
+| | COND | LIF |
+|---|---|---|
+| mean output | **+41.7%** (comparison said +35.3%) | **−8.6%** (said −7.4%) |
+| duty cycle | **+65.5%** | −6.7% |
+| peak | −7.3% | −1.4% |
+
+**Robust, by two independent methods:** the sign flip is real, it is a change in *how much of
+the time* the network is active, and peak burst height is essentially unchanged on both.
+
+**Not established:** whether that is more bursts or longer bursts. `burst_metrics` reported
+5.63 Hz on cond against the FFT's 0.302 Hz — a 19× discrepancy — because the 20 ms rate
+low-pass leaves intra-burst fluctuation and a 0.35×max threshold fires repeatedly *within* one
+respiratory burst. So its "rate" is an event rate, not a burst rate, and the +25.3% / −17.3%
+cannot be read as burst frequency. A burst-level detector is needed.
+
+**That is the fourth measurement protocol inherited from the LIF that needed re-deriving for
+this substrate**, after the 4 s warm-up against a 10 s τ_h, the in vivo band on an in vitro
+preparation, and the FFT resolution. The pattern is consistent enough to state as a rule: on
+the conductance substrate, assume every inherited protocol is wrong until re-derived. None of
+the four failed loudly; each produced a plausible number.

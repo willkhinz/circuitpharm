@@ -54,13 +54,41 @@ def test_lif_substrate_is_byte_identical_after_the_refactor():
 
 
 # ===================================================== E14: refuse LIF-scaled quantities
-def test_cond_substrate_refuses_to_run_without_its_own_operating_point():
+def test_cond_substrate_refuses_to_run_without_its_own_operating_point(monkeypatch):
     """RESP_OP's `drive` is in pA and its weights in nS relative to the LIF cell
     (C=200 pF, g_L=10 nS). The Butera cell is C=21 pF, g_L=2.8 nS. Reusing those numbers
     does not raise on its own -- it produces a network that does not oscillate, or
-    oscillates for the wrong reason. So the refusal has to be explicit."""
+    oscillates for the wrong reason. So the refusal has to be explicit.
+
+    THE GUARD IS EXERCISED, not inferred from an empty registry. This test used to assert
+    that `PreBotC(substrate="cond")` raises, which held only while COND_RESP_OP was None.
+    Registering an anchored operating point made it fail -- correctly, since the guard's
+    precondition no longer existed, but it meant the test had been checking the registry's
+    state rather than the guard. COND_RESP_OP is now blanked for the duration so the refusal
+    path itself is tested, whether or not an operating point happens to be registered.
+    """
+    import circuitpharm.config as cfg
+    monkeypatch.setattr(cfg, "COND_RESP_OP", None, raising=False)
     with pytest.raises(ValueError, match="needs its own operating point"):
         PreBotC(substrate="cond", seed=0)
+
+
+def test_cond_substrate_runs_from_the_registered_operating_point():
+    """The other side of the same guard: with one registered, no explicit `op` is needed."""
+    from circuitpharm.config import COND_RESP_OP
+    assert COND_RESP_OP is not None, "no conductance operating point is registered"
+    net = PreBotC(substrate="cond", seed=0)
+    assert net.drive == COND_RESP_OP["drive"]
+    assert net.drive_other == COND_RESP_OP["drive_other"]
+    assert net.gaba_tonic == COND_RESP_OP["gaba_tonic"]
+    # the NMDA weights must stay ~11x smaller than AMPA relative to the LIF table: that
+    # ratio is the Mg-relief correction, and losing it reintroduces the runaway into
+    # depolarisation block that made the network unanchorable.
+    w = COND_RESP_OP["w"]
+    assert w["ee_nmda"] / w["ee_ampa"] < 0.10, (
+        f"ee_nmda/ee_ampa is {w['ee_nmda']/w['ee_ampa']:.3f}; the NMDA weights are no "
+        f"longer scaled down by the Mg2+ relief ratio and the network will run away into "
+        f"depolarisation block")
 
 
 @pytest.mark.parametrize("drop", ["drive", "drive_other", "gaba_tonic", "ee_ampa",
@@ -177,3 +205,69 @@ def test_cond_network_voltage_actually_spikes():
     assert vmax > 0.0, (
         f"peak V in the coupled network only reached {vmax:+.2f} mV; the conductance cell "
         f"is not spiking under synaptic load")
+
+
+# ================= the three substrate-coupled settings must not drift apart
+def test_substrate_table_couples_operating_point_band_and_settling():
+    """Three things change with the substrate and each is silent if wrong.
+
+    * operating point -- pA/nS are relative to the cell, so RESP_OP must not be reused
+    * validity band   -- EUPNOEA_BAND is IN VIVO rat (1-2 Hz); the Butera cell is neonatal
+                         rodent IN VITRO (~0.11-0.24 Hz control burst frequency), so gating
+                         a cond run against the in vivo band reports every healthy rhythm
+                         as dead
+    * settling time   -- tau_h is 10 s, 25x the LIF's tau_adapt. A 4 s warm-up is 0.4 time
+                         constants and measures a decaying transient; that produced a
+                         confident, seed-verified, WRONG operating point once already.
+
+    Kept in one table so they cannot drift apart, and pinned here because each was wrong
+    independently at some point during the migration.
+    """
+    from circuitpharm.config import INVITRO_BAND
+    from circuitpharm.evaluation import _SUBSTRATE
+    lif, cond = _SUBSTRATE["lif"], _SUBSTRATE["cond"]
+
+    assert lif["band"] is None, "the LIF must keep the in vivo default band"
+    assert lif["warm_ms"] == 4000.0 and lif["duration_ms"] == 14000.0, (
+        "the LIF timings must not change; every published result used them")
+
+    assert cond["band"] == "invitro"
+    # at least 3 tau_h of settling
+    assert cond["warm_ms"] >= 3 * 10000.0, (
+        f"cond warm-up {cond['warm_ms']} ms is under 3 tau_h (30 s); the slow I_NaP "
+        f"inactivation gate has not equilibrated and the measurement is of a transient")
+    assert cond["duration_ms"] - cond["warm_ms"] >= 20000.0, (
+        "less than 20 s of analysable window after settling")
+    assert INVITRO_BAND[0] < 0.30 <= INVITRO_BAND[1], (
+        "the in vitro band must reach below the in vivo floor but still bound the top")
+
+
+def test_the_in_vitro_band_still_excludes_fragmented_rhythms():
+    """The band exists to catch disintegrated rhythms (recurring error E4, second form:
+    under heavy block the burst train fragments and the FFT correctly reports ~4 Hz, which
+    is not tachypnoea). Lowering the floor for the in vitro preparation must not raise the
+    ceiling past that."""
+    from circuitpharm.config import EUPNOEA_BAND, INVITRO_BAND
+    assert INVITRO_BAND[1] <= EUPNOEA_BAND[1], (
+        "the in vitro band's ceiling exceeds the in vivo one, so it would admit the "
+        "fragmented high-frequency rhythms the gate exists to reject")
+    for frag_hz in (3.8, 4.9):
+        assert not (INVITRO_BAND[0] <= frag_hz <= INVITRO_BAND[1])
+
+
+def test_the_in_vitro_band_is_sourced_not_convenient():
+    """A band introduced to make a failing point qualify would be indistinguishable in code
+    from one introduced because the preparation differs. The difference is the record: the
+    source must be in the knowledge base with a hand-read verdict."""
+    import sqlite3
+    import pathlib
+    db = pathlib.Path(__file__).resolve().parent.parent / "data" / "pharmacology.db"
+    if not db.exists():
+        pytest.skip("no database in this checkout")
+    con = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
+    row = con.execute("select citation, verification from sources "
+                      "where key='pbc_invitro_freq'").fetchone()
+    con.close()
+    assert row, "the in vitro frequency source is not in the knowledge base"
+    assert "HAND:" in row[1] and "SUPPORTS" in row[1], (
+        f"the in vitro band's source carries no hand-read claim-support verdict: {row[1][:90]}")

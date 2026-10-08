@@ -46,20 +46,33 @@ from circuitpharm.resp import PreBotC, resp_metrics            # noqa: E402
 NO_NAP = replace(BRS1999_MODEL1, g_nap=0.0)
 
 
+SETTLE_MS = 30000.0      # 3 x tau_h; a 4 s warm-up measures a decaying transient
+
+
 def network(cell, seconds, seed):
+    """Run the coupled network. Settles for 3 tau_h and gates against the IN VITRO band.
+
+    The first version of this probe used a 4 s warm-up and the in vivo EUPNOEA_BAND, on an
+    operating point that was itself invalid. Its negative result was withdrawn. Both
+    corrections matter here: tau_h is 10 s, so 4 s measures a transient, and the Butera cell
+    is a neonatal in vitro preparation whose rhythm sits at ~0.1-0.3 Hz -- gated against the
+    in vivo band, a perfectly healthy rhythm reports as dead for being too slow, which would
+    have manufactured exactly the negative this probe is testing for.
+    """
+    from circuitpharm.config import INVITRO_BAND
     net = PreBotC(substrate="cond", cell=cell, seed=seed)
     for i in range(int(round(seconds * 1000.0 / 0.1))):
         net.step(0.1)
         if i % 10 == 0:
             net.record()
     A = net.arrays()
-    m = A["t"] > 4000.0                      # discard the settling transient
-    return resp_metrics(A["t"][m], A["Out"][m], A["Exc"][m])
+    m = A["t"] > SETTLE_MS
+    return resp_metrics(A["t"][m], A["Out"][m], A["Exc"][m], band=INVITRO_BAND)
 
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--seconds", type=float, default=20.0)
+    ap.add_argument("--seconds", type=float, default=60.0)
     ap.add_argument("--seeds", type=int, default=3)
     a = ap.parse_args()
 
