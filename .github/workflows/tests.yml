@@ -58,9 +58,11 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e ".[all]" pytest-xdist pytest-cov
       - name: Full suite with coverage
-        # MuJoCo needs a software GL backend on a headless runner
-        env:
-          MUJOCO_GL: osmesa
+        # Deliberately NO MUJOCO_GL. MuJoCo only initialises a GL context when a renderer
+        # is created, and nothing here renders -- the plant calls mj_forward/mj_step and
+        # reads state. Setting MUJOCO_GL=osmesa would instead ADD a failure mode, since it
+        # needs libosmesa6 present on the runner. (This project already hit the mirror of
+        # that: MUJOCO_GL=osmesa is an invalid backend on macOS and raises at import.)
         run: pytest -q -rs --cov --cov-report=term
       - name: Assert nothing was skipped
         run: |
