@@ -95,6 +95,16 @@ requires an animal that learns, and no increase in resolution crosses that bound
 not modelled: hepatotoxicity, hERG/QTc, dependence, and **any pharmacokinetics** — "dose"
 means receptor-occupancy multiple, not mg/kg.
 
+## Worked example
+
+```bash
+python examples/quickstart.py
+```
+
+It walks the five steps the tool is built around: ask what is actually anchored, describe a
+compound by **measured** receptor activity, evaluate, see the refusal fire when you ask for
+something unjustifiable, and then use the one quantity that is calibration-independent.
+
 ## Install
 
 ```bash

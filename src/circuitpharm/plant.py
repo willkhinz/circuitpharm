@@ -22,7 +22,8 @@ class JointPlant:
     """One antagonist joint pair, closed loop, with the rest of the body held fixed."""
 
     def __init__(self, xml, joint="knee_L", drug=None, rg_gain=900.0,
-                 mn_sat=80.0, ia_kl=55.0, ia_kv=70.0, ia_bias=12.0, seed=0, gaba_sens=1.0, **kw):
+                 mn_sat=80.0, ia_kl=55.0, ia_kv=70.0, ia_bias=12.0, seed=0,
+                 gaba_sens=1.0, gaba_sens_tonic=None, gaba_sens_phasic=None, **kw):
         self.m = mujoco.MjModel.from_xml_path(xml)
         self.d = mujoco.MjData(self.m)
         self.joint = joint
@@ -34,8 +35,14 @@ class JointPlant:
         self.a_ext, self.a_flx = aid(f"{joint}_ext"), aid(f"{joint}_flx")
         self.LR = {h: self.m.actuator_lengthrange[a].copy()
                    for h, a in (("E", self.a_ext), ("F", self.a_flx))}
+        # tonic/phasic sensitivities are named explicitly rather than riding in **kw:
+        # they are load-bearing (the two pools are driven by gains differing ~7x) and a
+        # silently-swallowed typo in a kwarg name would fall back to the lumped value
+        # without any error.
         self.circuit = SpinalCircuit(drug=drug, rg_gain=rg_gain, seed=seed,
-                                    gaba_sens=gaba_sens, **kw)
+                                     gaba_sens=gaba_sens,
+                                     gaba_sens_tonic=gaba_sens_tonic,
+                                     gaba_sens_phasic=gaba_sens_phasic, **kw)
         self.mn_sat = mn_sat          # Hz of Mn pool rate mapped to activation 1.0
         self.ia = dict(kl=ia_kl, kv=ia_kv, bias=ia_bias)
         self.log = {k: [] for k in
