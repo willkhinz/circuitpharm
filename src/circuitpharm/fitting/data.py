@@ -422,3 +422,36 @@ def holdout_guard(datasets: Sequence[object], *, caller: str) -> None:
             f"{caller} was passed held-out dataset(s) {leaked}. The holdout exists so P5 "
             f"can score out-of-sample and P6 can state a falsification bound; fitting "
             f"against it destroys both. Pass `fitting.data.TRAIN`.")
+
+
+def equilibrium_crc_from_model(model, *, concs_um=None, noise_sd: float = 0.0,
+                               seed: int = 0, label: str = "method check") -> DoseResponseDataset:
+    """An EQUILIBRIUM concentration-response generated from a model at known parameters.
+
+    THE ONE LEGITIMATE USE OF GENERATED DATA (roadmap P5's precedent): checking that an
+    estimation method recovers an answer it is known to have. Nothing about receptors may
+    rest on it, and it is labelled `synthetic` so it taints anything it touches.
+
+    It exists because P3's equilibrium identifiability analysis has NO dataset to run on:
+    both concentration-response curves in this module are PEAK, and feeding one to an
+    equilibrium objective drives D to its bound by deleting desensitisation
+    (`identifiability.equilibrium_chi2_identifiable` now refuses). Until a real
+    EQUILIBRIUM curve is digitised -- see MISSING_DATASETS -- the method can be VALIDATED
+    here and applied nowhere.
+    """
+    concs = (np.asarray(concs_um, dtype=float) if concs_um is not None
+             else np.logspace(-1.0, 3.5, 14))
+    y = np.asarray(model.dose_response(concs, pam_factor=1.0), dtype=float)
+    if noise_sd > 0:
+        y = y + np.random.default_rng(seed).normal(0.0, noise_sd, y.shape)
+    sem = np.full(y.shape, max(noise_sd, 1e-3))
+    return DoseResponseDataset(
+        citation_label=f"generated EQUILIBRIUM CRC ({label})",
+        preparation="none -- generated from a model at known parameters",
+        concs_um=concs, mean_response=y, sem=sem,
+        observable=Observable.EQUILIBRIUM, kind="synthetic", synthetic=True,
+        origin=(f"model.dose_response() evaluated at {len(concs)} concentrations"
+                + (f" plus N(0, {noise_sd}) noise, seed {seed}" if noise_sd else "")
+                + ". A METHOD CHECK: it exists to verify that estimation recovers known "
+                  "parameters. No claim about receptors may rest on it."),
+        motivated_by="", role="train")

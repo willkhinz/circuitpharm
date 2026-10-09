@@ -9,6 +9,7 @@ computations are real and the arrays are plain; the conclusions are not availabl
 """
 from .data import (
     ALL,
+    equilibrium_crc_from_model,
     DEACTIVATION_BENCHMARK,
     DOSE_RESPONSE_BENCHMARK,
     HOLDOUT,
@@ -22,14 +23,24 @@ from .data import (
     holdout_guard,
 )
 from .identifiability import (
+    EQUILIBRIUM_IDENTIFIABLE,
+    IDENTIFIABLE_BOUNDS,
     HessianSpectrum,
+    IdentifiabilityClass,
+    ProfileResult,
     ProfileLikelihoodResult,
     compute_fisher_information_matrix,
     compute_kinetic_objective,
     compute_profile_likelihood,
     cost_hessian_and_spectrum,
+    equilibrium_chi2_identifiable,
     equilibrium_dose_response_chi2,
+    fit_identifiable,
+    identifiability_report,
+    invariance_report,
+    profile_likelihood,
 )
+from .reparam import UNLOCKED_BY, IdentifiableParams
 from .mcmc import (
     LOG10_BOUNDS,
     MCMCChainResult,
@@ -54,6 +65,7 @@ __all__ = [
     "DeactivationDataset",
     "assert_real_data",
     "holdout_guard",
+    "equilibrium_crc_from_model",
     # identifiability
     "equilibrium_dose_response_chi2",
     "compute_kinetic_objective",
@@ -62,6 +74,18 @@ __all__ = [
     "HessianSpectrum",
     "cost_hessian_and_spectrum",
     "compute_fisher_information_matrix",
+    "invariance_report",
+    # P3: the analysis on the parameters the data can determine
+    "EQUILIBRIUM_IDENTIFIABLE",
+    "IDENTIFIABLE_BOUNDS",
+    "IdentifiabilityClass",
+    "IdentifiableParams",
+    "ProfileResult",
+    "UNLOCKED_BY",
+    "equilibrium_chi2_identifiable",
+    "fit_identifiable",
+    "profile_likelihood",
+    "identifiability_report",
     # mcmc
     "LOG10_BOUNDS",
     "MCMCChainResult",

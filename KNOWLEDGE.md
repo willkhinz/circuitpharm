@@ -10,7 +10,11 @@
    **Caveat: this document currently describes several things that are not implemented**
    (biexponential clearance, single-channel datasets, Model C's thermodynamic cycle); see
    roadmap §4.P7. Treat the code as the authority and the spec as the target.
-3. `knowledge/02-reasoning-trail.md` — Rationale trail preventing re-deriving known dead ends.
+3. `knowledge/11-identifiability.md` — **WHAT THE DATA CAN DETERMINE** (roadmap P3): the
+   structural result (an equilibrium observable fixes 3 of 6 rates, provably), the measured
+   practical result (0.2% noise makes E and D span two decades), and the ladder of which
+   measurement unlocks which rate. Read before fitting anything.
+4. `knowledge/02-reasoning-trail.md` — Rationale trail preventing re-deriving known dead ends.
 
 ---
 

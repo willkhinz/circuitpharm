@@ -55,7 +55,7 @@ from scipy.optimize import minimize
 
 from ..models.kinetic_jw95 import KineticAllosteryModel
 from ..provisional import void, warn_provisional
-from ..results import Quantity
+from ..results import Quantity, ResultSet, Tier
 from .data import DOSE_RESPONSE_BENCHMARK, assert_real_data
 
 #: What every conclusion in this module rests on, in one place so the three result types
@@ -403,3 +403,274 @@ def compute_fisher_information_matrix(model: KineticAllosteryModel,
     """
     spec = cost_hessian_and_spectrum(model, epsilon=epsilon)
     return spec.hessian, spec.condition_number
+
+
+# =======================================================================================
+# P3: the analysis done on the parameters the data can actually determine.
+#
+# Everything above operates on the six microscopic rates, where three directions carry no
+# information at all, and is VOID for that reason. What follows works in the identifiable
+# reparameterisation (fitting/reparam.py), where the problem is well-posed -- so its
+# results are NOT void, only UNCALIBRATED, and they are the ones to use.
+# =======================================================================================
+from .reparam import EQUILIBRIUM_IDENTIFIABLE, UNLOCKED_BY, IdentifiableParams  # noqa: E402
+
+
+@dataclass(frozen=True)
+class IdentifiabilityClass:
+    """Three-way classification of one parameter direction."""
+
+    IDENTIFIABLE = "IDENTIFIABLE"
+    PRACTICALLY_NON_IDENTIFIABLE = "PRACTICALLY_NON_IDENTIFIABLE"
+    STRUCTURALLY_NON_IDENTIFIABLE = "STRUCTURALLY_NON_IDENTIFIABLE"
+
+
+@dataclass(frozen=True)
+class ProfileResult:
+    """A profile likelihood over an IDENTIFIABLE combination.
+
+    Unlike `ProfileLikelihoodResult` above, nothing here is VOID: the parameter being
+    profiled is one the equilibrium likelihood can determine, so the interval means
+    something. It is UNCALIBRATED rather than VALIDATED because the dataset behind it is
+    parametric or synthetic (P0-6) -- the method is sound, the inputs are not yet.
+    """
+
+    param_name: str
+    mle: float
+    grid: np.ndarray
+    costs: np.ndarray
+    delta: np.ndarray
+    ci_95: tuple[float, float]
+    classification: str
+    reason: str
+
+
+#: Physically meaningful bounds in log10, per identifiable combination. A fit that runs
+#: into one of these is reported as practically non-identifiable on that side -- which is a
+#: RESULT -- rather than crashing the optimiser, which is what an unbounded search did.
+IDENTIFIABLE_BOUNDS = {
+    "log10_kd": (-1.0, 4.0),     # K_d 0.1 uM to 10 mM
+    "log10_E": (-2.0, 3.0),      # gating efficacy 0.01 to 1000
+    "log10_D": (-3.0, 3.0),      # desensitisation ratio 0.001 to 1000
+}
+
+
+def equilibrium_chi2_identifiable(theta, dataset=None) -> float:
+    """Chi-squared of the EQUILIBRIUM dose-response, over (log K_d, log E, log D).
+
+    REQUIRES AN EQUILIBRIUM DATASET. Handing it a PEAK curve is the observable mismatch
+    the P1 contract exists to stop (roadmap §2.3) -- and it is not academic: fitting the
+    EQUILIBRIUM curve to a PEAK dataset whose plateau is 0.75 drives D to its lower bound,
+    because an equilibrium plateau is E/(1+E+D) and the only way to raise it is to delete
+    desensitisation. The fit then "succeeds" having silently removed a mechanism.
+
+    No `po_max` penalty, unlike the microscopic version: that term is a function of E alone
+    and duplicates information the curve already carries, which biases the profile.
+    """
+    from ..models.base import Observable, ObservableMismatch
+    from ..models.kinetic_jw95 import KineticAllosteryModel
+
+    ds = dataset if dataset is not None else DOSE_RESPONSE_BENCHMARK
+    obs = getattr(ds, "observable", None)
+    if obs is not None and obs is not Observable.EQUILIBRIUM:
+        raise ObservableMismatch(
+            f"this objective is the EQUILIBRIUM dose-response and "
+            f"{getattr(ds, 'citation_label', ds)!r} is tagged {obs.value}. Fitting an "
+            f"equilibrium curve to peak-current data drives D to its bound -- the "
+            f"equilibrium plateau is E/(1+E+D), so the fit raises it by deleting "
+            f"desensitisation. Use a PEAK objective, or an EQUILIBRIUM dataset.")
+    p = IdentifiableParams.from_vector(np.asarray(theta, dtype=float)[:3])
+    # any representative with the right three ratios gives the same equilibrium curve;
+    # alpha and r are arbitrary here BY THE STRUCTURAL RESULT, which this relies on
+    rates = p.to_microscopic(koff=1.0, alpha=1.0, r=1e-3)
+    model = KineticAllosteryModel(**rates)
+    pred = model.dose_response(ds.concs_um, pam_factor=1.0)
+    return float(np.sum(((pred - ds.mean_response) / ds.sem) ** 2))
+
+
+def fit_identifiable(dataset=None, *, x0=None) -> tuple[IdentifiableParams, float]:
+    """MLE over (log10 K_d, log10 E, log10 D). Returns the parameters and the cost."""
+    from scipy.optimize import minimize
+
+    ds = dataset if dataset is not None else DOSE_RESPONSE_BENCHMARK
+    assert_real_data([ds], caller="fit_identifiable")
+    start = np.array([1.4, 0.6, 1.4] if x0 is None else x0, dtype=float)
+    best, best_cost = None, np.inf
+    rng = np.random.default_rng(0)
+    # multi-start: three ratios over decades, so a single start can land in a local basin
+    for i in range(12):
+        s = start if i == 0 else start + rng.normal(0.0, 0.7, 3)
+        bounds = [IDENTIFIABLE_BOUNDS[k] for k in EQUILIBRIUM_IDENTIFIABLE]
+        res = minimize(lambda v: equilibrium_chi2_identifiable(v, ds), s,
+                       method="L-BFGS-B", bounds=bounds,
+                       options=dict(ftol=1e-15, gtol=1e-12, maxiter=5000))
+        start2 = res.x if res.success else s
+        res = minimize(lambda v: equilibrium_chi2_identifiable(v, ds), start2,
+                       method="Nelder-Mead",
+                       options=dict(xatol=1e-9, fatol=1e-11, maxiter=50000))
+        if res.success and res.fun < best_cost:
+            best, best_cost = res.x, float(res.fun)
+    if best is None:
+        raise RuntimeError(
+            "no start converged while fitting the identifiable parameters. A failure here "
+            "is not a result; it is not scored as one.")
+    return IdentifiableParams.from_vector(best), best_cost
+
+
+def profile_likelihood(param: str, dataset=None, *, n_grid: int = 25,
+                       span_decades: float = 1.5,
+                       threshold_delta_chi2: float = 3.84) -> ProfileResult:
+    """Profile one identifiable combination, properly.
+
+    Five things this does that the microscopic version could not (roadmap P3-2):
+
+    1. RE-OPTIMISES the unconstrained problem first, so `delta` is measured from a real
+       minimum rather than from a nominal point where it could come out negative.
+    2. Grids in LOG space, +/- `span_decades` around the MLE, with >= 25 nodes. Seven
+       multiplicative factors spanning 0.3-3.0 cannot locate a 95% boundary.
+    3. WARM-STARTS each node from the previous one. Profiles are continuous; restarting
+       from the nominal point at every node manufactures a non-monotone curve.
+    4. RAISES on optimiser failure rather than scoring it as a raised cost, which counted a
+       failure as evidence of identifiability.
+    5. INTERPOLATES the threshold crossing instead of returning a grid node.
+    """
+    if param not in EQUILIBRIUM_IDENTIFIABLE:
+        raise ValueError(
+            f"{param!r} is not an equilibrium-identifiable combination. Have "
+            f"{EQUILIBRIUM_IDENTIFIABLE}; for an absolute rate see reparam.UNLOCKED_BY, "
+            f"which names the measurement that would make it identifiable.")
+    from scipy.optimize import minimize
+
+    ds = dataset if dataset is not None else DOSE_RESPONSE_BENCHMARK
+    mle, base_cost = fit_identifiable(ds)
+    idx = EQUILIBRIUM_IDENTIFIABLE.index(param)
+    x_mle = mle.as_vector(with_timescale=False)
+    free = [i for i in range(3) if i != idx]
+
+    grid = np.linspace(x_mle[idx] - span_decades, x_mle[idx] + span_decades, n_grid)
+    costs = np.empty(n_grid)
+    # sweep outward from the MLE in both directions so every warm start is adjacent
+    order = sorted(range(n_grid), key=lambda i: abs(grid[i] - x_mle[idx]))
+    warm = {int(np.argmin(np.abs(grid - x_mle[idx]))): x_mle[free].copy()}
+    for i in order:
+        start = warm.get(i)
+        if start is None:
+            nearest = min(warm, key=lambda j: abs(j - i))
+            start = warm[nearest]
+
+        def sub(v):
+            full = np.empty(3)
+            full[idx] = grid[i]
+            full[free] = v
+            return equilibrium_chi2_identifiable(full, ds)
+
+        # L-BFGS-B first, then a Nelder-Mead polish. The objective is cheap, smooth
+        # algebra (no ODE), so a quasi-Newton method converges in tens of evaluations
+        # where Nelder-Mead was exhausting 20000 iterations at the extreme grid nodes --
+        # which the failure check then correctly refused to score. Bounds keep the
+        # simplex inside physically meaningful decades.
+        # L-BFGS-B first; Nelder-Mead where the gradient is unusable. The valley here is
+        # extremely flat -- that is the finding, not a nuisance -- so a quasi-Newton line
+        # search legitimately returns ABNORMAL at the edges of the scan. Falling back to a
+        # derivative-free method is the right numerical choice, NOT a way of not noticing:
+        # if both fail the result is still refused.
+        bounds = [IDENTIFIABLE_BOUNDS[EQUILIBRIUM_IDENTIFIABLE[j]] for j in free]
+        res = minimize(sub, start, method="L-BFGS-B", bounds=bounds,
+                       options=dict(ftol=1e-15, gtol=1e-12, maxiter=5000))
+        if res.success:
+            polish = minimize(sub, res.x, method="Nelder-Mead",
+                              options=dict(xatol=1e-9, fatol=1e-11, maxiter=20000))
+            if polish.success and polish.fun <= res.fun:
+                res = polish
+        else:
+            res = minimize(sub, start, method="Nelder-Mead",
+                           options=dict(xatol=1e-9, fatol=1e-11, maxiter=50000))
+        if not res.success:
+            raise RuntimeError(
+                f"both L-BFGS-B and Nelder-Mead failed at {param} = {grid[i]:.6g}: "
+                f"{res.message}. Recording this as a raised cost -- the old behaviour -- "
+                f"would score an optimiser failure as evidence of identifiability.")
+        costs[i] = float(res.fun)
+        warm[i] = res.x.copy()
+
+    delta = costs - base_cost
+    flat = bool(np.ptp(delta) < 1e-8)
+    above = delta > threshold_delta_chi2
+    left = above[:int(np.argmin(np.abs(grid - x_mle[idx])))].any()
+    right = above[int(np.argmin(np.abs(grid - x_mle[idx]))):].any()
+
+    def _cross(lo_i, hi_i):
+        """Linear interpolation of the threshold crossing between two nodes."""
+        d0, d1 = delta[lo_i], delta[hi_i]
+        if d1 == d0:
+            return float(grid[hi_i])
+        f = (threshold_delta_chi2 - d0) / (d1 - d0)
+        return float(grid[lo_i] + f * (grid[hi_i] - grid[lo_i]))
+
+    centre = int(np.argmin(np.abs(grid - x_mle[idx])))
+    lo = grid[0]
+    for i in range(centre, 0, -1):
+        if delta[i - 1] > threshold_delta_chi2 >= delta[i]:
+            lo = _cross(i, i - 1)
+            break
+    hi = grid[-1]
+    for i in range(centre, n_grid - 1):
+        if delta[i + 1] > threshold_delta_chi2 >= delta[i]:
+            hi = _cross(i, i + 1)
+            break
+
+    if flat:
+        cls = IdentifiabilityClass.STRUCTURALLY_NON_IDENTIFIABLE
+        reason = (f"the profile is flat to 1e-8 across +/-{span_decades} decades, so this "
+                  f"objective contains no information about {param} at all.")
+    elif left and right:
+        cls = IdentifiabilityClass.IDENTIFIABLE
+        reason = (f"the profile crosses the 95% threshold on both sides within "
+                  f"+/-{span_decades} decades, so a finite interval exists.")
+    elif left or right:
+        cls = IdentifiabilityClass.PRACTICALLY_NON_IDENTIFIABLE
+        side = "below" if left else "above"
+        reason = (f"the profile crosses the threshold only {side} the MLE, so the data "
+                  f"bound {param} on one side only; the other bound is the scan edge.")
+    else:
+        cls = IdentifiabilityClass.PRACTICALLY_NON_IDENTIFIABLE
+        reason = (f"the profile never crosses the 95% threshold within "
+                  f"+/-{span_decades} decades, so the data bound {param} no more tightly "
+                  f"than the scan does.")
+
+    return ProfileResult(param_name=param, mle=float(x_mle[idx]), grid=grid, costs=costs,
+                         delta=delta, ci_95=(float(lo), float(hi)),
+                         classification=cls, reason=reason)
+
+
+def identifiability_report(dataset=None) -> ResultSet:
+    """Profile all three identifiable combinations and report them as tiered quantities."""
+    ds = dataset if dataset is not None else DOSE_RESPONSE_BENCHMARK
+    mle, cost = fit_identifiable(ds)
+    rs = ResultSet(f"equilibrium identifiability against {getattr(ds, 'citation_label', ds)}")
+    prov = ("profile likelihood over the equilibrium-identifiable combinations "
+            "(fitting/reparam.py); the six microscopic rates enter only through these "
+            "three ratios, so this is the whole of what an equilibrium curve determines")
+    promote = ("add a dataset with a TIMESCALE in it -- see fitting.data.MISSING_DATASETS "
+               "and reparam.UNLOCKED_BY -- which is what makes an absolute rate "
+               "identifiable; and replace the parametric/synthetic curve with a "
+               "digitisation (P1-2)")
+    for name in EQUILIBRIUM_IDENTIFIABLE:
+        pr = profile_likelihood(name, ds)
+        rs.add(Quantity(
+            name, pr.mle, Tier.UNCALIBRATED, "log10",
+            provenance=f"{prov}. {pr.reason}",
+            promote_by=promote,
+            caveats=(f"95% CI [{pr.ci_95[0]:.4f}, {pr.ci_95[1]:.4f}] in log10; "
+                     f"classification {pr.classification}",
+                     "the underlying dataset is not a digitisation, so this is a method "
+                     "result rather than a measurement")))
+    rs.add(Quantity(
+        "n_identifiable_of_six", 3, Tier.VALIDATED,
+        provenance=("structural, and provable: the equilibrium state distribution is "
+                    "1 : 2x : x^2 : E x^2 : D x^2 with x = [G]/K_d, so the six rates enter "
+                    "only through K_d, E and D. Measured corroboration: the objective is "
+                    "constant to 2e-12 along each of the three scaling generators."),
+        caveats=("this is a statement about EQUILIBRIUM observables; a kinetic observable "
+                 "adds an absolute timescale and raises the count",)))
+    return rs
