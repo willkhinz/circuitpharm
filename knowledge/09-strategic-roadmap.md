@@ -586,14 +586,43 @@ no-skips assertion have not been enforced since then either. Note what that mean
 sprint: the 3,177 new lines were merged without a completed CI run.
 
 The `-m "not slow"` subset alone exceeding 30 minutes is the signal — it is supposed to be
-the fast one. **Required fix, in this order:** (a) measure it —
-`pytest -m "not slow" -q --durations=25` — and report the table; (b) mark whatever
-dominates it `@pytest.mark.slow` if it is genuinely circuit-scale, or make it cheap if it
-is not (the new `fitting/` tests run optimisers and samplers inside the fast subset and are
-unmarked); (c) only then adjust `timeout-minutes`, and raise it because the measured
-runtime justifies the number, not to make the red go away. Do not raise the timeout first:
-a 30-minute "fast" subset is a defect in the subset, and the timeout is the only thing
-currently reporting it.
+the fast one. **Measured here** (`pytest -m "not slow" -q --durations=15`, 4 cores,
+`-n auto`): **11m09s wall, 40m23s CPU, 256 passed / 6 failed / 7 skipped**. Top of the
+table:
+
+```
+183.34s  test_conductance_cell.py::test_A3_excitability_sequence_quiescent_bursting_tonic
+153.35s  test_evaluate.py::test_evaluate_degrades_gracefully_without_the_body_plant
+151.94s  test_review_regressions.py::test_nmda_arm_is_reported_and_the_total_is_void
+125.88s  test_conductance_cell.py::test_E13_burst_period_is_converged_at_the_shipped_step
+109.47s  test_evaluate.py::test_higher_intrinsic_efficacy_gives_a_higher_ceiling
+103.59s  test_conductance_cell.py::test_A1_h_is_what_terminates_the_burst
+ 97.68s  test_review_regressions.py::test_the_two_calibration_paths_now_agree
+ 94.85s  test_review_regressions.py::test_manuscript_numbers_are_generated_not_transcribed
+ 79.72s  test_review_regressions.py::test_no_nmda_arm_means_no_nmda_quantities
+ 77.86s  test_conductance_cell.py::test_E14_the_one_parameter_that_was_misremembered_is_right
+ 5 x ~53s test_review_regressions.py::test_every_modulator_profile_evaluates_at_its_own_ceiling[...]
+```
+
+The top 15 are over half the total CPU, and **not one of them is a new `fitting/` test** —
+an earlier revision of this entry guessed the optimisers and samplers were the cause, and
+the measurement refuted it. They are conductance-cell integrations (the Butera cell at
+`dt_max = 0.05 ms` over seconds of model time) and tests that call `evaluate()`, which runs
+4 seeds × 14 s of preBötC. That is exactly what `pyproject`'s `slow` marker is defined for:
+*"integrates a full circuit simulation (seconds to minutes)"*. They are simply unmarked, so
+`-m "not slow"` does not exclude them and the lean job runs the expensive suite twice.
+
+**Required fix, in this order:** (a) re-measure on the CI runner's core count, not a
+developer machine; (b) add `@pytest.mark.slow` to the circuit- and `evaluate()`-scale tests
+above — this is a marker correction, not a change in coverage, and the `full` job still
+runs everything; (c) only then adjust `timeout-minutes`, and raise it because the measured
+runtime justifies the number, not to make the red go away. **Do not raise the timeout
+first:** a 30-minute "fast" subset is a defect in the subset, and the timeout is currently
+the only thing reporting it.
+
+A note on the method, because it is the standard §2.7 and §7 ask of you: the guess in this
+entry was plausible, cheap to make, and wrong. One `--durations` run settled it. Measure
+before you attribute.
 
 ### P0-8 — `Drug.from_kinetics` is missing the NaN guard that `pool_gains` has
 **File:** `cpg.py:88-113`
