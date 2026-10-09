@@ -541,8 +541,8 @@ the same technique `test_manuscript_consistency.py` uses, for the same reason).
 ### P0-7 — the environment is not pinned, so the manuscript does not reproduce
 **Files:** `pyproject.toml`, `.github/workflows/tests.yml`,
 `knowledge/08-manuscript.md`
-**Severity:** high (6 currently-failing tests, a reproducibility claim that does not hold,
-and CI that has not completed in six pushes)
+**Severity:** high (7 failing tests in CI, a reproducibility claim that does not hold, and
+a lean job whose runtime sits close enough to its timeout that the runner decides)
 
 Measured above (C7): identical anchors, K_d 31.95 vs 29.48 µM, headline range 210.7× vs
 182.2×, from a SciPy upgrade alone. `pyproject` allows `numpy>=1.26`, `scipy>=1.11`; this
@@ -568,22 +568,51 @@ lean install here: **6 failed, 270 passed, 19 skipped** — the five
    quoted to 7 significant figures at all. Pinning makes the number stable; it does not
    make it meaningful. Both are needed.
 
-**And a separate CI defect found while checking this one: CI has not completed on this
-repository for at least the last six pushes.** Every run from `b7f78a5` to `02e684a`
-reports `conclusion: cancelled`, which is what GitHub reports for a job that hits its
-`timeout-minutes`. On run 19 (`02e684a`, the commit before the sprint):
+**CI evidence, measured rather than inferred.** The first CI run on the branch carrying
+this roadmap (`lean (3.11)`, PR #1, merge commit `8dbbd1f`) completed and reported:
 
 ```
-lean (3.11)  "Fast tests"              04:02:00 -> 04:32:01   30m01s  CANCELLED (limit 30)
-lean (3.12)  "Fast tests"              04:02:03 -> 04:31:58   29m55s  CANCELLED (limit 30)
-full         "Full suite with coverage" 04:02:13 -> 04:46:59   44m46s  CANCELLED (limit 45)
+7 failed, 255 passed, 7 skipped in 816.93s (0:13:36)
+install: numpy 2.4.6, scipy 1.17.1, CPython 3.11.17
+refit on the config pulse: kon 0.0110210  koff 0.3248608  beta 0.6562830  alpha 0.1371916
 ```
 
-The `Circuit integration tests` step never ran in either lean job, and
-`Assert nothing was skipped` never ran in `full`. So **nobody has seen this suite's real
-CI verdict since 2026-10-08**, and the `--cov-fail-under=90` floor and the
-no-skips assertion have not been enforced since then either. Note what that means for the
-sprint: the 3,177 new lines were merged without a completed CI run.
+Those four rates are **identical to the refit in this container**, so the drift is a
+reproducible function of the SciPy version and not machine noise. Set against the figure
+in `test_the_synaptic_pulse_has_exactly_one_definition`'s own docstring, recorded on the
+author's machine:
+
+```
+author's scipy   (3000, 1.00)  kon 0.0147  koff 0.4692  tonic headroom 210.7x
+scipy 1.17.1     (3000, 1.00)  kon 0.0110  koff 0.3249  tonic headroom 182.2x
+```
+
+**k_on moves 33% and the headline headroom 13.5% between two library versions, with all
+three calibration anchors reproduced in both cases.** That is the whole of C7, confirmed
+on a clean runner.
+
+The seven failures are the six seen locally plus
+`test_the_cited_commit_and_tag_exist`, which fails **only** in CI:
+
+```
+fatal: Not a valid object name manuscript-v3
+checkout config: fetch-depth: 1, fetch-tags: false
+git -c protocol.version=2 fetch --no-tags --prune --depth=1 origin +8dbbd1f...
+```
+confirming item 3 above. Locally `git fetch --tags` makes it pass; the tag exists on the
+remote and points at `02e684a`.
+
+**On the job runtime, which an earlier revision of this entry got wrong twice.** Every run
+on `main` from `b7f78a5` to `02e684a` reports `conclusion: cancelled` — on run 19 the
+lean "Fast tests" step ran 30m01s against a `timeout-minutes: 30`, and `full` ran 44m46s
+against 45, which is the timeout signature; the `Circuit integration tests` and
+`Assert nothing was skipped` steps never ran, so neither `--cov-fail-under=90` nor the
+no-skips assertion was enforced for the 3,177-line sprint. But the same step took **13m36s**
+on this PR's runner. So the claim is not "the fast subset exceeds 30 minutes" — it is that
+**the same workload spans 13m36s to 30m01s depending on the runner, which puts the job
+close enough to its limit that runner speed decides whether CI completes at all.** A
+timeout-flaky CI is still a defect; it is a different defect from the one stated before,
+and the difference matters for what you do about it.
 
 The `-m "not slow"` subset alone exceeding 30 minutes is the signal — it is supposed to be
 the fast one. **Measured here** (`pytest -m "not slow" -q --durations=15`, 4 cores,
@@ -612,17 +641,22 @@ the measurement refuted it. They are conductance-cell integrations (the Butera c
 *"integrates a full circuit simulation (seconds to minutes)"*. They are simply unmarked, so
 `-m "not slow"` does not exclude them and the lean job runs the expensive suite twice.
 
-**Required fix, in this order:** (a) re-measure on the CI runner's core count, not a
-developer machine; (b) add `@pytest.mark.slow` to the circuit- and `evaluate()`-scale tests
-above — this is a marker correction, not a change in coverage, and the `full` job still
-runs everything; (c) only then adjust `timeout-minutes`, and raise it because the measured
-runtime justifies the number, not to make the red go away. **Do not raise the timeout
-first:** a 30-minute "fast" subset is a defect in the subset, and the timeout is currently
-the only thing reporting it.
+**Required fix, in this order:** (a) add `@pytest.mark.slow` to the circuit- and
+`evaluate()`-scale tests above — this is a marker correction, not a change in coverage, and
+the `full` job still runs everything, so it buys headroom on the lean job without losing a
+single assertion; (b) re-measure on a CI runner and record the number in the workflow as a
+comment; (c) only then adjust `timeout-minutes`, raising it because the measured runtime
+justifies the number, not to make the red go away. **Do not raise the timeout first:** a
+"fast" subset that can take 30 minutes is a defect in the subset, and the timeout is
+currently the only thing reporting it.
 
-A note on the method, because it is the standard §2.7 and §7 ask of you: the guess in this
-entry was plausible, cheap to make, and wrong. One `--durations` run settled it. Measure
-before you attribute.
+A note on the method, because it is the standard §2.7 and §7 ask of you. This entry has
+been wrong twice. First it blamed the new `fitting/` optimisers; one `--durations` run
+showed not one of the top 15 is a `fitting/` test. Then it asserted the fast subset
+*exceeds* 30 minutes; the next CI run finished the same workload in 13m36s. Both guesses
+were plausible, both were cheap to make, and both were wrong in a way that would have sent
+you to the wrong file. **Measure before you attribute, and when a measurement contradicts
+you, change the document rather than the measurement.**
 
 ### P0-8 — `Drug.from_kinetics` is missing the NaN guard that `pool_gains` has
 **File:** `cpg.py:88-113`
