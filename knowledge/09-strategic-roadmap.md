@@ -1271,6 +1271,48 @@ diagnostics.
 holdout. Keeping the 6-parameter fit if P3 says only 4 directions are identifiable —
 sample the identifiable ones and *derive* the rest, stating the constraint.
 
+#### What P4 actually found — read before P5 or P6
+
+Four things came out of building this that the spec above did not anticipate. Full
+write-up in `knowledge/12-inference.md`.
+
+1. **A SECOND OBSERVABLE MISMATCH, which the P1 contract did not catch.** A published
+   concentration-response is `I/I_max`, asymptote 1; this scheme's absolute peak open
+   probability saturates near 0.75. Compared directly the residual at saturation is ~0.25
+   and the optimiser closes it by **deleting desensitisation** (`D → 1e-11`) — the same
+   failure as PEAK-against-EQUILIBRIUM, from a cause the `Observable` tag does not cover.
+   `fitting.data.Normalisation` now makes a dataset declare its scale and
+   `likelihood._predict` normalises the prediction to match. **P5 and P6 must respect it:**
+   a normalised dataset constrains the SHAPE of a curve and carries no information about
+   absolute open probability, so no absolute number may be quoted from a fit to one.
+
+2. **THE PUBLISHED HILL SLOPE AND THE ASSUMED PLATEAU ARE INCOMPATIBLE IN THIS SCHEME.**
+   Over `E ∈ [0.1, 1000]` × `D ∈ [1e-3, 1000]`: the steepest PEAK curve with absolute peak
+   `P_o,max ∈ [0.73, 0.77]` has `nH = 1.33`, and every parameter set reaching `nH ≥ 1.8`
+   has `P_o,max ≥ 0.99`. Jahn 1997 measures `nH = 2.2 ± 0.4`; this project assumes
+   `P_o,max = 0.750`. They cannot both hold. **This is P5's and P6's most promising
+   target** — it is a structural statement about the scheme, independent of any fit, and
+   the sourced side is the slope while the 0.750 is one of the project's own fit targets
+   (P0-13). Do not resolve it by fitting harder.
+
+3. **THE SAMPLER HAD A DEFECT THAT ONLY OVER-DISPERSED STARTS EXPOSE.** The stretch move
+   cannot propose a contraction below `1/a`, so at the canonical `a = 2` a walker across a
+   valley from the ensemble freezes: 2 of 24 accepted 94 and 405 moves against a median of
+   3350, and split-R̂ read 62 while the other 22 sat on the right answer. `a` is now a
+   MIXTURE of scales sampled per proposal (exact, not a tuning trick — see
+   `mcmc.sample_ensemble`), and **per-walker acceptance is a mandatory diagnostic**: add it
+   to the P4-2 list above. A frozen walker is a failure, because an ensemble with one has
+   not sampled anything.
+
+4. **`sem` MUST BE THE NOISE.** A declared `sem` five times the actual noise widened the
+   profile intervals five-fold and made the two uncertainty machineries disagree for a
+   reason that was about neither of them. Any dataset generated for a method check states
+   its own noise exactly.
+
+The accepted acceptance-fraction window is 0.15–0.60, not the 0.2–0.5 above: the price of
+an `a` large enough to cross a valley is an acceptance near 0.10–0.28, and the narrower
+window would have rejected the setting that works.
+
 ---
 
 ### P5 — Model comparison that means something
@@ -1321,6 +1363,38 @@ number computed at unfitted parameters.
 
 **Forbidden.** Reporting Akaike weights alone. Comparing a `PEAK`-native model to an
 `EQUILIBRIUM`-native one on one axis. Treating a 2-point AIC difference as decisive.
+
+#### What P5 actually found
+
+Built in `fitting/comparison.py`; `oed.evaluate_model_fit` stays callable and VOID.
+
+1. **THE CV MARGIN NEEDED A TIE-BREAK, OR THE PROTOCOL SELECTED THE WRONG MODEL.** On the
+   recovery check, Model C — which NESTS Model B — scored 0.84 nats better out of sample,
+   with per-fold differences of `[0.0, 0.7, 0.0, 0.1]`. Taking "best total" would have
+   chosen the larger model over the one the data came from, on nothing. `resolve_cv` now
+   requires the margin to clear **both** the paired per-fold standard error **and** a
+   2-nat floor — the same threshold this section's own Forbidden line names — and breaks a
+   tie on fewest estimated parameters. That is the one-standard-error rule, and without it
+   the anchor test fails. AICc had it right unaided: −194.18 for B against −190.98 for C.
+2. **THE OBSERVABLE CONTRACT HAD A HOLE, FOUND BY ITS OWN TEST.**
+   `OperationalScalarModel.dose_response`'s observable guard is a KEYWORD argument
+   defaulting to `PEAK`, so calling it through the base-class signature —
+   `model.dose_response(concs, 1.0)`, which is what the likelihood did — returned its PEAK
+   Hill curve for an EQUILIBRIUM dataset without complaint. The raise that exists for
+   exactly this case could never fire. `likelihood._predict` now checks
+   `native_observable` for EQUILIBRIUM data; PEAK needs no check, because every scheme
+   here genuinely predicts a peak.
+3. **THE HOLDOUT NEEDED AN INVERTED GUARD, NOT A WAIVED ONE.** Scoring a fitted model
+   against held-out data is what the holdout is FOR, and `make_log_likelihood` refuses it.
+   Rather than add an `allow_holdout` flag — which would be off by default and on wherever
+   someone was in a hurry — `score_holdout` refuses **training** data. Neither function can
+   now be called with the wrong set.
+4. **MODEL C'S EXTRA PARAMETER IS NOT IDENTIFIABLE ON AN EQUILIBRIUM CRC.** Its posterior
+   fails every diagnostic (split-R̂ 1.39, τ 553, acceptance 0.139) and `log10_D_slow` sits
+   on its lower bound with a 3-decade interval. The chain is not broken — the parameter is
+   not there to be estimated, and the diagnostics say so instead of returning an interval.
+   **P5 may therefore not report a posterior for Model C**, and `parameters.get` was
+   already right to refuse one.
 
 ---
 
@@ -1381,7 +1455,7 @@ P4; 2–3 dimensions can be gridded, more needs a coarse-to-fine search.
 
 Falsification boundaries come from the posterior predictive, two-sided, with the
 multiple-comparison cost of having searched the protocol space stated. A pre-registration
-block goes in `knowledge/12-preregistration.md`: the protocol, the predicted intervals per
+block goes in `knowledge/13-preregistration.md`: the protocol, the predicted intervals per
 model, the decision rule, and what outcome would refute the kinetic hypothesis **before**
 any such experiment is run.
 
@@ -1405,6 +1479,36 @@ pre-registration document exists with numbers in it.
 
 **Forbidden.** `± 2σ_noise` as a falsification interval. A boolean collapse flag with no
 boundary. Quoting a single headline fold-change without its interval and its tier.
+
+#### What P6 actually found
+
+New code in `protocols/design.py` and `dynamic_range.dynamic_range_posterior`;
+`oed.find_discriminating_protocol` stays callable and VOID. Numbers in
+`knowledge/13-preregistration.md`.
+
+1. **THE PAIRED-PULSE MEASUREMENT WAS MEASURING SUMMATION.** `paired_pulse_ratio` took each
+   peak **from zero**. At 100 Hz the channel has not closed between pulses — deactivation
+   τ is 3.3 ms against a 10 ms period — so the open probability at the second onset is
+   0.477 and the raw peak is mostly residual. Measured from zero, the fitted scheme reports
+   paired-pulse **facilitation** deepening with frequency (0.863 → 0.900 → 0.958) while
+   actually depressing **threefold** (0.857 → 0.552 → 0.282). The amplitude is now taken
+   from the onset baseline, as an experimenter would; both numbers are returned so the
+   artefact stays demonstrable. The anchor test fails without the fix.
+2. **THE DISCRIMINATING EXPERIMENT DOES NOT EXIST AT CONVENTIONAL NOISE.** Best of 54
+   protocols: score 1.71, which corrects to **0.00** once the search is accounted for, so
+   the whole of it is explained by having looked in 54 places. The two models' predictive
+   intervals overlap almost completely ([0.574, 0.651] against [0.603, 0.680]).
+3. **BUT IT EXISTS AT σ ≤ 0.01.** The score runs 5.90 / 2.99 / 1.71 / 1.24 at
+   σ_meas = 0.005 / 0.01 / 0.02 / 0.05. **The actionable design statement is a ~2–4×
+   reduction in measurement noise, not a different concentration** — which is the sort of
+   conclusion the point-prediction score could not reach, because it had no denominator to
+   trade against.
+4. **THE HEADLINE TIER IS THE WORST DETERMINED ONE.** `theoretical_asymptotic_headroom` is
+   `E/(1+E+D)` over the ambient open probability, so it carries the uncertainty in both
+   ratios including the `D` no anchor constrains, while the reachable gains at fixed
+   `s_max` are ratios of one curve at two `K_d` values and largely cancel. On a stand-in
+   posterior with 0.09 decades of spread in `log10 D` the asymptotic tier spans **2.99-fold**
+   and the reachable gains **1.05-fold**. A single "123×" headline hides exactly this.
 
 ---
 
@@ -1431,6 +1535,37 @@ and state explicitly what this programme does *not* claim.
   thermodynamic cycle and does not satisfy detailed balance around the R/O/D loop).
   **A spec that overstates the implementation is a defect of the same kind as a
   mis-cited number.**
+
+#### What P7 actually found
+
+1. **TABLE 3 WAS STALE IN A WAY READING COULD NOT CATCH.** The ratio column had been updated
+   on an earlier pass and the two probability columns had not, so every row was internally
+   inconsistent while the table as a whole still looked like a sweep. Only recomputing every
+   cell finds that. `test_the_sensitivity_table_matches_the_sweep` now does.
+2. **A ROUNDED CLAIM OUTLIVED THE NUMBERS UNDER IT.** The manuscript said the extrasynaptic
+   range is "> 50×" across 0.2–0.8 µM. That was true of the superseded fit (lower end 54.7×)
+   and false of this one (32.6×) by a factor of 1.5 — and every individual number in the
+   sweep had been updated while the sentence had not, because no test asserted the
+   RELATIONSHIP between them. `test_the_robust_ambient_claim_matches_the_computed_range`
+   now parses the claim out of the prose and checks it against the computed floor. **This
+   is the most transferable lesson in P7: string tests on numbers do not catch claims about
+   numbers.**
+3. **A HEADLINE WITHOUT ITS SCOPE, FOUND BY ITS OWN TEST.** §2.5 opened "Because the 123.3×
+   ratio depends on the parameter set…" with no asymptote qualifier within 700 characters.
+   `test_the_headline_number_is_never_quoted_without_its_scope` failed on it, and the fix
+   was to the manuscript, not the test.
+4. **THE FIT HAS NO CONFIDENCE INTERVAL, AND THAT IS NOT THE SAME AS A SMALL ONE.** It is a
+   square system — three anchors, three free rates, `α` held — so it has a unique solution
+   and no residual degrees of freedom. The manuscript now says so where the intervals would
+   have gone, and points at the sweep and at `dynamic_range_posterior` for the uncertainty
+   that is real.
+5. **THE SPEC DESCRIBED FOUR THINGS THAT DO NOT EXIST**: a thermodynamic cycle in Model C
+   (the code scales one rate linearly), digitised datasets (there are none), profile
+   likelihood over six rates as a result (it is VOID), and Shapley attributions (it is a
+   normalised absolute-log share). Each is corrected in place with a **NOT BUILT** note
+   naming what exists instead, because the gap is the information.
+
+---
 
 **The circuit boundary — OUT OF SCOPE for P1–P7, and here is the contract for later.**
 Coupling `CHARGE` into `resp.py` requires: a conductance scale (nS per unit charge) with
@@ -1522,6 +1657,14 @@ defaulted.
 | "Model B is preferred over A and C" | P5 (CV + holdout) | UNCALIBRATED |
 | "The scheme predicts a held-out observable it was not fitted to" | P5 holdout | VALIDATED |
 | "Protocol P discriminates the models; outcome O refutes kinetic allostery" | P6 (pre-registered) | UNCALIBRATED |
+| "Three of six rate constants are identifiable from an equilibrium CRC" | P3 (proved) | VALIDATED |
+| "The scheme cannot have a peak Hill slope ≥ 1.8 and a peak `P_o,max` of 0.75" | **now** — P4 §2, structural, no fit involved | VALIDATED |
+| "α1β2γ2's peak Hill slope is 2.2, so the scheme is refuted" | **not yet**: needs the slope digitised from a figure and `P_o,max` sourced, since the 0.750 is the project's own target | — |
+| "A normalised CRC constrains the absolute open probability" | **never** — it carries no information about it (P4 §1.2) | — |
+| "Model C is preferred / disfavoured on this data" | **not yet**: its posterior fails every diagnostic and its fourth parameter sits on a bound (P6 §2) | — |
+| "Protocol X discriminates Models B and C" | **not yet**: the best of 54 scores 0.00 after correcting for the search (P6 §3) | — |
+| "A ~4× reduction in measurement noise would make the experiment exist" | **now** — P6 §5, measured across a σ sweep | UNCALIBRATED |
+| "The scheme depresses threefold across 10→100 Hz" | **now** — P6 §1, once the amplitude is measured from pulse onset | UNCALIBRATED |
 | "This bears on respiratory safety of α5-selective PAMs" | **never, on this programme** | — |
 
 The last row is not pessimism. The circuit-level argument rests on
@@ -1572,14 +1715,14 @@ justifying it runs 30 lines and cites the measurements and the source that were 
 
 | Phase | Status | Closing commit | Notes |
 |---|---|---|---|
-| P0 Defect register | **OPEN** | — | 13 items; blocks everything |
-| P1 Observable contract + data | BLOCKED on P0 | — | may start with P2 |
-| P2 Tier/provenance integration | BLOCKED on P0 | — | parallel with P1 |
-| P3 Identifiability | BLOCKED on P1 | — | |
-| P4 Fit + posterior + registry | BLOCKED on P3 | — | |
-| P5 Model comparison | BLOCKED on P4 | — | |
-| P6 Waveforms + OED | BLOCKED on P4 | — | |
-| P7 Manuscript + spec | BLOCKED on P6 | — | |
+| P0 Defect register | **CLOSED** | `08bc5c8`, `0c9347a`, `98ed46b` | all 13 items; `tests/test_p0_register.py` |
+| P1 Observable contract + data | **CLOSED** | `fd2c057` | P1-2 partly BLOCKED: see `data.MISSING_DATASETS`, three named gaps, egress-blocked full texts |
+| P2 Tier/provenance integration | **CLOSED** | `9ccad72` | exact factorial decomposition replaced a false identity |
+| P3 Identifiability | **CLOSED** | `b2ce7a9` | `knowledge/11-identifiability.md`; the practical result is the finding |
+| P4 Fit + posterior + registry | **CLOSED** | *this commit* | `knowledge/12-inference.md`; found the normalisation mismatch and the slope/plateau conflict |
+| P5 Model comparison | **CLOSED** | *this commit* | `fitting/comparison.py`; the CV tie-break is load-bearing, see below |
+| P6 Waveforms + OED | **CLOSED** | *this commit* | `protocols/design.py`, `knowledge/13-preregistration.md`; the designed experiment does not exist at conventional noise |
+| P7 Manuscript + spec | **CLOSED** | *this commit* | all 16 consistency tests green; the spec's four overclaims corrected in place |
 
 ---
 
