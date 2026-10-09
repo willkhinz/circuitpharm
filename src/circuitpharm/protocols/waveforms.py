@@ -225,11 +225,32 @@ def extract_electrophys_metrics(
 
 def paired_pulse_ratio(res: WaveformResult, gaba: np.ndarray, *,
                        n_expected: int) -> dict[str, float]:
-    """I2/I1 and steady-state/first-pulse ratios from a pulse-train response.
+    """Paired-pulse and steady-state ratios from a pulse-train response.
 
-    Pulse onsets are located on the AGONIST trace rather than the response, because under
-    heavy desensitisation a later response peak can vanish entirely and peak-finding on
-    `p_open` would then silently return the wrong number of pulses.
+    THE AMPLITUDE IS MEASURED FROM THE VALUE AT PULSE ONSET, NOT FROM ZERO, and the
+    difference is not cosmetic. At 100 Hz with these rates the channel has not closed
+    between pulses (deactivation tau is 3.3 ms against a 10 ms period), so the open
+    probability at the second onset is 0.477 and the raw peak is mostly residual from the
+    first pulse. Measured on the fitted model:
+
+        frequency   peak/peak (from zero)   amplitude/amplitude (from onset)
+         10 Hz              0.863                      0.857
+         50 Hz              0.900                      0.552
+        100 Hz              0.958                      0.282
+
+    The peak-to-zero ratio therefore reports paired-pulse FACILITATION deepening with
+    frequency -- 0.86 to 0.96 -- for a scheme that is in fact depressing threefold over the
+    same range. It is measuring temporal summation and calling it a response. Experimental
+    practice is to subtract the residual; this does the same thing, by onset baseline.
+
+    Both are returned. `ppr_2_over_1` is the amplitude ratio and is the quantity to use;
+    `ppr_2_over_1_from_zero` is the old peak-to-zero number, kept so the artefact can be
+    demonstrated rather than merely described, and named so it cannot be mistaken for the
+    response.
+
+    Pulse onsets are located on the AGONIST trace rather than on the response, because
+    under heavy desensitisation a later response peak can vanish entirely and peak-finding
+    on `p_open` would then silently return the wrong number of pulses.
     """
     g = np.asarray(gaba, dtype=float)
     p = np.asarray(res.p_open, dtype=float)
@@ -245,14 +266,32 @@ def paired_pulse_ratio(res: WaveformResult, gaba: np.ndarray, *,
             f"found {onsets.size} pulse onset(s) in the agonist trace, expected "
             f"{n_expected}; the train and the time vector disagree.")
     bounds = list(onsets) + [p.size]
-    peaks = [float(np.max(p[bounds[i]:bounds[i + 1]])) for i in range(len(bounds) - 1)]
-    first = peaks[0]
-    if first <= 1e-15:
-        raise ValueError("the first pulse produced no measurable response")
+    peaks, amps, baselines = [], [], []
+    for i in range(len(bounds) - 1):
+        seg = p[bounds[i]:bounds[i + 1]]
+        base = float(p[bounds[i]])
+        peaks.append(float(np.max(seg)))
+        baselines.append(base)
+        amps.append(float(np.max(seg)) - base)
+
+    first_peak = peaks[0]
+    first_amp = amps[0]
+    if first_peak <= 1e-15 or first_amp <= 1e-15:
+        raise ValueError(
+            f"the first pulse produced no measurable response (peak {first_peak:.3g}, "
+            f"amplitude above onset {first_amp:.3g})")
     return {
         "n_pulses_found": float(len(peaks)),
-        "ppr_2_over_1": peaks[1] / first,
-        "steady_over_first": peaks[-1] / first,
-        "peak_1": first,
+        # the response, measured as an experimenter would
+        "ppr_2_over_1": amps[1] / first_amp,
+        "steady_over_first": amps[-1] / first_amp,
+        "amp_1": first_amp,
+        "amp_last": amps[-1],
+        "baseline_at_pulse_2": baselines[1],
+        "baseline_at_last_pulse": baselines[-1],
+        # the summation artefact, kept and labelled
+        "ppr_2_over_1_from_zero": peaks[1] / first_peak,
+        "steady_over_first_from_zero": peaks[-1] / first_peak,
+        "peak_1": first_peak,
         "peak_last": peaks[-1],
     }
