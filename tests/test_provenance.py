@@ -82,8 +82,24 @@ def test_the_provenance_gap_is_what_the_audit_recorded():
     """Pinned deliberately. The gap is the finding, so it should be impossible to close it
     quietly OR to widen it without the number changing in a diff.
 
-    As audited 2026-10-07: 6 of 28 load-bearing parameters name a source (21%),
-    18 UNSOURCED, 8 FROM_QUALITATIVE, 1 FITTED, 1 GUESS.
+    As audited 2026-10-07: 6 of 28 named a source (21%), 18 UNSOURCED, 8 FROM_QUALITATIVE,
+    1 FITTED, 1 GUESS.
+
+    UPDATED 2026-10-08, and the gap WIDENED: 19 UNSOURCED, 7 FROM_QUALITATIVE. `EXTRASYN[a5]`
+    = 0.80 was downgraded FROM_QUALITATIVE -> UNSOURCED after a claim-support read of its
+    candidate source. Kasugai et al. 2010 is the obvious citation for "a5 is predominantly
+    extrasynaptic" -- right journal, right method (quantitative freeze-fracture replica
+    immunogold), right preparation -- and its abstract shows it measured a1, a2 and b3, with
+    synaptic labelling density 78-132x extrasynaptic. It is silent on a5.
+
+    That is the SECOND source in this project to resolve perfectly by DOI and fail to support
+    the number attached to it (`a5_dist` was the first). The pattern: a source whose title
+    matches the claim, in the right journal, by the right group, measuring a neighbouring
+    quantity. Metadata verification cannot catch it.
+
+    The `sourced` count is unchanged at 6 because `EXTRASYN[a5]` never carried a source KEY --
+    it was FROM_QUALITATIVE with an empty key, which is itself worth noting: a basis label can
+    assert more confidence than any recorded citation supports.
     """
     a = audit()
     assert a["total"] == 28, f"parameter count changed to {a['total']}; re-run the audit"
@@ -91,7 +107,12 @@ def test_the_provenance_gap_is_what_the_audit_recorded():
         f"{a['sourced']} parameters now name a source, not 6. If this went UP, update this "
         f"pin and knowledge/06-source-provenance.md. If it went DOWN, something lost its "
         f"citation.")
-    assert a["by_basis"][Basis.UNSOURCED.value] == 18
+    assert a["by_basis"][Basis.UNSOURCED.value] == 19, (
+        f"{a['by_basis'][Basis.UNSOURCED.value]} UNSOURCED, not 19. Widening this gap is a "
+        f"legitimate finding -- it means a claim-support read demoted something -- but it must "
+        f"be recorded in knowledge/06-source-provenance.md and in this docstring, not just "
+        f"absorbed by the pin.")
+    assert a["by_basis"][Basis.FROM_QUALITATIVE.value] == 7
     assert a["by_basis"][Basis.GUESS.value] == 1
 
 

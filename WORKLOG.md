@@ -3310,3 +3310,92 @@ Suite: **276 passed, 0 failed.**
 * Burst-level detector for the conductance substrate, to settle whether the BZ sign flip is
   more bursts or longer bursts.
 * Anchor `COND_LOCO_OP` and `COND_SPINAL_OP`.
+
+## Revising to a reviewer's audit: the claim-support read changes the paper
+
+A review of `08-manuscript.md` arrived with five asks. Its priority ordering was right —
+verification before more simulations or more citations — and acting on the top two changed the
+paper's conclusions rather than its prose.
+
+### 1. The reproducibility statement, treated as testable
+
+`scripts/verify_manuscript.py`. Checks the cited tag out into a throwaway worktree, runs the
+generators with **that tree's** `src` on the path, and asserts every audited figure appears in
+output produced by code it did not write. Four categories, 46 figures, 20,000 draws.
+
+It failed three times before passing, and every failure was real:
+
+1. **`manuscript-v2` did not contain the manuscript.** The tag pointed at the commit *before*
+   the document was written. Its figures reproduced — `paper_numbers.py` was there — so nothing
+   else would ever have caught it. A reader following the citation would have found the
+   generator and no paper. Fixed by `manuscript-v3`, and the script now checks tag contents
+   explicitly.
+2. **A correct figure was unverifiable.** `paper_numbers.py` printed E = β/α at four significant
+   digits (4.819) where the manuscript's closed-form derivation quotes 4.8195.
+3. **Then it was unverifiable the other way.** My fix printed 4.819466, and a correctly rounded
+   4.8195 is not a substring of that either. The rule — print each derived constant at the
+   precision the document quotes — is now written into the function, having cost two rounds.
+
+### 2. The claim-support read, which is where the science moved
+
+The reviewer asked that each citation support *the exact statement attached to it*, not merely a
+related topic. Fetching abstracts and reading them against the specific claim found **six
+load-bearing citations that do not support the number they carry** — and two of those were
+citations I had *corrected or added in the previous revision*. Fixing a journal, volume and page
+is not the same as checking the source says the thing.
+
+| Citation | Carries | Finding |
+|---|---|---|
+| Kasugai 2010 | `f_extra[a5] = 0.80` | measured **α1, α2, β3 — not α5**; synaptic density 78–132× extrasynaptic |
+| Walters 2000 | diazepam `ceiling = 2.50` | biphasic nM/µM potentiation, no EC₅₀ shift — evidence *against* a single affinity parameter |
+| Stamenić 2016 | MP-III-022 `ceiling` | selectivity confirmed; no fold shift reported |
+| Cecere 2025 | alogabat `ceiling` | selectivity confirmed; the +167%/+72% figures are not in the abstract |
+| Haas & Macdonald 1999 | τ_IPSC = 15 ms | right quantity, measured **76.1 ms** |
+| `a5_dist` 1988 | regional composition | generic α probe; measures regional *level* |
+
+So `EXTRASYN_PROV["a5"]` is downgraded **FROM_QUALITATIVE → UNSOURCED** in `provenance.py`.
+That is the **second** source in this project to resolve perfectly by DOI and fail to support
+its number, and the pattern is now specific enough to name: *a source whose title matches the
+claim, in the right journal, by the right group, measuring a neighbouring quantity.* Metadata
+verification cannot catch it; only reading can.
+
+**The consequence is the paper's main claim.** Both numbers carrying the circuit argument — the
+preBötC α5 fraction and the α5 extrasynaptic fraction — are now unsourced. So the manuscript is
+reframed: a scope box tiers the three kinds of result, the title says "a receptor-kinetic
+analysis … with conditional circuit implications", and the abstract and conclusions state
+plainly that **nothing here is evidence that α5-selective compounds preserve respiration.**
+
+The receptor-kinetic results are untouched by any of this — they depend on the three stated
+anchors and the topology, not on these citations — which is exactly why the scope box separates
+them.
+
+### 3–5. The rest of the audit
+
+* **184.6×** now carries "asymptotic receptor open-probability dynamic range" wherever it
+  appears, with a dedicated non-claim paragraph in the abstract: not current, not inhibition,
+  not any clinical endpoint, and unreachable (realised gain 7.88×).
+* **Table 6 rounds to two significant figures.** R = 8.6442 implied a precision nine unsourced
+  fractions cannot carry. The consistency test now enforces both halves — rounded value present
+  in the table rows, four-decimal value absent from them — so false precision cannot creep back.
+* **New §4.4.4 separates "robust within the specified model" from "biologically validated"**,
+  and says why the first does not imply the second: the Dirichlet sweep samples *around* two
+  unsourced central values, so it measures insensitivity to dispersion, not correctness. The
+  reference-arm sign reversal makes it concrete rather than theoretical.
+* **Development history moved to a Supplementary Note** with a consolidated corrections record.
+  Twenty-one "the previous draft…" asides are gone from the main text; §7 is the claim-support
+  audit.
+
+### My tests over-constrained the document, three times
+
+`test_manuscript_consistency.py` failed on five checks after the revision and **all five were
+the test's fault, not the document's**: it banned the rejected 0.84 anchor from the whole file
+when the corrections record legitimately discusses it; it banned the asymptote-derived
+falsification criterion from the whole file when §5.2 quotes it precisely to explain the error;
+it counted "UNSOURCED" in Table 5's *caption prose* as table cells; and it demanded four-decimal
+indices the document had deliberately rounded. The fix was to make the assertions scope-aware —
+a `main_text` fixture that excludes the Supplementary Note, and a `_table_rows` helper that
+looks at pipe-delimited rows rather than surrounding prose.
+
+Worth recording as a pattern in its own right: a test written to stop a document drifting from
+the code will, if written bluntly, stop the document from saying true things about its own
+history. The second failure mode is less obvious than the first and I hit it repeatedly.

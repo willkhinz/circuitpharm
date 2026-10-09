@@ -226,3 +226,96 @@ before the zero stands.
 Until (1) and (2) are done, the selectivity ranking's tier should read: *ordering robust to
 its own prior's tail; prior itself unsourced.* That is not VALIDATED in the sense
 `results.Tier` defines it.
+
+---
+
+## Claim-support pass, 2026-10-08
+
+Prompted by a manuscript review asking that each citation support *the exact statement attached
+to it*, not merely a related topic. Method: resolve against Crossref by title and by
+journal/volume/page (as before), then retrieve the abstract from Europe PMC and read it against
+the specific claim. Reproduce with the queries in `scripts/verify_sources.py`; the readings
+below are mine.
+
+**Six load-bearing citations do not support the specific number attached to them.** They fail
+in three distinguishable ways.
+
+### Measuring a different quantity than the claim requires
+
+**`EXTRASYN[a5] = 0.80` ← Kasugai et al. 2010.** *Eur. J. Neurosci.* 32:1868–1888. The obvious
+citation and the right kind of study: quantitative freeze-fracture replica immunogold labelling,
+synaptic against extrasynaptic pools, hippocampal CA1 pyramidal cells. **Its abstract states it
+measured α1, α2 and β3.** It does not measure α5, and its quantitative result points the other
+way — synaptic labelling density exceeded extrasynaptic by **78–132× (α1), 94× (α2), 79× (β3)**.
+
+→ `EXTRASYN_PROV["a5"]` downgraded **FROM_QUALITATIVE → UNSOURCED**. This widens the audit gap
+to 19 UNSOURCED / 7 FROM_QUALITATIVE, pinned in `tests/test_provenance.py`.
+
+**This is the second source to resolve perfectly and fail to support its number** (`a5_dist`
+was the first, §3). The pattern is specific enough to name and watch for:
+
+> **A source whose title matches the claim, in the right journal, by the right group, measuring
+> a neighbouring quantity.**
+
+Metadata verification is structurally incapable of catching it — `a5_dist` resolved at
+similarity 1.00 — and so is a plausibility check, because the citation *is* plausible. Only
+reading catches it. Worth noting too that `EXTRASYN[a5]` never carried a source key: it was
+FROM_QUALITATIVE with an empty key, so **a basis label was asserting more confidence than any
+recorded citation supported.** The audit should probably not permit that state.
+
+**diazepam `ceiling = 2.50` ← Walters et al. 2000.** *Nat. Neurosci.* 3:1274–1281 (itself a
+correction; an earlier draft cited *Br. J. Pharmacol.* 131:1307–1314 under a different title).
+Reports that diazepam potentiates α1β2γ2 in **two separable phases**, nanomolar and micromolar,
+dissociable by TM2 mutations. No EC₅₀ fold shift. This is not weak support for 2.50 — it is
+evidence that **a single affinity parameter is an oversimplification for this compound**, which
+is the reference arm and therefore the denominator of every selectivity ratio the project
+reports.
+
+**regional composition ← `a5_dist` (1988, PMID 2844998).** Previously documented in §3; included
+here for completeness.
+
+### Reporting no fold shift of the kind the mapping needs
+
+**MP-III-022 `ceiling` ← Stamenić et al. 2016.** *Eur. J. Pharmacol.* 791:433–443. Strongly
+supports the *direction*: a binding- and efficacy-selective α5 PAM, potentiation "from mild to
+moderate to strong" over 1–10 mg/kg, non-α5 receptors engaged only at the top dose, no ataxia or
+sedation at 1–10 mg/kg. Supplies no EC₅₀ shift. **SUPPORTS DIRECTION ONLY.**
+
+**alogabat `ceiling` ← Cecere et al. 2025.** *Front. Pharmacol.* 16:1626078. Abstract confirms a
+potent α5β3γ2 PAM with binding and functional selectivity, plus receptor-occupancy, pMRI and EEG
+target engagement. The **+167% rat / +72% human EC₂₀** figures are **not in the abstract** and
+were not verified against full text. **PARTIAL.**
+
+### Right quantity, different value
+
+**τ_IPSC = 15.0 ms ← Haas & Macdonald 1999.** *J. Physiol.* 514:27–45 (also a corrected
+citation). Supports the topology claim well — deactivation rate is set by subunit composition —
+but the measured value for α1β3γ2L is **76.1 ms**, about 5× slower than our anchor. The 15 ms
+anchor is a conventional neuronal IPSC decay figure and **is not supported by the source cited
+beside it.**
+
+### Partial, not load-bearing on a number
+
+* **ambient GABA 0.2–0.8 µM ← Farrant & Nusser 2005.** Abstract says "low concentrations of
+  ambient GABA" without the range; presumably in the review body, unverified here.
+* **`INVITRO_BAND` 0.05–1.00 Hz ← Revill et al. 2021.** Confirms the preparation (neonatal rat
+  slices retaining respiratory rhythmicity); no frequency range in the abstract.
+
+### Not assessable
+
+Jones & Westbrook 1995, Otis & Mody 1992 and Pirker et al. 2000 are not indexed in Europe PMC
+(all pre-date reliable abstract coverage). Metadata verified by Crossref; claim support
+**UNASSESSED**. Pirker is cited only for a qualitative ordering and carries no number.
+`pbc_alpha` remains UNASSESSED on full-text 403.
+
+### What this does and does not mean
+
+None of these findings makes the underlying statement false. α5 probably *is* enriched
+extrasynaptically; diazepam probably *does* shift GABA EC₅₀ by something in the 2–3× range. What
+the pass establishes is that **this project cannot cite a source for those numbers** and must
+carry them as assumptions. That is a weaker position than a resolved reference list implies, and
+an accurate one.
+
+The receptor-kinetic results are unaffected: they rest on the three stated calibration anchors
+and the topology, not on these citations. The τ_IPSC finding is the one exception, and it bears
+on an anchor rather than a conclusion.
