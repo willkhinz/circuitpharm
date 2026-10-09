@@ -10,6 +10,7 @@ computations are real and the arrays are plain; the conclusions are not availabl
 from .data import (
     ALL,
     equilibrium_crc_from_model,
+    peak_crc_from_model,
     DEACTIVATION_BENCHMARK,
     DOSE_RESPONSE_BENCHMARK,
     HOLDOUT,
@@ -17,6 +18,7 @@ from .data import (
     MISSING_DATASETS,
     TRAIN,
     DataKind,
+    Normalisation,
     DeactivationDataset,
     DoseResponseDataset,
     assert_real_data,
@@ -43,12 +45,33 @@ from .identifiability import (
 from .reparam import UNLOCKED_BY, IdentifiableParams
 from .mcmc import (
     LOG10_BOUNDS,
+    EnsembleRun,
     MCMCChainResult,
     integrated_autocorr_time,
     log_posterior_log10,
     log_prior_log10,
     run_ensemble_mcmc,
+    sample_ensemble,
     split_rhat,
+)
+from .likelihood import (
+    DatasetFit,
+    LikelihoodResult,
+    MLEResult,
+    concentrated_log_likelihood,
+    fit_mle,
+    fit_mle_vector,
+    make_log_likelihood,
+    score_holdout,
+)
+from .posterior import (
+    AgreementResult,
+    PosteriorResult,
+    agreement_with_profiles,
+    posterior_report,
+    sample_identifiable_posterior,
+    sample_posterior_vector,
+    save_chain,
 )
 
 __all__ = [
@@ -61,11 +84,13 @@ __all__ = [
     "JAHN1997_PEAK_CRC",
     "MISSING_DATASETS",
     "DataKind",
+    "Normalisation",
     "DoseResponseDataset",
     "DeactivationDataset",
     "assert_real_data",
     "holdout_guard",
     "equilibrium_crc_from_model",
+    "peak_crc_from_model",
     # identifiability
     "equilibrium_dose_response_chi2",
     "compute_kinetic_objective",
@@ -94,4 +119,23 @@ __all__ = [
     "log_posterior_log10",
     "integrated_autocorr_time",
     "split_rhat",
+    "sample_ensemble",
+    "EnsembleRun",
+    # P4: the likelihood each dataset is scored on its own observable against
+    "DatasetFit",
+    "LikelihoodResult",
+    "MLEResult",
+    "concentrated_log_likelihood",
+    "make_log_likelihood",
+    "score_holdout",
+    "fit_mle",
+    "fit_mle_vector",
+    # P4: the posterior over the combinations the data can determine
+    "PosteriorResult",
+    "AgreementResult",
+    "sample_identifiable_posterior",
+    "sample_posterior_vector",
+    "agreement_with_profiles",
+    "posterior_report",
+    "save_chain",
 ]

@@ -12,7 +12,7 @@ from scipy.integrate import solve_ivp
 
 from .base import (OPEN_STATE_INDEX, PEAK_APPLICATION_MS, DecayFit, Observable,
                    ReceptorModel, WaveformResult, fit_biexponential_decay,
-                   resolve_initial_state)
+                   peak_open_probability_constant, resolve_initial_state)
 
 
 STATES_6 = ("R", "AR", "A2R", "A2O", "A2D_fast", "A2D_slow")
@@ -170,6 +170,31 @@ class ExtendedDesensitizationModel(ReceptorModel):
         dist = self.state_distribution(gaba_um, pam_factor)
         return float(dist[OPEN_IDX_6])
 
+    def q_matrix(self, gaba_um: float, pam_factor: float = 1.0) -> np.ndarray:
+        """Row-generator transition matrix Q: dP/dt = P Q.
+
+        The same generator `simulate_waveform`'s `rhs` writes out term by term. It is
+        written twice because the ODE path evaluates a time-varying concentration and
+        building a 6x6 per step would cost more than the eight multiplications it saves,
+        and `tests/test_p4_likelihood.py` asserts the two agree at several concentrations
+        so the duplication cannot drift -- which is the only acceptable form of it.
+        """
+        mod = self.apply_pam(pam_factor=pam_factor)
+        g = max(float(gaba_um), 0.0)
+        kon, koff = mod.kon, mod.koff
+        beta, alpha = mod.beta, mod.alpha
+        df, rf = mod.d_fast, mod.r_fast
+        ds, rs = mod.d_slow, mod.r_slow
+
+        return np.array([
+            [-2.0 * kon * g, 2.0 * kon * g, 0.0, 0.0, 0.0, 0.0],
+            [koff, -(koff + kon * g), kon * g, 0.0, 0.0, 0.0],
+            [0.0, 2.0 * koff, -(2.0 * koff + beta + df + ds), beta, df, ds],
+            [0.0, 0.0, alpha, -alpha, 0.0, 0.0],
+            [0.0, 0.0, rf, 0.0, -rf, 0.0],
+            [0.0, 0.0, rs, 0.0, 0.0, -rs],
+        ], dtype=float)
+
     def dose_response(self, concs_um: np.ndarray, pam_factor: float = 1.0) -> np.ndarray:
         """EQUILIBRIUM open probability, both desensitisation sinks included.
 
@@ -188,15 +213,15 @@ class ExtendedDesensitizationModel(ReceptorModel):
     def peak_dose_response(self, concs_um: np.ndarray, pam_factor: float = 1.0,
                            application_ms: float = PEAK_APPLICATION_MS) -> np.ndarray:
         """PEAK open probability during a square application. See the protocol docstring."""
-        concs = np.atleast_1d(np.asarray(concs_um, dtype=float))
-        out = np.empty(concs.shape, dtype=float)
-        for i, c in enumerate(concs.ravel()):
-            t = np.linspace(0.0, float(application_ms), 600)
-            g = np.full_like(t, max(float(c), 0.0))
-            res = self.simulate_waveform(t, g, pam_factor=pam_factor,
-                                         initial_state=self.state_distribution(0.0))
-            out.ravel()[i] = res.peak_p_open
-        return out
+        # Solved exactly with one matrix exponential per concentration rather than an ODE
+        # solve: at constant agonist the generator is constant. Agrees with the previous
+        # solve_ivp implementation to 1.8e-7 and is ~300x faster -- see
+        # `base.peak_open_probability_constant` for the measurement and for why `expm`
+        # rather than an eigendecomposition.
+        return peak_open_probability_constant(
+            self.q_matrix, self.state_distribution(0.0), concs_um,
+            pam_factor=pam_factor, application_ms=application_ms,
+            open_index=OPEN_IDX_6)
 
     def simulate_waveform(
         self,

@@ -53,6 +53,27 @@ from ..models.base import Observable
 #:                rest on it (roadmap §5.4).
 DataKind = Literal["digitised", "parametric", "synthetic"]
 
+#: WHAT THE RESPONSE COLUMN IS, which is part of the observable and was missing from it.
+#:
+#:   "absolute"        an open probability, or a current already on an absolute scale. A
+#:                     model's prediction is comparable to it directly.
+#:   "fraction_of_max" I/I_max -- the near-universal convention for a published
+#:                     concentration-response, and NOT the same quantity. Its asymptote is
+#:                     1 by construction, while this scheme's absolute peak open
+#:                     probability saturates near 0.75, so comparing the two directly asks
+#:                     the model to reach a maximum it cannot have. Measured: fitting the
+#:                     Jahn curve that way sent D to 1e-11 -- the optimiser deleted
+#:                     desensitisation, because raising the absolute plateau to 1 is the
+#:                     only way to meet a normalised one. That is the P1 observable
+#:                     mismatch (roadmap §2.3) in a second guise: PEAK against EQUILIBRIUM
+#:                     was caught, PEAK against NORMALISED PEAK was not.
+#:
+#: A normalised dataset carries NO information about absolute open probability, so a fit
+#: against one must not be allowed to claim any. `likelihood._predict` normalises the
+#: prediction the same way the data was normalised, which confines the dataset's evidence
+#: to the curve's shape -- its EC50 and slope -- where it belongs.
+Normalisation = Literal["absolute", "fraction_of_max"]
+
 
 @dataclass(frozen=True)
 class DoseResponseDataset:
@@ -64,6 +85,9 @@ class DoseResponseDataset:
     mean_response: np.ndarray
     sem: np.ndarray
     observable: Observable = Observable.PEAK
+    #: What the response column IS: an absolute open probability, or I/I_max. See
+    #: `Normalisation` -- getting this wrong does not bias a fit, it breaks it.
+    normalisation: Normalisation = "absolute"
     #: How these numbers came to exist. See `DataKind`.
     kind: DataKind = "digitised"
     #: True = NOT measured point-by-point, so it taints any fit that uses it. Kept as a
@@ -103,6 +127,9 @@ class DeactivationDataset:
     time_ms: np.ndarray
     normalized_current: np.ndarray
     observable: Observable = Observable.CHARGE
+    #: What the response column IS: an absolute open probability, or I/I_max. See
+    #: `Normalisation` -- getting this wrong does not bias a fit, it breaks it.
+    normalisation: Normalisation = "absolute"
     kind: DataKind = "digitised"
     synthetic: bool = False
     origin: str = ""
@@ -125,6 +152,22 @@ def _validate_dataset(ds) -> None:
     """A dataset cannot be both generated and sourced, and must say which it is."""
     if ds.kind not in ("digitised", "parametric", "synthetic"):
         raise ValueError(f"{ds.citation_label!r}: unknown kind {ds.kind!r}")
+
+    if ds.normalisation not in ("absolute", "fraction_of_max"):
+        raise ValueError(
+            f"{ds.citation_label!r}: unknown normalisation {ds.normalisation!r}; see "
+            f"`Normalisation`. It must be stated, because a model prediction is comparable "
+            f"to one of the two and not the other.")
+    peak_response = float(np.max(np.asarray(
+        getattr(ds, "mean_response", getattr(ds, "normalized_current", [0.0])),
+        dtype=float)))
+    if ds.normalisation == "fraction_of_max" and not (0.9 <= peak_response <= 1.0 + 1e-9):
+        raise ValueError(
+            f"{ds.citation_label!r} declares normalisation='fraction_of_max' but its "
+            f"largest response is {peak_response:.4g}. An I/I_max column reaches 1 at the "
+            f"concentration it was normalised by; if this one does not, either it is not "
+            f"normalised or the normalising point is missing from the dataset, and a fit "
+            f"would divide the prediction by the wrong concentration.")
 
     # `kind` and `synthetic` must agree. "parametric" counts as synthetic for the purpose
     # of tainting a fit -- the individual points are a model, not measurements -- while
@@ -322,6 +365,10 @@ JAHN1997_PEAK_CRC = DoseResponseDataset(
     mean_response=_JAHN_RESP,
     sem=_jahn_spread(),
     observable=Observable.PEAK,
+    # I/I_max. The paper's own Hill fit has a unit asymptote, which is what a published
+    # concentration-response reports; this scheme's ABSOLUTE peak open probability
+    # saturates near 0.75. See `Normalisation` for what comparing them directly did.
+    normalisation="fraction_of_max",
     kind="parametric",
     synthetic=True,          # see DataKind: parametric taints a fit as synthetic does
     source_key="jahn_a1b2g2_kinetics",
@@ -424,6 +471,47 @@ def holdout_guard(datasets: Sequence[object], *, caller: str) -> None:
             f"against it destroys both. Pass `fitting.data.TRAIN`.")
 
 
+def peak_crc_from_model(model, *, concs_um=None, noise_sd: float = 0.0, seed: int = 0,
+                        label: str = "method check",
+                        normalisation: str = "absolute") -> DoseResponseDataset:
+    """A PEAK concentration-response generated from a model at known parameters.
+
+    The PEAK twin of `equilibrium_crc_from_model`, and the same single justification: a
+    method check, never evidence about receptors. PEAK rather than EQUILIBRIUM because it is
+    the one axis all three models can produce -- Model A has no desensitisation and so no
+    separate equilibrium, and `OperationalScalarModel.dose_response` raises rather than
+    pretending otherwise. A model-comparison method check therefore has to be on this
+    observable or it cannot include Model A at all.
+    """
+    concs = (np.asarray(concs_um, dtype=float) if concs_um is not None
+             else np.logspace(-1.0, 3.5, 14))
+    y = np.asarray(model.peak_dose_response(concs, pam_factor=1.0), dtype=float)
+    if normalisation == "fraction_of_max":
+        y = y / float(y[int(np.argmax(concs))])
+    if noise_sd > 0:
+        y = y + np.random.default_rng(seed).normal(0.0, noise_sd, y.shape)
+        if normalisation == "fraction_of_max":
+            # the validator requires the top point to be 1: it IS the normalising point,
+            # and adding noise to it would mean the column was normalised by something the
+            # dataset does not contain.
+            y[int(np.argmax(concs))] = 1.0
+    sem = np.full(y.shape, noise_sd if noise_sd > 0 else 1e-3)
+    return DoseResponseDataset(
+        citation_label=f"generated PEAK CRC ({label})",
+        preparation="none -- generated from a model at known parameters",
+        concs_um=concs, mean_response=y, sem=sem,
+        observable=Observable.PEAK, normalisation=normalisation,
+        kind="synthetic", synthetic=True,
+        origin=(f"model.peak_dose_response() at {len(concs)} concentrations"
+                + (f" plus N(0, {noise_sd}) noise, seed {seed}" if noise_sd else "")
+                + (", normalised to its highest concentration"
+                   if normalisation == "fraction_of_max" else "")
+                + ". A METHOD CHECK for roadmap P5: it exists to verify that the model "
+                  "comparison recovers a model it generated the data from. No claim about "
+                  "receptors may rest on it."),
+        motivated_by="", role="train")
+
+
 def equilibrium_crc_from_model(model, *, concs_um=None, noise_sd: float = 0.0,
                                seed: int = 0, label: str = "method check") -> DoseResponseDataset:
     """An EQUILIBRIUM concentration-response generated from a model at known parameters.
@@ -444,7 +532,14 @@ def equilibrium_crc_from_model(model, *, concs_um=None, noise_sd: float = 0.0,
     y = np.asarray(model.dose_response(concs, pam_factor=1.0), dtype=float)
     if noise_sd > 0:
         y = y + np.random.default_rng(seed).normal(0.0, noise_sd, y.shape)
-    sem = np.full(y.shape, max(noise_sd, 1e-3))
+    # The declared sem must BE the noise that was added, or the two uncertainty machineries
+    # disagree for a reason that has nothing to do with either of them: a chi-squared
+    # profile divides by this sem while the posterior estimates the scale from the
+    # residuals, so a sem floored five times too high widened the profile intervals by five
+    # times (measured at noise_sd = 2e-4 against a 1e-3 floor). A NOISELESS curve still
+    # needs a nonzero scale for chi-squared to be finite, so that one case keeps a declared
+    # placeholder -- and it is a placeholder, not a measurement.
+    sem = np.full(y.shape, noise_sd if noise_sd > 0 else 1e-3)
     return DoseResponseDataset(
         citation_label=f"generated EQUILIBRIUM CRC ({label})",
         preparation="none -- generated from a model at known parameters",

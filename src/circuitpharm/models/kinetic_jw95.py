@@ -13,7 +13,7 @@ from scipy.integrate import solve_ivp
 
 from .base import (OPEN_STATE_INDEX, PEAK_APPLICATION_MS, DecayFit, Observable,
                    ReceptorModel, WaveformResult, fit_biexponential_decay,
-                   resolve_initial_state)
+                   peak_open_probability_constant, resolve_initial_state)
 
 
 STATES_5 = ("R", "AR", "A2R", "A2O", "A2D")
@@ -199,15 +199,15 @@ class KineticAllosteryModel(ReceptorModel):
     def peak_dose_response(self, concs_um: np.ndarray, pam_factor: float = 1.0,
                            application_ms: float = PEAK_APPLICATION_MS) -> np.ndarray:
         """PEAK open probability during a square application. See the protocol docstring."""
-        concs = np.atleast_1d(np.asarray(concs_um, dtype=float))
-        out = np.empty(concs.shape, dtype=float)
-        for i, c in enumerate(concs.ravel()):
-            t = np.linspace(0.0, float(application_ms), 600)
-            g = np.full_like(t, max(float(c), 0.0))
-            res = self.simulate_waveform(t, g, pam_factor=pam_factor,
-                                         initial_state=self.state_distribution(0.0))
-            out.ravel()[i] = res.peak_p_open
-        return out
+        # Solved exactly with one matrix exponential per concentration rather than an ODE
+        # solve: at constant agonist the generator is constant. Agrees with the previous
+        # solve_ivp implementation to 1.8e-7 and is ~300x faster -- see
+        # `base.peak_open_probability_constant` for the measurement and for why `expm`
+        # rather than an eigendecomposition.
+        return peak_open_probability_constant(
+            self.q_matrix, self.state_distribution(0.0), concs_um,
+            pam_factor=pam_factor, application_ms=application_ms,
+            open_index=OPEN_IDX_5)
 
     def simulate_waveform(
         self,

@@ -212,6 +212,117 @@ def resolve_initial_state(initial_state, n_states: int, resting: np.ndarray) -> 
 #: model module against its own STATES tuple, so a reordering cannot desynchronise them.
 OPEN_STATE_INDEX = 3
 
+#: Time samples per square application in `peak_dose_response`. Kept at the value the
+#: `solve_ivp` implementation used, because the peak is a maximum over these samples and
+#: changing the grid would change every PEAK number in the project for a reason unrelated
+#: to the model.
+PEAK_GRID_POINTS = 600
+
+
+#: Taylor terms used by `_expm_scaled` once the argument has been scaled below
+#: `_EXPM_SCALE_TARGET`. At ||A|| <= 0.5 the truncation error is bounded by
+#: 0.5**13 / 13! ~ 1.2e-14, which is below double-precision noise after squaring.
+_EXPM_TERMS = 12
+_EXPM_SCALE_TARGET = 0.5
+
+
+def _expm_scaled(a: np.ndarray) -> np.ndarray:
+    """Matrix exponential by scaling and squaring, for the small dense matrices here.
+
+    `scipy.linalg.expm` is the right general tool and the wrong one in an inner loop: it
+    costs ~8 ms on a 5x5, essentially all of it Python-level setup, which made a PEAK
+    likelihood evaluation 70 ms when the arithmetic in it takes 0.1 ms. This does the
+    textbook thing -- scale until the norm is below 0.5, sum a 12-term Taylor series,
+    square back -- in about 50 us, and `tests/test_p4_likelihood.py` checks it against
+    `scipy.linalg.expm` to 1e-12 on the generators this project actually builds.
+
+    Squaring is the step that can amplify error in general. It does not here: the matrices
+    being squared are exponentials of generators, so they are stochastic with spectral
+    radius <= 1 and squaring is a contraction.
+    """
+    a = np.asarray(a, dtype=float)
+    norm = float(np.max(np.abs(a).sum(axis=1))) if a.size else 0.0
+    if not np.isfinite(norm):
+        raise FloatingPointError(
+            f"cannot exponentiate a matrix with a non-finite norm ({norm!r}); the "
+            f"generator is carrying a non-finite rate")
+    squarings = 0 if norm <= _EXPM_SCALE_TARGET else int(
+        np.ceil(np.log2(norm / _EXPM_SCALE_TARGET)))
+    scaled = a / (2.0 ** squarings)
+
+    out = np.eye(a.shape[0])
+    term = np.eye(a.shape[0])
+    for k in range(1, _EXPM_TERMS + 1):
+        term = term @ scaled / k
+        out = out + term
+    for _ in range(squarings):
+        out = out @ out
+    return out
+
+
+def peak_open_probability_constant(
+    q_matrix, p_resting, concs_um, *, pam_factor: float = 1.0,
+    application_ms: float = PEAK_APPLICATION_MS, open_index: int = OPEN_STATE_INDEX,
+    n_grid: int = PEAK_GRID_POINTS,
+) -> np.ndarray:
+    """Peak open probability during a SQUARE application, solved exactly.
+
+    AT CONSTANT AGONIST THE SCHEME IS LINEAR WITH A CONSTANT GENERATOR, so
+    `P(t) = P(0) exp(Q t)` and there is nothing for an ODE solver to do. Propagating with
+    one matrix exponential of `Q dt` and then `n_grid - 1` matrix-vector products is both
+    exact (to the matrix exponential's own accuracy) and about three orders of magnitude
+    faster than `solve_ivp`, which this replaces in `peak_dose_response` for the 5- and
+    6-state schemes. Measured against the previous implementation at the fitted parameters:
+    agreement to 1.8e-7 absolute over nine concentrations spanning four decades, the
+    difference being the solver's tolerance rather than this method's error. That matters
+    beyond tidiness -- a PEAK likelihood evaluation cost 0.24 s and now costs under a
+    millisecond, which is the difference between P4's MLE being a 20-minute job and a
+    2-second one, and between P5's per-model fits being feasible and not.
+
+    `expm` rather than an eigendecomposition: `Q` is not symmetric and can be defective or
+    nearly so, and inverting an ill-conditioned eigenvector matrix is exactly how a method
+    like this returns a plausible wrong answer instead of failing.
+
+    `q_matrix(conc_um, pam_factor)` returns the ROW-generator (`dP/dt = P Q`), matching
+    `ReceptorModel.q_matrix`. `p_resting` is the state vector at zero agonist.
+    """
+    concs = np.atleast_1d(np.asarray(concs_um, dtype=float))
+    if n_grid < 2:
+        raise ValueError(f"n_grid must be at least 2, got {n_grid}")
+    if not np.isfinite(application_ms) or application_ms <= 0:
+        raise ValueError(
+            f"application_ms must be finite and positive, got {application_ms!r}")
+    dt = float(application_ms) / (n_grid - 1)
+    p0 = np.asarray(p_resting, dtype=float)
+
+    out = np.empty(concs.size, dtype=float)
+    for i, c in enumerate(concs.ravel()):
+        q = np.asarray(q_matrix(max(float(c), 0.0), pam_factor), dtype=float)
+        step = _expm_scaled(q.T * dt)
+        # All `n_grid` states by repeated doubling: with `cur` the propagator for the
+        # `filled` steps already computed, the next `filled` states are `cur` applied to
+        # the ones in hand. That is ~log2(n_grid) small matrix products instead of
+        # `n_grid` matrix-vector products in Python, and the matrices here have spectral
+        # radius <= 1 (they are stochastic), so squaring them does not amplify error.
+        states = np.empty((n_grid, p0.size), dtype=float)
+        states[0] = p0
+        cur = step
+        filled = 1
+        while filled < n_grid:
+            k = min(filled, n_grid - filled)
+            states[filled:filled + k] = states[:k] @ cur.T
+            filled += k
+            if filled < n_grid:
+                cur = cur @ cur
+        best = float(np.max(states[:, open_index]))
+        if not np.isfinite(best):
+            raise FloatingPointError(
+                f"the propagator produced a non-finite open probability at {c} uM. A "
+                f"non-finite peak is a failure, not a very large peak; the generator is "
+                f"probably carrying a rate that makes Q dt enormous (dt = {dt:g} ms).")
+        out[i] = best
+    return out.reshape(concs.shape)
+
 
 def fit_biexponential_decay(t_ms, y, *, hi_frac: float = 1.00,
                             lo_frac: float = 0.01) -> DecayFit:

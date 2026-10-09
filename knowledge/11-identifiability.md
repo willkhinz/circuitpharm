@@ -129,6 +129,18 @@ only way an equilibrium curve reaches that is by deleting desensitisation. Measu
 equilibrium analysis has **no real dataset to run on** — which is itself the finding, and
 is why §2 is a method check rather than a result about receptors.
 
+### 2.3 And a second one, found in P4
+
+The `Observable` tag was not enough. A published concentration-response reports `I/I_max`,
+asymptote 1 by construction; this scheme's **absolute** peak open probability saturates near
+0.75. Comparing them directly leaves a ~0.25 residual at saturation that can only be closed
+by raising the plateau, and the optimiser did it the same way as above: `D → 1e-11`. So
+PEAK-against-EQUILIBRIUM was caught here and **PEAK-against-normalised-PEAK was not**.
+`fitting.data.Normalisation` now makes a dataset declare its scale and the likelihood
+normalises the prediction to match. See `knowledge/12-inference.md` §1.2, and §2 there for
+the structural conflict this exposed between the published Hill slope and the assumed
+plateau.
+
 ---
 
 ## 3. What is VOID, what is UNCALIBRATED, and why
@@ -165,3 +177,10 @@ for sd in (0.0, 0.002):                              # §2: structural vs practi
 
 Pinned in `tests/test_identifiability_p3.py`. The noiseless-recovery test is the method
 validation; the 0.2%-noise test is the result.
+
+One number here moved in P4: `equilibrium_crc_from_model` used to floor the declared `sem`
+at 1e-3, so a dataset generated with less noise than that misstated its own uncertainty.
+That widened the profile intervals by the same factor — five times, at `noise_sd = 2e-4` —
+and made profile likelihood and MCMC disagree for a reason that was about neither. The
+0.2%-noise numbers in §2 are unaffected (0.002 > 1e-3), and `knowledge/12-inference.md`
+§3.2 has the corrected comparison.
