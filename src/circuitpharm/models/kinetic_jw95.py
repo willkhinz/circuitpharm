@@ -11,26 +11,46 @@ from dataclasses import dataclass, replace
 import numpy as np
 from scipy.integrate import solve_ivp
 
-from .base import ReceptorModel, WaveformResult
+from .base import (OPEN_STATE_INDEX, PEAK_APPLICATION_MS, DecayFit, Observable,
+                   ReceptorModel, WaveformResult, fit_biexponential_decay,
+                   resolve_initial_state)
 
 
 STATES_5 = ("R", "AR", "A2R", "A2O", "A2D")
 OPEN_IDX_5 = 3  # "A2O"
+assert STATES_5[OPEN_STATE_INDEX] == "A2O", "open-state index desynchronised from base"
 
 
 @dataclass(frozen=True)
 class KineticAllosteryModel(ReceptorModel):
-    """5-state Markov gating scheme with microscopic allosteric modulation."""
-    kon: float = 0.011244       # uM^-1 ms^-1 (association rate)
-    koff: float = 0.333069      # ms^-1 (dissociation rate)
-    beta: float = 0.559023      # ms^-1 (channel opening rate)
-    alpha: float = 0.107891     # ms^-1 (channel closing rate)
-    d: float = 0.050            # ms^-1 (desensitisation rate)
-    r: float = 0.0020           # ms^-1 (resensitisation rate)
+    """5-state Markov gating scheme with microscopic allosteric modulation.
+
+    EVERY DEFAULT BELOW IS PROVISIONAL AND IS NOT A CALIBRATION. They reproduce neither
+    of the project's two anchors -- measured EC50 6.34 uM (EQUILIBRIUM) against the 20 uM
+    anchor, and P_o,max 0.8382 against 0.750 -- and they are a CHIMERA of two different
+    fits: `beta`/`alpha` are the manuscript's current config-pulse fit, while `kon`/`koff`
+    are approximately the superseded 1000 uM / 0.30 ms fit. The resulting
+    K_d = 29.62 uM appears in no fit, no commit and no document.
+
+    Obtain parameters from `circuitpharm.parameters.get(...)` instead. These exist so the
+    algebra can be unit-tested, and `tests/test_nextgen_models.py` pins the mismatch above
+    so they cannot be mistaken for a calibration (roadmap P0-13).
+    """
+    kon: float = 0.011244       # uM^-1 ms^-1  PROVISIONAL - see class docstring
+    koff: float = 0.333069      # ms^-1        PROVISIONAL
+    beta: float = 0.559023      # ms^-1        PROVISIONAL
+    alpha: float = 0.107891     # ms^-1        PROVISIONAL
+    d: float = 0.050            # ms^-1        PROVISIONAL (not fitted by any anchor)
+    r: float = 0.0020           # ms^-1        PROVISIONAL (not fitted by any anchor)
 
     @property
     def name(self) -> str:
         return "KineticAllostery_JW95"
+
+    @property
+    def native_observable(self) -> Observable:
+        """`dose_response` is the stationary distribution, desensitisation included."""
+        return Observable.EQUILIBRIUM
 
     @property
     def param_names(self) -> tuple[str, ...]:
@@ -76,15 +96,40 @@ class KineticAllosteryModel(ReceptorModel):
         d = self.desens_ratio
         return e / (1.0 + e + d)
 
-    def apply_pam(self, affinity_factor: float = 1.0, gating_factor: float = 1.0) -> "KineticAllosteryModel":
+    def apply_pam(self, affinity_factor: float = 1.0,
+                  gating_factor: float = 1.0) -> "KineticAllosteryModel":
         """Apply allosteric modulation.
 
-        affinity_factor: fold-decrease in koff (slowing unbinding).
-        gating_factor: fold-increase in beta (accelerating opening).
+        affinity_factor: fold-decrease in koff (slowing unbinding). At equilibrium this
+            divides K_d exactly, so it IS the EQUILIBRIUM EC50 fold-shift -- a factor of
+            2.5 here gives a 2.5x left-shift of `dose_response`. Note this is NOT the same
+            modulator strength as `gabaa_kinetics.calibrate_pam`'s output, which calibrates
+            against the PEAK EC50 shift and returns 2.945 for the same nominal 2.5x
+            (roadmap P6-2). Both are internally consistent; the two must not be swapped.
+        gating_factor: fold-increase in beta (accelerating opening). Raises P_o,max, so it
+            is not bounded the way an affinity shift is.
+
+        POSITIVE MODULATION ONLY. Values below 1.0 are rejected rather than clamped: the
+        surrounding code (headroom, decomposition, dose-escalation) is written for
+        potentiation, `calibrate_pam` documents NAMs as out of domain, and the old
+        `max(factor, 1e-6)` admitted 0.0, which turned k_off into 1e6 x its value --
+        a silent super-agonist. One decision, stated here, for all three models
+        (roadmap P0-12).
         """
+        for nm, v in (("affinity_factor", affinity_factor),
+                      ("gating_factor", gating_factor)):
+            v = float(v)
+            if not np.isfinite(v):
+                raise ValueError(f"{nm} must be finite, got {v!r}")
+            if v < 1.0:
+                raise ValueError(
+                    f"{nm}={v!r} is below 1.0, i.e. NEGATIVE allosteric modulation, which "
+                    f"this scheme's callers are not written for. `calibrate_pam` searches "
+                    f"multipliers >= 1 and returns NaN below that by design; extending to "
+                    f"NAMs is a feature, not a clamp. Pass >= 1.0.")
         return replace(
             self,
-            koff=self.koff / max(float(affinity_factor), 1e-6),
+            koff=self.koff / float(affinity_factor),
             beta=self.beta * float(gating_factor),
         )
 
@@ -134,6 +179,15 @@ class KineticAllosteryModel(ReceptorModel):
         return float(dist[OPEN_IDX_5])
 
     def dose_response(self, concs_um: np.ndarray, pam_factor: float = 1.0) -> np.ndarray:
+        """EQUILIBRIUM open probability. See `native_observable`.
+
+        This is NOT the peak-current concentration-response that published CRCs report --
+        it differs by a factor of ~3 in EC50 at identical parameters, because the
+        stationary distribution has desensitisation competing throughout. Fitting a
+        peak-current dataset with this curve is the observable mismatch that produced a
+        chi-squared of 9290 for 9 data points (roadmap C2). Use `peak_dose_response` for
+        PEAK data.
+        """
         concs = np.asarray(concs_um, dtype=float)
         mod = self.apply_pam(affinity_factor=pam_factor)
         x = np.maximum(concs, 0.0) / mod.kd_um
@@ -141,6 +195,19 @@ class KineticAllosteryModel(ReceptorModel):
         d = mod.desens_ratio
         denom = 1.0 + 2.0 * x + (x ** 2) * (1.0 + e + d)
         return (e * (x ** 2)) / denom
+
+    def peak_dose_response(self, concs_um: np.ndarray, pam_factor: float = 1.0,
+                           application_ms: float = PEAK_APPLICATION_MS) -> np.ndarray:
+        """PEAK open probability during a square application. See the protocol docstring."""
+        concs = np.atleast_1d(np.asarray(concs_um, dtype=float))
+        out = np.empty(concs.shape, dtype=float)
+        for i, c in enumerate(concs.ravel()):
+            t = np.linspace(0.0, float(application_ms), 600)
+            g = np.full_like(t, max(float(c), 0.0))
+            res = self.simulate_waveform(t, g, pam_factor=pam_factor,
+                                         initial_state=self.state_distribution(0.0))
+            out.ravel()[i] = res.peak_p_open
+        return out
 
     def simulate_waveform(
         self,
@@ -154,17 +221,20 @@ class KineticAllosteryModel(ReceptorModel):
         gaba_arr = np.asarray(gaba_t, dtype=float)
 
         if len(t_arr) < 2:
-            dist = self.state_distribution(float(gaba_arr[0]), pam_factor) if len(gaba_arr) > 0 else np.array([1.0, 0, 0, 0, 0])
+            dist = (self.state_distribution(float(gaba_arr[0]), pam_factor)
+                    if len(gaba_arr) > 0 else np.array([1.0, 0, 0, 0, 0]))
             p0 = float(dist[OPEN_IDX_5])
-            return WaveformResult(t_arr, gaba_arr, np.full_like(t_arr, p0), p0, 0.0, 0.0, p0, dist[None, :])
+            # decay is UNDEFINED on a single sample, so it is NaN rather than 0.0 or a
+            # nominal tau (P0-4).
+            return WaveformResult(
+                t=t_arr, gaba=gaba_arr, p_open=np.full_like(t_arr, p0), peak_p_open=p0,
+                charge_integral=0.0, decay_tau_ms=float("nan"), steady_state_tail=p0,
+                states=dist[None, :], decay=DecayFit.failed())
 
-        if initial_state is not None:
-            p_init = np.asarray(initial_state, dtype=float)
-            if len(p_init) != 5:
-                # If scalar open prob provided, distribute according to resting steady state
-                p_init = self.state_distribution(float(gaba_arr[0]), pam_factor)
-        else:
-            p_init = self.state_distribution(float(gaba_arr[0]), pam_factor)
+        # P0-1: a scalar open probability is honoured, a vector is validated, anything
+        # else raises with what it accepts. `len()` on a 0-d array used to crash here.
+        p_init = resolve_initial_state(
+            initial_state, 5, self.state_distribution(float(gaba_arr[0]), pam_factor))
 
         # ODE: dP/dt = P * Q(gaba(t))
         # Note: solve_ivp works with column state vectors y, so dy/dt = Q^T y
@@ -196,11 +266,32 @@ class KineticAllosteryModel(ReceptorModel):
             atol=1e-7,
         )
 
-        states = sol.y.T if sol.success else np.tile(p_init, (len(t_arr), 1))
-        # Enforce non-negativity and simplex constraint
+        # P0-3: a failed integration RAISES. It used to be replaced by a constant trace
+        # tiled from p_init, which yields a flat p_open, a near-zero charge and (with the
+        # old estimator) a decay tau of exactly the fit target -- three plausible numbers
+        # from an experiment that never ran.
+        if not sol.success:
+            raise RuntimeError(
+                f"Radau failed to integrate the 5-state scheme over "
+                f"[{t_arr[0]:.4g}, {t_arr[-1]:.4g}] ms: {sol.message}. The stiffest "
+                f"timescale here is 1/r = {1.0 / self.r:.0f} ms against a cleft transient "
+                f"of ~1 ms, so this is a genuinely stiff problem; if the parameters are "
+                f"legitimate, increase the density of `t` rather than loosening rtol.")
+
+        states = sol.y.T
+        # Conservation is a property of the generator (rows sum to zero), so a drift here
+        # is integration error, not something to normalise away quietly. Check it, then
+        # clip only the tiny negatives a stiff solver legitimately produces.
+        row_sums = states.sum(axis=1)
+        worst = float(np.max(np.abs(row_sums - 1.0))) if row_sums.size else 0.0
+        if worst > 1e-3:
+            raise RuntimeError(
+                f"state probabilities drifted off the simplex by {worst:.3e} (max |sum - 1|) "
+                f"while integrating the 5-state scheme. Renormalising would hide an "
+                f"integration failure behind a plausible trace; tighten rtol/atol or "
+                f"densify `t` instead.")
         states = np.clip(states, 0.0, 1.0)
-        row_sums = states.sum(axis=1, keepdims=True)
-        states = np.divide(states, np.maximum(row_sums, 1e-12))
+        states = states / np.maximum(states.sum(axis=1, keepdims=True), 1e-12)
 
         p_open = states[:, OPEN_IDX_5]
         peak_p = float(np.max(p_open))
@@ -208,18 +299,9 @@ class KineticAllosteryModel(ReceptorModel):
         _trapz = getattr(np, "trapezoid", None) or getattr(np, "trapz", None)
         charge = float(_trapz(p_open, t_arr))
 
-        # Decay tau post-peak
-        peak_idx = int(np.argmax(p_open))
-        if peak_idx < len(t_arr) - 2:
-            t_tail = t_arr[peak_idx:] - t_arr[peak_idx]
-            p_tail = p_open[peak_idx:] - p_open[-1]
-            if np.max(p_tail) > 1e-4:
-                half_mask = p_tail <= 0.5 * p_tail[0]
-                decay_tau = float(t_tail[half_mask][0] / np.log(2)) if np.any(half_mask) else 15.0
-            else:
-                decay_tau = 15.0
-        else:
-            decay_tau = 15.0
+        # P0-4: a real biexponential fit, NaN when it does not converge. No fallback to
+        # 15.0, which is gabaa_kinetics.FIT_TARGETS["tau_ms"].
+        decay = fit_biexponential_decay(t_arr, p_open)
 
         return WaveformResult(
             t=t_arr,
@@ -227,7 +309,8 @@ class KineticAllosteryModel(ReceptorModel):
             p_open=p_open,
             peak_p_open=peak_p,
             charge_integral=charge,
-            decay_tau_ms=decay_tau,
+            decay_tau_ms=decay.tau_weighted_ms,
             steady_state_tail=float(p_open[-1]),
             states=states,
+            decay=decay,
         )

@@ -169,15 +169,24 @@ def test_waveform_generators():
 
 
 def test_electrophys_metrics_extraction():
-    t = np.linspace(0.0, 50.0, 100)
+    # 400 samples, not 100: the biexponential decay fit (P0-4) needs at least 6 points
+    # inside the 90%->10% window, and a 1 ms clearance on a 50 ms span at 100 samples
+    # does not supply them. A coarse grid now yields an honest NaN rather than 15.0.
+    t = np.linspace(0.0, 50.0, 400)
     gaba = synaptic_transient(t, peak_um=1000.0, rise_ms=0.1, clear_ms=1.0)
     model = KineticAllosteryModel()
     res = model.simulate_waveform(t, gaba)
-    metrics = extract_electrophys_metrics(res, g_max_ns=2.0, driving_force_mv=40.0)
+    # ONE driving-force convention, from models.base (P0-11); there is no
+    # `driving_force_mv` argument any more.
+    metrics = extract_electrophys_metrics(res, g_max_ns=2.0, v_hold_mv=-60.0,
+                                          e_cl_mv=-75.0)
 
     assert metrics["peak_current_pA"] > 0.0
     assert metrics["charge_integral_fC"] > 0.0
-    assert metrics["decay_tau_ms"] > 0.0
+    assert metrics["driving_force_mv"] == pytest.approx(15.0)
+    assert metrics["charge_window_ms"] == pytest.approx(50.0)
+    # decay may legitimately not fit on a given grid; if it does, it must be positive
+    assert np.isnan(metrics["decay_tau_ms"]) or metrics["decay_tau_ms"] > 0.0
 
 
 # ==============================================================================
