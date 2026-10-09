@@ -239,24 +239,34 @@ def find_discriminating_protocol_pp(
     scored: list[tuple[float, ProtocolPoint, dict, dict, float]] = []
     skipped: dict[str, str] = {}
     for obs in observables:
-        for app in (application_grid if obs is Observable.PEAK else (float("nan"),)):
+        # WHETHER AN OBSERVABLE IS AVAILABLE AT ALL IS DECIDED ONCE, not rediscovered
+        # inside the grid. A model that has no such quantity has none at every
+        # concentration, and the earlier version broke out of the innermost loop and relied
+        # on the enclosing ones happening to have a single iteration -- correct by accident.
+        probe = ProtocolPoint(gaba_um=float(gaba[0]), pam_factor=float(pam[0]),
+                              observable=obs,
+                              application_ms=float(application_grid[0]))
+        try:
+            posterior_predictive_score(candidates, probe, sigma_meas=sigma_meas,
+                                       rng_seed=rng_seed)
+        except ObservableMismatch as exc:
+            skipped[obs.value] = str(exc)
+            continue
+        except Exception:
+            pass        # a bad probe point is not a reason to drop the observable
+
+        apps = application_grid if obs is Observable.PEAK else (300.0,)
+        for app in apps:
             for g in gaba:
                 for p in pam:
                     pt = ProtocolPoint(gaba_um=float(g), pam_factor=float(p),
-                                       observable=obs,
-                                       application_ms=300.0 if np.isnan(app) else float(app))
+                                       observable=obs, application_ms=float(app))
                     try:
                         s, iv, sd, sep = posterior_predictive_score(
                             candidates, pt, sigma_meas=sigma_meas, rng_seed=rng_seed)
-                    except ObservableMismatch as exc:
-                        skipped[obs.value] = str(exc)
-                        break
                     except Exception:
                         continue
                     scored.append((s, pt, iv, sd, sep))
-                else:
-                    continue
-                break
 
     if not scored:
         raise RuntimeError(
