@@ -1,16 +1,40 @@
-# Compartment-Dependent Allosteric Headroom in GABA-A Receptors Revealed by Markov-Kinetic Modelling of Phasic and Tonic Inhibition
+# Compartment-Dependent Allosteric Headroom in GABA-A Receptors
+
+## A receptor-kinetic analysis of phasic and tonic inhibition, with conditional circuit implications
 
 **William Hinz**¹
 ¹*Department of Biochemistry & Computational Neuropharmacology*
 Correspondence: hinzwilliam52@gmail.com
-Repository: https://github.com/willkhinz/circuitpharm — tag **`manuscript-v2`** (commit `1c0faa5`)
+Repository: https://github.com/willkhinz/circuitpharm — tag **`manuscript-v3`**
 
-> **Reproducibility.** Every number in this manuscript is emitted by
-> `scripts/paper_numbers.py` at the tagged commit, and the Monte Carlo by
-> `scripts/ranking_robustness.py --draws 20000`. None was transcribed. The previous draft
-> quoted a parameterisation no commit produces and cited a commit hash that exists in no ref;
-> see `knowledge/07-paper-review.md` for the audit and `tests/test_review_regressions.py`
-> (E21) for the regression tests that now prevent it.
+> **Scope and status of claims.** This manuscript reports three kinds of result, and they do
+> not carry equal weight. Readers should not transfer confidence from the first to the third.
+>
+> 1. **Receptor-kinetic results (§2, §4.1, §5.2).** Derived from an explicitly stated five-state
+>    Markov scheme. Fully reproducible, internally checked, and conditional only on the
+>    parameterisation and topology, both of which are given in full. This is the defensible core.
+> 2. **Compound ordering (§4.4, §4.6).** Robust *within the specified model*: the ranking
+>    survives adverse draws of every uncertain parameter simultaneously, and survives replacing
+>    the neuron model entirely. It is **not** biologically validated — see the explicit
+>    distinction in §4.4.4.
+> 3. **Anatomical and respiratory interpretation (§4.2, §4.3).** The weakest component. The
+>    preBötzinger α5 fraction and the α5 extrasynaptic fraction — the two numbers on which the
+>    respiratory-sparing argument and the extrasynaptic-headroom argument respectively rest —
+>    are both **UNSOURCED** (§4.2, §7). **Nothing here is evidence that α5-selective compounds
+>    preserve respiration or possess a safety advantage.**
+>
+> Two further limits apply throughout. The headline **184.6×** figure is an *asymptotic receptor
+> open-probability dynamic range* under stated assumptions — not a predicted fold change in
+> current, in inhibition, or in any clinical effect (§2.3). And the non-selective benzodiazepine
+> that serves as the denominator of every selectivity ratio reported here **changes sign**
+> between the two neuron substrates tested (§4.6).
+
+> **Reproducibility.** Every number is emitted by `scripts/paper_numbers.py` at the cited tag,
+> and the Monte Carlo by `scripts/ranking_robustness.py --draws 20000`. None was transcribed.
+> This is a testable claim, not an assurance: `scripts/verify_manuscript.py` checks out the
+> cited tag into a clean worktree, runs the generators from that tree, and asserts every
+> audited figure appears in its output. Run it. Development history, including the defects
+> these mechanisms exist to prevent, is in the Supplementary Note, not the main text.
 
 ---
 
@@ -33,38 +57,46 @@ up its activation curve, so a 2.5-fold leftward EC₅₀ shift raises peak open 
 **1.32×** (asymptotic ceiling **1.67×**), acting instead on the deactivation tail
 (τ **1.90×**, time-integrated open probability **2.42×**). Submicromolar ambient GABA leaves
 the steady state far below saturation: at 0.40 µM the same modulator produces a **7.88×**
-increase in standing open probability, against an asymptotic bound of **184.6×** in the limit
-of vanishing agonist dissociation (k_off → 0⁺). That bound is a model-specific
-open-probability dynamic range, not a claim of equivalent whole-cell or circuit-level
-potentiation.
+increase in standing open probability, against an **asymptotic receptor open-probability
+dynamic range of 184.6×** in the limit of vanishing agonist dissociation (k_off → 0⁺).
+
+**That 184.6× figure is a ratio between two open probabilities within one kinetic scheme — a
+model-specific limiting value over the baseline at a specified ambient GABA concentration. It
+is not a prediction that any compound produces a 184.6-fold change in whole-cell current, in
+circuit-level inhibition, or in any physiological or clinical endpoint**, each of which depends
+additionally on receptor density, single-channel conductance, driving force, chloride
+homeostasis and input resistance (§2.3). No finite modulator approaches it: at the modelled
+benchmark potency the realised gain is 7.88×, and the asymptote and the reachable gain diverge
+as ambient GABA falls (§4.1).
 
 The dynamic range is an emergent property of this topology and parameterisation, not a
-pharmacological constant. A one-at-a-time sensitivity sweep shows the exact ratio depends on
-the desensitisation equilibrium (d/r) and microscopic affinity (K_d), while a large
-extrasynaptic range (**> 48×**) persists across the submicromolar ambient concentrations
-reported for cortex and hippocampus (0.2–0.8 µM). Incorporating receptor compartmentalisation
-and α5-subunit distribution, subtype-selective PAMs separate forebrain from respiratory
-actions without any imposed cap; under the model's assumed low α5 representation in the
-preBötzinger complex, α5-selective modulation produces less direct inhibition of the modelled
-core respiratory rhythm generator — though whole-animal ventilatory preservation cannot be
-inferred from receptor abundance alone.
+pharmacological constant. A one-at-a-time sensitivity sweep shows the exact ratio depends on the
+desensitisation equilibrium (d/r) — which the three anchors do not constrain — and on
+microscopic affinity, while a large extrasynaptic range (**> 48×**) persists across the
+submicromolar ambient concentrations reported for cortex and hippocampus (0.2–0.8 µM). A fixed
+2.5× scalar cap binds only above ≈ 5 µM ambient GABA, so in the extrasynaptic regime it
+truncates rather than saturates.
 
-Two results constrain how far this should be taken. First, the compound ordering is
-**substrate-independent**: migrating the respiratory circuit from an integrate-and-fire cell to
-a Butera–Rinzel–Smith conductance cell with a real persistent sodium current leaves the
-ordering of five subtype-selective arms unchanged (Spearman ρ = +1.0000). Second, the
-**non-selective benzodiazepine reference arm is not** substrate-independent: its sign on
-respiratory output reverses between the two cell models, and that arm is the denominator of
-every selectivity ratio reported here.
+Mapped onto subunit distribution estimates, the model separates forebrain from respiratory
+actions without any imposed cap, and the resulting compound ordering is robust in two senses: it
+survives adverse draws of every uncertain parameter simultaneously, and it survives replacing
+the integrate-and-fire neuron model with a conductance-based one sharing almost no mechanism
+(Spearman ρ = +1.0000 over five subtype-selective arms). **Both senses are robustness within a
+model, not biological validation**, and two findings bound the interpretation sharply. First,
+the preBötzinger α5 fraction and the α5 extrasynaptic fraction are both unsourced, so the
+anatomical basis of the respiratory-sparing argument is an assumption rather than a measurement.
+Second, the non-selective benzodiazepine reference arm — the denominator of every reported
+selectivity ratio — reverses sign on respiratory output between the two substrates.
 
 We identify two computational failure modes in multiscale systems models — arbitrary
-conductance caps, and transfer of lumped sensitivity parameters between model architectures
-(recurring error E12) — and propose a recombinant-receptor patch-clamp experiment measuring the
-two-dimensional surface I_tonic([GABA]_bath, C_PAM) to test the predicted dependence of tonic
-potentiation on ambient GABA.
+conductance caps, and transfer of lumped sensitivity parameters between model architectures —
+and propose a recombinant-receptor patch-clamp experiment measuring the two-dimensional surface
+I_tonic([GABA]_bath, C_PAM) to test the predicted dependence of tonic potentiation on ambient
+GABA. That experiment, rather than any number reported here, is what would establish whether
+the compartment asymmetry is real.
 
 **Keywords:** GABA-A receptor; α5 subunit; positive allosteric modulator; Markov kinetic model;
-tonic inhibition; preBötzinger complex; open-probability dynamic range; model identifiability.
+tonic inhibition; open-probability dynamic range; model identifiability; reproducibility.
 
 ---
 
@@ -113,8 +145,7 @@ states and agonist regimes.
 | Simulated peak P_o at saturating agonist | P_o,max (calibration anchor) | **0.7500** |
 | Analytic gating bound, desensitisation absent | β/(α+β) | **0.8282** |
 
-The last two rows are a distinction the previous draft collapsed. They are not the same
-quantity: β/(α+β) is the equilibrium open probability of the two-site scheme *without* the
+The last two rows are distinct quantities, easily and consequentially collapsed: β/(α+β) is the equilibrium open probability of the two-site scheme *without* the
 desensitised state, whereas the calibration anchor is the peak reached during a finite
 saturating step, in which desensitisation competes with activation throughout the rise. The
 analytic bound is therefore never attained, and quoting it as the anchor overstates the
@@ -277,8 +308,7 @@ To connect phenomenological compound descriptors to microscopic rates:
    root-solving F(c) = EC₅₀(Q(k_off)) / EC₅₀(Q(k_off/c)) − s_max = 0 via Brent's method, with
    EC₅₀ evaluated by integrating the master equation over a 300 ms step.
 
-**These two numbers are not interchangeable**, and the previous draft's Table 3 listed
-c = 2.79 as s_max = 2.50. In this parameterisation:
+**These two numbers are not interchangeable.** In this parameterisation:
 
 | s_max | c_affinity |
 |---|---|
@@ -293,32 +323,39 @@ and conversely c = 2.79 gives s_max = **2.401**. At c = 2.9321 the model's EC₅
    tonic gain scales linearly:
    Tonic Gain(θ) = 1 + θ·(Gain_max(s_max) − 1).
 
-**Table 2. Reported endpoints and their mapping to s_max.**
+**Table 2. Reported endpoints and their mapping to s_max.** The `ceiling` column is the value
+the model uses (`PROFILES[...].ceiling`, consumed as `s_max` at `evaluation.py:86`). The final
+column is the result of a **claim-support** read (§7), not a metadata check: it records whether
+the cited source supports *the mapped number*, as distinct from existing and being on-topic.
 
-| Compound | Reported primary endpoint | Assay / construct | Model `ceiling` | Citation status |
+| Compound | Reported primary endpoint | Assay / construct | `ceiling` | Does the source support this number? |
 |---|---|---|---|---|
-| Imepitoin | ~20% max potentiation rel. diazepam (Rundfeldt & Löscher, 2014) | recombinant α1β2γ2, oocyte | **1.25** | resolved |
-| TPA023 | α2/α3 partial; silent antagonist at α1 and α5 | recombinant | **2.00** | not re-audited |
-| L-838,417 | partial efficacy ~30–40% at α2/3/5; silent at α1 (McKernan et al., 2000) | membrane potential | **2.20** | resolved |
-| MP-III-022 | α5-selective potentiation, weaker partial modulation at α2/α3 (Stamenić et al., 2016) | patch clamp, α5β3γ2 | **2.50** | resolved |
-| Alogabat (RG7816) | +167% (rat), +72% (human) potentiation at EC₂₀ GABA; no potentiation at α1/α2/α3 (Cecere et al., 2025) | recombinant α5β3γ2 patch | **2.50** | resolved |
-| Diazepam / midazolam | two distinct and separable mechanisms of potentiation (Walters et al., 2000) | recombinant α1β2γ2 patch | **2.50** | **corrected** — see note |
-| Neurosteroid (allopregnanolone proxy) | gating-active, non-selective | — | **6.00** | not re-audited |
-| Gaboxadol (THIP) | δ orthosteric agonist | — | **1 × 10⁹** | not re-audited |
+| Imepitoin | ~20% max potentiation rel. diazepam (Rundfeldt & Löscher, 2014) | recombinant α1β2γ2, oocyte | 1.25 | direction only |
+| TPA023 | α2/α3 partial; silent antagonist at α1 and α5 | recombinant | 2.00 | not re-audited |
+| L-838,417 | partial efficacy ~30–40% at α2/3/5; silent at α1 (McKernan et al., 2000) | membrane potential | 2.20 | direction only |
+| MP-III-022 | binding- and efficacy-selective α5 PAM; potentiation "mild to moderate to strong"; non-α5 receptors engaged only at the top dose (Stamenić et al., 2016) | patch clamp, α5β3γ2 | 2.50 | **no — direction only; no EC₅₀ shift reported** |
+| Alogabat (RG7816) | potent α5β3γ2 PAM with binding and functional selectivity (Cecere et al., 2025) | recombinant α5β3γ2 patch | 2.50 | **no — selectivity supported; the +167%/+72% EC₂₀ figures are not in the abstract and were not verified against full text** |
+| Diazepam / midazolam | *biphasic* potentiation with separable nanomolar and micromolar components (Walters et al., 2000) | recombinant α1β2γ2 patch | 2.50 | **no — see note (iii)** |
+| Neurosteroid (allopregnanolone proxy) | gating-active, non-selective | — | 6.00 | not re-audited |
+| Gaboxadol (THIP) | δ orthosteric agonist | — | 1 × 10⁹ | not re-audited |
 
-**Notes.** (i) The `ceiling` column is the repository's own `PROFILES[...].ceiling`, i.e. the
-value the model actually uses. The previous draft's Table 6A listed alogabat at 2.40 and
-MP-III-022 and HZ-166 at 2.20; all three are **2.50** in the code. The selectivity index R is
-unaffected (s_max does not enter it, §4.4 note 2) but the table misreported its own inputs.
-(ii) Reported experimental metrics (relative efficacy %, partial agonism, current potentiation
-at EC₂₀) are **not** direct EC₅₀ fold shifts. Each mapping to a `ceiling` is an explicit
-modelling assumption, and none of these values is a measured EC₅₀ shift for that compound.
-(iii) The diazepam citation is corrected from the previous draft, which attributed it to
-*Br. J. Pharmacol.* 131:1307–1314 under a different title; the paper is Walters et al. (2000),
-*Nat. Neurosci.* 3:1274–1281. This matters because diazepam is the reference arm of every
-selectivity ratio reported in §4.4. (iv) The MP-III-022 citation is likewise corrected: the
-previous draft cited "Fischer et al. (2010), *Neuropharmacology* 59:612–618", which does not
-resolve and is anachronistic — MP-III-022 was first characterised in Stamenić et al. (2016).
+**Notes.**
+
+(i) **No `ceiling` in this table is a measured EC₅₀ fold shift for its compound.** Reported
+experimental metrics — relative efficacy percentages, partial agonism, current potentiation at
+EC₂₀ — are different quantities. Every mapping is an explicit modelling assumption, and the
+right column records that the claim-support read did not upgrade any of them.
+
+(ii) **The diazepam benchmark is UNSOURCED, and the citation that was supposed to carry it says
+something more interesting.** Walters et al. (2000) is correctly cited here (*Nat. Neurosci.*
+3:1274–1281; an earlier draft gave *Br. J. Pharmacol.* 131:1307–1314 under a different title),
+but it reports no 2.5-fold EC₅₀ shift. What it reports is that diazepam potentiates α1β2γ2 in
+**two separable phases**, nanomolar and micromolar, dissociable by TM2 mutations. That is not
+support for `ceiling = 2.50`; it is evidence that **a single affinity parameter is an
+oversimplification of this compound** — the one compound whose value propagates into every
+selectivity ratio in §4.4 as the denominator. We keep 2.50 as a stated benchmark, label it
+UNSOURCED, and flag the mechanistic tension rather than letting the citation imply support it
+does not give.
 
 ### 2.5. Sensitivity and robustness of the dynamic range
 
@@ -368,8 +405,8 @@ Because the 184.6× ratio depends on the parameter set, we swept each quantity o
    proportion, leaving the range stable at **159.8–200.2×**.
 3. **Ambient GABA.** Across the 0.2–0.8 µM range reported for cortex and hippocampus the range
    spans **725.8× to 48.1×**. Note the lower end falls marginally *below* 50, so the robust
-   claim is **"> 48×"**, or "> 50× across 0.2–0.7 µM" (62.1× at 0.70 µM). The previous draft's
-   "> 50×" sat one unit on the wrong side of the computed value.
+   claim is **"> 48×"**, or "> 50× across 0.2–0.7 µM" (62.1× at 0.70 µM). A rounder "> 50×"
+   would sit one unit on the wrong side of the computed value.
 4. **K_d and ambient are the same axis.** Halving K_d at fixed [G] gives exactly the numbers of
    doubling [G] (0.0032505, 48.1×), as it must, since the equilibrium depends on [G]/K_d. Both
    rows are retained because the two have different experimental meanings.
@@ -405,84 +442,34 @@ affinity-modulating), and it is why the neurosteroid arm in §4.4 carries `ceili
 
 ---
 
-## 3. Computational architecture and self-correction
+## 3. Model implementation
 
-Two modelling traps distorted earlier PAM safety analyses in this project.
+The receptor scheme of §2 is implemented in `circuitpharm.gabaa_kinetics` and drives two
+downstream layers: an algebraic selectivity index over subunit distributions
+(`circuitpharm.subtypes`, §4.4) and a spiking respiratory circuit available on two neuron
+substrates (`circuitpharm.resp` with `circuitpharm.neuron`, §4.6). Reported quantities carry
+reliability tiers (`circuitpharm.results.Tier`): `Tier.VOID` marks quantities lacking
+whole-animal anchors — absolute lethal-dose margins in mg — and blocks them from analysis
+programmatically, while `Tier.VALIDATED` marks quantities invariant to the shared multiplicative
+tissue-scaling constants. The selectivity index R is the latter: because those constants multiply
+numerator and denominator alike they cancel, so the compound ordering is invariant to that scale.
+**Cancellation establishes scale-invariance within the model's algebra. It does not validate the
+biological accuracy of the subunit fractions or circuit weights** — see §4.4.4.
 
-```
-[Legacy platform (simulator.py)]
-  |-- conductance scaled linearly: g_eff = g_base * (1 + occ * (gain - 1))
-  `-- clamped at a hard-coded boundary: min(g_eff, 2.5)   <-- TRAP 1: fixed scalar cap
-         |
-[Intermediate recalibration (overdose_kinetic.py, early)]
-  |-- split into synaptic vs extrasynaptic pools
-  `-- SENS_TOTAL = 0.10 carried over                     <-- TRAP 2: calibration collapse (E12)
-      `-- drug effect collapsed to -2% ventilation; artifact: 100% survival at every dose
-         |
-[Audited engine (circuitpharm, tag manuscript-v2)]
-  |-- 5-state Markov generator (Q matrix)
-  |-- dual-pool compartmentalisation: synaptic 1.32x vs extrasynaptic 184.6x range
-  |-- subunit distribution estimates (preBotC vs forebrain), with per-cell provenance
-  |-- two neuron substrates (LIF and Butera-Rinzel-Smith conductance)
-  `-- epistemic guardrails: Tier.VOID for unanchored margins, Tier.VALIDATED for R
-```
+A third guardrail operates on reported statistics rather than parameters:
+`scripts/ranking_robustness.py` prints an explicit **NOT QUOTABLE** verdict for its Monte Carlo
+median and 95th percentile (§4.4.3), and this manuscript honours it.
 
-### 3.1. Trap 1 — the fixed scalar cap
-
-Early implementations scaled PAM gain linearly with occupancy and clamped conductance:
-
-```python
-# legacy formulation (REJECTED)
-gaba_a_gain = min(1.0 + occupancy * (target_gain - 1.0), gaba_a_efficacy_cap)  # cap = 2.5
-```
-
-This manufactured a safety guarantee: because conductance was clamped at 2.5×, circuits
-inevitably survived dose escalation. The "overdose ceiling" was a programmer's boundary, not an
-emergent property of receptor saturation. In the revised framework the boundary emerges from
-Q — and §2.5 shows where it actually lies (≈ 5 µM ambient GABA, not at any fixed multiplier).
-
-### 3.2. Trap 2 — the calibration collapse (E12)
-
-Moving from a single-pool to a dual-pool conductance model, `scripts/overdose_kinetic.py`
-carried over the lumped `SENS_TOTAL = 0.10` from the single-pool fit. The mismatch collapsed
-the drug's respiratory effect to **−2% ventilation** for a non-selective benzodiazepine, against
-a clinical anchor of −16% to −19%. The resulting artifact: the script reported that *every
-compound survived every dose up to 100% occupancy* — a false impression of universal overdose
-safety produced by a parameter that no longer meant what it had meant.
-
-The insight that followed: **tissue-level sensitivity (`gaba_sens`) is not a subunit fraction.**
-It is a lumped parameter absorbing extra-preBötC mechanisms — chemoreflex blunting, upper-airway
-motor tone — that an isolated pacemaker model does not contain.
-
-E12 has since recurred in two further forms, both documented: a tonic/phasic split applied
-everywhere except the module written last, and (most recently) a shared population factory
-whose default silently removed spike-triggered adaptation from the spinal circuit while leaving
-the respiratory one correct. The general shape is a value duplicated across two locations that
-then diverge, with a *plausible* rather than loud symptom. The structural remedy adopted here is
-to delete the second copy rather than synchronise it.
-
-### 3.3. Epistemic reliability tiers
-
-`circuitpharm.results.Tier` marks every reported quantity:
-
-* **`Tier.VOID`** — quantities lacking whole-animal anchors (absolute lethal-dose margins in
-  mg) are blocked from analysis programmatically.
-* **`Tier.VALIDATED` (scale-invariant)** — quantities independent of the shared multiplicative
-  tissue-scaling constants, such as the selectivity index
-
-  **R = [Drive_subj(compound) / Burden_resp(compound)] / [Drive_subj(diazepam) / Burden_resp(diazepam)]**
-
-Because the tissue-scaling constants multiply numerator and denominator alike, they cancel, so
-the compound ordering is invariant to that scale. **Cancellation establishes mathematical
-scale-invariance within the model's algebra; it does not validate the biological accuracy of
-the underlying subunit fractions or circuit weights, and it does not compute clinical safety,
-human ventilatory depression, or an overdose margin.**
-
-A third guardrail operates at the level of reported statistics: `ranking_robustness.py` prints
-an explicit **NOT QUOTABLE** verdict for the Monte Carlo median and 95th percentile (§4.4.3).
-The previous draft placed both in a headline table. This manuscript does not.
-
----
+Two modelling failure modes shaped the present implementation and are relevant to anyone
+building comparable models: an **arbitrary conductance cap** (`gaba_a_efficacy_cap = 2.5`), which
+manufactured a safety guarantee by clamping the quantity under study, and **transfer of a lumped
+sensitivity parameter between architectures**, which collapsed a non-selective benzodiazepine's
+modelled respiratory effect to −2% against a −16% to −19% clinical anchor and so reported that
+every compound survived every dose. Both are described, with their diagnostic histories, in
+**Supplementary Note §S2**; §5.1 states the design recommendation that follows. The second taught
+the substantive lesson that `gaba_sens` is **not a subunit fraction** but a lumped parameter
+absorbing extra-preBötC mechanisms — chemoreflex blunting, upper-airway motor tone — that an
+isolated pacemaker model does not contain.
 
 ## 4. Results
 
@@ -520,78 +507,103 @@ activation throughout the rise.*
    headroom extending to **184.6×**.
 
 **The contrast between the two compartments' ceilings is 184.608 / 1.668 = 111-fold.** This is
-the manuscript's central quantitative claim, and it is weaker than the previous draft's
-asserted 187-fold — because the synaptic ceiling in this parameterisation is 1.67×, not 1.12×.
-The qualitative conclusion is unchanged: two orders of magnitude separate the compartments, and
-a single scalar multiplier cannot describe both.
+the manuscript's central quantitative claim. It is sensitive to the synaptic ceiling, which at
+this parameterisation is 1.67×; the qualitative conclusion — that two orders of magnitude
+separate the compartments, so a single scalar multiplier cannot describe both — is not.
 
-A caution the previous draft did not state. **Headroom and reachable gain are different
+A caution that must travel with every figure above. **Headroom and reachable gain are different
 quantities, and they diverge in opposite directions as ambient GABA falls.** Between 0.40 and
 0.10 µM the asymptotic headroom rises 15.6-fold (184.6× → 2881×) while the gain a finite
 s_max ≈ 2.5 modulator actually extracts rises only 1.08-fold (7.88× → 8.47×). Any statement
 about what a real compound does must be written against the reachable column. §5.2 returns to
-this, because the previous draft's falsification criteria were set from the wrong one.
+this, because it is where a falsification criterion can be written against the wrong one.
 
 ### 4.2. Subunit distribution and anatomical decoupling: the α5 case
 
 **Table 5. Subunit compartmentalisation and regional distribution estimates, with per-cell
-provenance** (basis from `circuitpharm.provenance.report()`; `python -c "from
-circuitpharm.provenance import report; print(report())"`).
+provenance.** Basis labels are generated from `circuitpharm.provenance.report()`, not assigned
+by hand. **No cell in this table is QUANTITATIVE**; eight are UNSOURCED, one is an explicit
+GUESS, and the six labelled FROM_QUALITATIVE take a *direction* from a source while the number
+itself is ours.
 
-| Subunit | Extrasyn. share `f_extra` | basis | preBötC `f` | basis | Forebrain `f` | basis |
+| Subunit | Extrasyn. `f_extra` | basis | preBötC `f` | basis | Forebrain `f` | basis |
 |---|---|---|---|---|---|---|
 | α1 | 0.15 | **UNSOURCED** | 0.60 | FROM_QUALITATIVE [`pbc_alpha`] | 0.35 | **UNSOURCED** |
 | α2/3 | 0.20 | **UNSOURCED** | 0.15 | FROM_QUALITATIVE [`pbc_alpha`] | 0.25 | **UNSOURCED** |
-| α5 | 0.80 | FROM_QUALITATIVE | 0.02 | **UNSOURCED** | 0.30 | FROM_QUALITATIVE |
+| α5 | 0.80 | **UNSOURCED** | 0.02 | **UNSOURCED** | 0.30 | FROM_QUALITATIVE |
 | δ/α4 | 1.00 | FROM_QUALITATIVE [`pbc_delta`] | 0.15 | FROM_QUALITATIVE [`pbc_delta`] | 0.08 | **UNSOURCED** |
 | ε | 0.50 | **GUESS** | 0.08 | FROM_QUALITATIVE [`pbc_eps`] | 0.02 | **UNSOURCED** |
 
-#### Provenance, stated at the resolution the audit supports
+#### Provenance, stated at the resolution a claim-support read supports
 
 The repository's audit reports that **6 of 28 load-bearing parameters name a source (21%)**.
-That is the honest figure for this table, and it is substantially weaker than the previous
-draft's attribution of Table 5 to "regional expression literature (Pirker et al., 2000;
-Kasugai et al., 2010)". Specifically:
+For this table specifically: **eight of fifteen cells are UNSOURCED, a ninth is a GUESS, and
+the remaining six are FROM_QUALITATIVE.**
 
-* **`f_α5` in preBötC = 0.02 is UNSOURCED.** It is a modelling assumption encoding an
-  anatomical ordering (medullary α5 low, forebrain α5 high), not a measurement from isolated
-  preBötC tissue. §4.4.3 shows the consequences of that assumption in full.
-* **Seven of the fifteen cells above are UNSOURCED, an eighth (`f_extra,ε`) is labelled an
-  outright GUESS in the source code, and the remaining seven are FROM_QUALITATIVE** — i.e.
-  a direction taken from a source, with the number itself ours. No cell in this table is
-  QUANTITATIVE.
+Two of those cells are load-bearing, and **both are UNSOURCED**:
+
+* **`f_α5` in preBötC = 0.02** — the number on which the respiratory-sparing argument rests. It
+  encodes an anatomical ordering (medullary α5 low, forebrain α5 high) and is not a measurement
+  from isolated preBötC tissue. §4.4.3 quantifies what it does to the results.
+* **`f_extra,α5` = 0.80** — the number on which the extrasynaptic-headroom argument rests.
+  **This was downgraded from FROM_QUALITATIVE to UNSOURCED while preparing this version**, and
+  the reason is worth stating in full because it is a reproducible mistake.
+
+#### Why the α5 extrasynaptic fraction is now UNSOURCED
+
+An earlier draft attributed `f_extra,α5 = 0.80` to Kasugai et al. (2010). That is the obvious
+candidate and exactly the right kind of study: quantitative freeze-fracture replica immunogold
+labelling, synaptic against extrasynaptic pools, hippocampal CA1 pyramidal cells, in a good
+journal. Reading its abstract rather than its title shows that **it measured α1, α2 and β3 —
+not α5** — and that its quantitative result points the other way: synaptic labelling density
+exceeded extrasynaptic density by **78–132× (α1), 94× (α2) and 79× (β3)**. It therefore supports
+a *low* extrasynaptic fraction for the subunits it did measure, and is silent on this one.
+
+This is the **second** source in this project to resolve perfectly by DOI and fail to support
+the number attached to it. The first was `a5_dist` — a 1988 study using a single generic cDNA
+probe for "the α subunit", reporting total α-subunit mRNA by region (medulla ≪
+hippocampus/cortex), which is a claim about regional *level* where `REGIONS` encodes regional
+*composition*. The pattern is specific enough to name: **a source whose title matches the claim,
+in the right journal, by the right group, measuring a neighbouring quantity.** Metadata
+verification cannot catch it; only reading can. §7 reports a claim-support read of every
+load-bearing citation, with results.
+
+The direction — that α5 is enriched extrasynaptically relative to α1 — is widely stated in
+review literature and we have no reason to doubt it. What we do not have is a primary source in
+this repository that supports **0.80**, and the honest consequence is that the extrasynaptic
+pool's size is an assumption of the same standing as the preBötC α5 fraction.
+
+Two other provenance caveats travel with this table:
+
 * The preBötC α1/α2/α3 column rests on `pbc_alpha` — Liu & Wong-Riley (2004),
-  *J. Appl. Physiol.*, metadata verified by DOI but **full text inaccessible (HTTP 403)**, so
-  claim support is formally **UNASSESSED**. Two cautions travel with it: it covers α1, α2 and α3
-  only (not α5, δ, α4 or ε, to which `REGIONS["prebotc"]` also assigns values), and it is a
-  *developmental* study — an axis this project has been bitten by twice.
-* The repository's own internal source for regional distribution, `a5_dist`, **resolves
-  perfectly by DOI and does not support the numbers attributed to it**: it is a 1988 study using
-  a single generic cDNA probe for "the α subunit", reporting total α-subunit mRNA by region
-  (medulla ≪ hippocampus/cortex). That is a claim about regional *level*; `REGIONS` encodes
-  regional *composition* (rows sum to 1 by construction). The source is not merely coarse — it
-  concerns a different quantity.
-* Kasugai et al. (2010) **is** the better source for the α5 extrasynaptic fraction, and is cited
-  here at its correct coordinates (*Eur. J. Neurosci.* 32:1868–1888; the previous draft gave
-  *J. Neurosci.* 30:14024–14035). It quantitatively establishes that α5 is predominantly
-  extrasynaptic in hippocampus, supporting `f_extra,α5 = 0.80` as a direction. Pirker et al.
-  (2000) maps distribution qualitatively, showing high medullary α1 and low medullary α5.
+  *J. Appl. Physiol.* — whose metadata is verified by DOI but whose **full text is inaccessible
+  (HTTP 403)**, so its claim support is formally **UNASSESSED**. It covers α1, α2 and α3 only,
+  not α5, δ, α4 or ε, to which `REGIONS["prebotc"]` also assigns values; and it is a
+  *developmental* study.
+* Pirker et al. (2000) maps distribution qualitatively and is cited only for the qualitative
+  ordering (high medullary α1, low medullary α5), not for any number in this table.
 
-Two consequences follow, both weaker than the previous draft's:
+#### What follows, and what does not
 
-1. **Mechanistic basis of respiratory sparing.** Low α5 representation in the preBötC provides
-   a mechanistic basis for reduced *direct* α5-mediated inhibition of the core rhythm generator.
-   Whole-animal respiratory preservation cannot be inferred from preBötC receptor abundance
-   alone, since ventilatory stability also depends on chemoreflex integration and upper-airway
-   motor tone — the very mechanisms `gaba_sens` lumps (§3.2).
-2. **Forebrain tonic potentiation.** In hippocampus and cortex, α5 expression is substantial
-   (≈ 30%) and predominantly extrasynaptic (> 80%), so an α5 PAM acts directly on the
-   high-headroom pool.
+1. **Mechanistic basis of respiratory sparing — conditional on an unsourced number.** Low α5
+   representation in the preBötC *would* provide a mechanistic basis for reduced direct
+   α5-mediated inhibition of the core rhythm generator. Since `f_α5,preBötC` is unsourced, this
+   is a conditional statement about the model, not evidence about biology. Whole-animal
+   respiratory preservation could not be inferred from preBötC receptor abundance even if the
+   number were measured, because ventilatory stability also depends on chemoreflex integration
+   and upper-airway motor tone — the mechanisms `gaba_sens` lumps (Supplementary Note §S2).
+2. **Forebrain tonic potentiation — conditional on a second unsourced number.** If α5
+   expression in hippocampus and cortex is substantial (≈ 30%, FROM_QUALITATIVE) and
+   predominantly extrasynaptic (0.80, UNSOURCED), an α5 PAM acts chiefly on the high-headroom
+   pool. Both legs of that inference are assumptions.
 
-Consequently, while a 184.6× receptor dynamic range does not produce 184.6× respiratory
-depression, it does alter expected forebrain behaviour: dose escalation of a high-efficacy α5
-PAM can drive substantial tonic shunting conductances, with cognitive blunting, memory
-disruption and sedation as the expected costs.
+So the model's behaviour is clear and its anatomical grounding is not. Within the model, a
+184.6× receptor dynamic range does not produce 184.6× respiratory depression, and dose
+escalation of a high-efficacy α5 PAM drives substantial tonic shunting in forebrain circuits
+with cognitive blunting and sedation as the expected costs. **Whether that corresponds to
+anything in tissue depends on two numbers that no source in this repository supports.**
+Replacing them with sourced ranges and re-running the robustness analysis is the highest-value
+outstanding work, and §5.3 says so.
 
 ### 4.3. Dependence on the maximum operational potency shift
 
@@ -607,8 +619,7 @@ Tonic Gain(occupancy) = 1 + occupancy · (Gain_max(s_max) − 1)
   L-838,417 at `ceiling` = 2.20 reaches **5.87×**. The model therefore predicts substantially
   greater tonic headroom once s_max exceeds ≈ 1.3–1.5; that range should be **experimentally
   evaluated as a candidate operational boundary, not treated as an established safety
-  threshold**. (The previous draft assigned L-838,417 s_max = 1.50 in its Table 2 where the
-  code says 2.20, moving this compound out of the low-shift group entirely.)
+  threshold**.
 * **High-efficacy scenarios.** For alogabat, recombinant electrophysiology shows selective
   potentiation of EC₂₀ GABA currents (+167% rat, +72% human α5β3γ2; Cecere et al., 2025).
   Rather than asserting a universal measured EC₅₀ fold shift, s_max = 2.50 (c = 2.9321,
@@ -627,9 +638,9 @@ Tonic Gain(occupancy) = 1 + occupancy · (Gain_max(s_max) − 1)
 
 > **Scope.** This section is **algebraic, not multiscale.** `scripts/ranking_robustness.py`
 > imports `circuitpharm.subtypes` and nothing else — no neuron, no circuit, no simulation. R is
-> a ratio of weighted subunit sums. The previous draft titled this section "Multiscale Circuit
-> Selectivity Pipeline", which overstates it by a whole layer of the model. Circuit-simulation
-> results appear separately, in §4.6.
+> a ratio of weighted subunit sums. Describing it as a multiscale or circuit pipeline would
+> overstate it by a whole layer of the model. Circuit-simulation results appear separately, in
+> §4.6.
 
 #### 4.4.1. Pipeline and reproducibility specification
 
@@ -662,9 +673,9 @@ contributions to the discriminative stimulus effects of ethanol in squirrel monk
 PMID 15650112) reports that α5 agonists mimic ethanol's discriminative stimulus and the α5
 inverse agonist L-655,708 blocks it. That supports the **direction**; the weight 1.0 is ours.
 The α2/3, α1, δ and ε weights are all **UNSOURCED** — and `w_subj,α1 = 0.0` is **actively
-questionable**, since the one source bearing on it is titled for an α1 contribution. The
-previous draft attributed these weights to "Saba et al. (2017), *Alcohol. Clin. Exp. Res.*
-41:748–758", which does not resolve; that attribution is withdrawn rather than replaced.
+questionable**, since the one source bearing on it is titled for an α1 contribution. An
+attribution of these weights to "Saba et al. (2017), *Alcohol. Clin. Exp. Res.* 41:748–758" does
+not resolve against Crossref and is withdrawn rather than replaced (§7).
 
 The computation proceeds in five deterministic steps, with
 w(s) = ρ·f_extra,s + (1 − f_extra,s):
@@ -674,46 +685,50 @@ w(s) = ρ·f_extra,s + (1 − f_extra,s):
    synaptic (phasic) modulation. For s_max = 2.50 the tonic gain is 7.876×, so
    ρ_peak = 7.876 / 1.319 = **5.97** and ρ_charge = 7.876 / 2.419 = **3.26**. The nominal
    **ρ = 6.00** therefore now sits essentially *at* the peak-based ratio rather than between the
-   two; under the previous draft's parameterisation it lay between 6.79 and 4.36. Monte Carlo
-   sweeps sample ρ ~ U[3.0, 7.5], which still spans both endpoints.
+   two, so the nominal value effectively weights the peak-based reading. Monte Carlo sweeps
+   sample ρ ~ U[3.0, 7.5], which spans both endpoints.
 3. **Forebrain subjective drive.** Drive_subj = Σ_s f_forebrain,s · e_s · w_subj,s · w(s)
 4. **PreBötC respiratory burden.** Burden_resp = Σ_s f_prebotc,s · e_s · w(s)
 5. **Selectivity ratio R**, normalised to diazepam (§3.3).
 
-**Table 6. Selectivity ranking.** Nominal R, and the 5th-percentile R over 20,000 Monte Carlo
-draws. *The Monte Carlo median and 95th percentile are deliberately omitted: the model marks
-them NOT QUOTABLE (§4.4.3), and they are reported there as a prior-sensitivity diagnostic
+**Table 6. Selectivity ranking — a model-internal index, not a measured property.** Values are
+rounded to two significant figures deliberately: the underlying arithmetic is exact, but the
+index is computed from efficacy vectors that are stylised modelling assumptions, nine subunit
+fractions with no source (§4.2), four subjective-drive weights with no source (§4.4.1), and one
+fitted weighting parameter (ρ). Reporting R = 8.6442 would imply a precision the inputs cannot
+carry. Exact values are available from `scripts/paper_numbers.py --section selectivity`.
+
+*The Monte Carlo median and 95th percentile are deliberately omitted from this table: the model
+marks them **NOT QUOTABLE** (§4.4.3), and they appear there as a prior-sensitivity diagnostic
 rather than as results.*
 
 | Compound | Profile | `ceiling` | Nominal R | 5th-pct R | P(R > 1) |
 |---|---|---|---|---|---|
-| Ideal α5 PAM | α5-exclusive | 2.50 | **10.8750×** | 2.57× | 99.9% |
-| Alogabat (RG7816) | α5-selective (Phase II) | 2.50 | **8.6442×** | 2.51× | 99.9% |
-| SH-053-2′F-R-CH₃ | α5-selective enantiomer | 2.50 | **9.3487×** | — | — |
-| MP-III-022 | α5-selective | 2.50 | **7.8750×** | 2.49× | 99.9% |
-| SH-053-2′F-S-CH₃ | α2/α3/α5 enantiomer | 2.50 | **3.6250×** | — | — |
-| HZ-166 / KRM-II-81 | α2/α3-preferring | 2.50 | **1.2083×** | 0.34× | **63.8%** |
-| Non-selective BZ | α1/2/3/5 (diazepam) | 2.50 | **1.0000×** (ref) | — | — |
-| Neurosteroid | non-selective, gating PAM | 6.00 | **0.5633×** | 0.33× | **0.0%** |
-| Gaboxadol | δ orthosteric agonist | 1 × 10⁹ | **0.0000×** | 0.00× | 0.0% |
+| Ideal α5 PAM | α5-exclusive | 2.50 | **11** | 2.6× | 99.9% |
+| SH-053-2′F-R-CH₃ | α5-selective enantiomer | 2.50 | **9.3** | — | — |
+| Alogabat (RG7816) | α5-selective (Phase II) | 2.50 | **8.6** | 2.5× | 99.9% |
+| MP-III-022 | α5-selective | 2.50 | **7.9** | 2.5× | 99.9% |
+| SH-053-2′F-S-CH₃ | α2/α3/α5 enantiomer | 2.50 | **3.6** | — | — |
+| HZ-166 / KRM-II-81 | α2/α3-preferring | 2.50 | **1.2** | 0.34× | **63.8%** |
+| Non-selective BZ | α1/2/3/5 (diazepam) | 2.50 | **1.0** (ref) | — | — |
+| Neurosteroid | non-selective, gating PAM | 6.00 | **0.56** | 0.33× | **0.0%** |
+| Gaboxadol | δ orthosteric agonist | 1 × 10⁹ | **0.00** | 0.00× | 0.0% |
 
 **Notes.**
 1. **R is model-conditional.** It measures the ratio of forebrain subjective drive to preBötC
-   pacemaker burden, relative to diazepam. The ranking is conditional on the stated parameters:
-   ρ = 6.00 is a fitted weighting; `w_subj` assigns zero contribution to α1, δ and ε *by
-   design*, and eight of the fifteen Table 5 cells carry no source at all. **R does not compute clinical
-   safety, human respiratory depression, or an overdose margin.**
-2. **s_max does not enter R.** The `ceiling` column is each compound's maximum operational
-   potency shift, used in dose escalation and gating bounds. R evaluates non-saturating
-   proportional scaling governed by **e** and ρ alone. The previous draft's note said the same
-   while its Table 6A listed s_max values inconsistent with the code.
-3. **Gaboxadol's zero is a scope artefact, not a pharmacological verdict.** Gaboxadol is a δ
-   orthosteric agonist. Because `w_subj` is parameterised for ethanol-like discriminative
-   stimulus salience mediated by α2/3 and α5, `w_subj,δ = 0.0` forces Drive_subj = 0 and hence
-   R = 0. This reflects the domain-specific design of the drive metric and implies **nothing**
-   about gaboxadol's hypnotic, sedative or thalamocortical efficacy.
-4. **HZ-166 is the arm that does not clearly separate**, at 63.8% of draws above the diazepam
-   reference and a 5th percentile of 0.34×.
+   pacemaker burden, relative to diazepam, and the ranking is conditional on every input in
+   Table 6A. **R does not compute clinical safety, human respiratory depression, or an overdose
+   margin**, and `Tier.VOID` blocks absolute margins programmatically.
+2. **s_max does not enter R.** The `ceiling` column is used in dose escalation and gating
+   bounds. R evaluates non-saturating proportional scaling governed by **e** and ρ alone.
+3. **Gaboxadol's zero is a scope artefact, not a pharmacological verdict.** Because `w_subj` is
+   parameterised for ethanol-like discriminative stimulus salience mediated by α2/3 and α5,
+   `w_subj,δ = 0.0` forces Drive_subj = 0 and hence R = 0. This implies **nothing** about
+   gaboxadol's hypnotic, sedative or thalamocortical efficacy.
+4. **HZ-166 does not clearly separate**, at 63.8% of draws above the diazepam reference and a
+   5th percentile of 0.34×.
+5. **The reference arm is unstable across neuron models** (§4.6), so every value in the
+   "Nominal R" column inherits that instability even though the *ordering* does not.
 
 #### 4.4.2. Uncertainty model: exact Dirichlet dispersion
 
@@ -754,8 +769,7 @@ NumPy PCG64 seeded `np.random.default_rng(20261007)`.
    while ε's *regional abundance* remains governed by the Dirichlet simplex. ρ ~ U[3.0, 7.5].
 4. **Non-finite draws.** 10 of 20,000 draws are discarded for the ideal α5 arm because its
    burden underflows to zero. These are the draws **most favourable** to that arm, so discarding
-   them makes the reported figures conservative. The previous draft reported "20,000 draws"
-   without this disclosure.
+   them makes the reported figures conservative, and the draw count is stated gross.
 
 #### 4.4.3. Prior sensitivity and tail separation
 
@@ -801,12 +815,42 @@ them.
 90% CI **[−0.09, +81.19]**, and α5 better in **94.8%** of draws. The confidence interval
 touching zero is the honest summary of how close the α2/3 class can come.
 
+#### 4.4.4. Two claims that must not be conflated
+
+The results in §4.4.3 and §4.6 establish one thing and not another, and the distinction is the
+single most important caveat in this manuscript.
+
+**Claim A — robust within the specified model.** The ordering of subtype-selective arms persists
+across 20,000 adverse parameter draws (§4.4.3) and across a complete replacement of the neuron
+model (§4.6, Spearman ρ = +1.0000). This is a real and non-trivial property: it means the
+ranking is not an artefact of any single invented number, nor of the integrate-and-fire
+abstraction. It is a statement about the model's internal stability.
+
+**Claim B — biologically validated.** That the ordering reflects actual compound effects in
+tissue or in vivo. **This manuscript provides no evidence for Claim B, and Claim A does not
+support it.** A model can be perfectly stable around the wrong inputs; stability measures
+insensitivity, not correctness. Concretely, every draw in §4.4.3 samples *around* `f_α5,preBötC =
+0.02` and `f_extra,α5 = 0.80`, both unsourced (§4.2) — so the Dirichlet sweep demonstrates
+insensitivity to *dispersion* about those values while remaining fully dependent on their
+*central* values being roughly right. Flooring preBötC α5 at nominal moves alogabat's upper tail
+by a factor of 5.9 (§4.4.3), which is what that dependence looks like when made visible.
+
+The reference-arm sign reversal (§4.6) makes the distinction concrete rather than theoretical.
+Diazepam is the denominator of every R here. On the more biophysically detailed of our two
+substrates its effect on respiratory output reverses sign. A quantity whose denominator behaves
+that way across two plausible implementations of the same biology is not a measurement of
+anything, however stable its ordering.
+
+**What would move a result from A to B:** the patch-clamp protocol in §5.2 for the receptor
+layer, and quantitative preBötC subunit proteomics plus per-molecule intrinsic-efficacy
+measurement for the circuit layer. Neither exists here.
+
 ### 4.5. Why systems models require empirical efficacy: stereochemical invariance
 
 Two-dimensional graph representations and topological fingerprints are widely used to predict
 candidate properties. We tested whether they can distinguish stereoisomers with divergent
-subtype selectivities, using SH-053-2′F-R-CH₃ (α5-selective, nominal R = **9.3487×**) and
-SH-053-2′F-S-CH₃ (α2/α3/α5, nominal R = **3.6250×**).
+subtype selectivities, using SH-053-2′F-R-CH₃ (α5-selective, nominal R = **9.3**) and
+SH-053-2′F-S-CH₃ (α2/α3/α5, nominal R = **3.6**).
 
 **Table 7. Stereochemical invariance across enantiomers.**
 
@@ -818,16 +862,20 @@ SH-053-2′F-S-CH₃ (α2/α3/α5, nominal R = **3.6250×**).
 | Morgan fingerprint (2048 bit) | bit-identical | bit-identical | 0 bits |
 | Internal distance matrix | exact invariant | exact invariant | < 1e-9 Å |
 | Vacuum MMFF energy | 42.184 kcal/mol | 42.184 kcal/mol | < 1e-6 kcal/mol |
-| **Selectivity index R** | **9.3487×** | **3.6250×** | **+5.7237×** |
+| **Selectivity index R** (model-internal) | **9.3** | **3.6** | **+5.7** |
 
 Enantiomers are related by an improper rotation, so all internal pairwise atomic distances and
 2D graph invariants are mathematically identical. Three-dimensional representations capture
 geometry, but **these 2D descriptors cannot by themselves encode the stereochemical information
 responsible for the pharmacological difference without explicitly modelling the chiral binding
 pocket.** Multiscale systems pharmacology must therefore ingest empirical, subtype-specific
-efficacy measurements rather than infer them from 2D structural proxies. Note that the R values
-on the right-hand column are *consequences* of the measured efficacy vectors, not predictions
-from structure — which is precisely the point.
+efficacy measurements rather than infer them from 2D structural proxies.
+
+Two things this result is not. The R values in the last row are **consequences** of the assigned
+efficacy vectors, not predictions from structure — the model was told the two enantiomers differ
+and reported the arithmetic. The argument is therefore about what 2D descriptors *cannot* do, and
+it is a mathematical argument about improper rotations, not an empirical finding about these two
+compounds. It stands independently of whether the assigned efficacy vectors are right.
 
 ### 4.6. Substrate independence: the ordering survives changing the neuron model
 
@@ -912,24 +960,42 @@ read accordingly.
 ### 5.1. Evaluating the fixed scalar cap
 
 The central conclusion is that **allosteric potentiation is state- and compartment-dependent.**
-Representing PAM action as a fixed ≈ 2.5× scalar cap conflates synaptic receptor saturation
-with extrasynaptic headroom. In synapses, agonist exposure restricts potentiation (**1.32×**
-peak gain, **1.67×** asymptotic ceiling); in extrasynaptic compartments, submicromolar ambient
-GABA leaves a broad range (**> 48×** across 0.2–0.8 µM, **184.6×** at 0.40 µM). A 2.5× cap
-binds only above ≈ **5 µM** ambient GABA (§2.5), an order of magnitude above the extrasynaptic
-regime — so in that regime the cap is a truncation, not a saturation boundary.
+Representing PAM action as a fixed ≈ 2.5× scalar cap conflates synaptic receptor saturation with
+extrasynaptic headroom. In synapses, agonist exposure restricts potentiation (**1.32×** peak
+gain, **1.67×** asymptotic ceiling); in extrasynaptic compartments, submicromolar ambient GABA
+leaves a wide **asymptotic receptor open-probability dynamic range** (**> 48×** across
+0.2–0.8 µM, **184.6×** at 0.40 µM). A 2.5× cap binds only above ≈ **5 µM** ambient GABA, an
+order of magnitude above the extrasynaptic regime — so there the cap truncates rather than
+saturates.
 
-Two implications for α5-targeted development:
+**The unit of all of these numbers is open probability.** The 184.6× figure is the ratio of a
+model-specific limiting open probability to the baseline open probability at a stated ambient
+concentration. Converting it into a statement about current requires receptor density, single-
+channel conductance and driving force; into a statement about inhibition, chloride homeostasis;
+into a statement about circuit output, input resistance and network context (§2.3). **No step of
+that chain is measured here, and the asymptote is in any case unreachable: the realised gain at
+the modelled benchmark potency is 7.88×.** What the analysis establishes is that the *available*
+headroom in the extrasynaptic pool is two orders of magnitude larger than in the synaptic one,
+and therefore that one multiplier cannot describe both — not that any compound realises it.
+
+Two implications for α5-targeted development, both conditional on the receptor layer alone and
+so resting on the manuscript's firmest results:
 
 1. **Screen for bounded s_max.** Overdose safety cannot be assumed from the "PAM mechanism"
-   alone. For predominantly extrasynaptic targets the model predicts substantially greater
-   tonic headroom above s_max ≈ 1.3–1.5; this warrants **experimental evaluation as a candidate
+   alone. For predominantly extrasynaptic targets the model predicts substantially greater tonic
+   headroom above s_max ≈ 1.3–1.5; this warrants **experimental evaluation as a candidate
    efficacy boundary, not interpretation as an established safety threshold.** The supralinearity
-   matters here: s_max 2.50 → 7.88× tonic gain, but s_max 3.71 → 20.25× and s_max 5.73 → 56.46×.
+   is the reason it matters: s_max 2.50 → 7.88× tonic gain, s_max 3.71 → 20.25×,
+   s_max 5.73 → 56.46×.
 2. **Separate synaptic and tonic conductances.** Computational neural models must decouple
    synaptic deactivation (τ_IPSC, **1.90×** here) from standing extrasynaptic conductance
-   (**7.88×** here) rather than applying one lumped multiplier to all inhibitory inputs. Doing
-   otherwise is error E12 (§3.2), which has now recurred three times in this project.
+   (**7.88×** here) rather than applying one lumped multiplier to all inhibitory inputs. The
+   failure mode that follows from not doing so is documented in Supplementary Note §S2.2, where
+   it produced an apparently reassuring result — universal survival at every dose — rather than
+   an error.
+
+What this section does **not** support is any claim about α5-selective compounds and respiration.
+That argument runs through §4.2, whose two load-bearing anatomical numbers have no source (§7).
 
 ### 5.2. Proposed in vitro electrophysiological validation
 
@@ -953,7 +1019,7 @@ Primary endpoint    The steady-state potentiation ratio surface
 * **Model A (fixed scalar cap)** — a deliberately simple comparator:
   R_PAM ≤ 2.5 at every [GABA]_bath.
 * **Model B (Markov kinetic model)** — under the nominal parameterisation at
-  tag `manuscript-v2`, for a high-efficacy affinity PAM (s_max 2.40–2.50):
+  the cited tag, for a high-efficacy affinity PAM (s_max 2.40–2.50):
 
   | [GABA]_bath | R_PAM predicted (s_max 2.40 – 2.50) | asymptotic ceiling (k_off → 0⁺) |
   |---|---|---|
@@ -966,11 +1032,12 @@ Primary endpoint    The steady-state potentiation ratio surface
   *(c_affinity = 2.7882 and 2.9321 respectively.)*
 
 **The asymptote column is unreachable by any finite modulator and must not be used to set
-criteria.** The previous draft pre-registered "R_max > 15× at 0.1 µM", which is an asymptote
-reading; the realisable prediction there is ≈ 8×. A laboratory measuring 8× would have reported
-the model falsified when the model in fact predicts 8×. Two of that draft's four intervals were
-violated by the model they claimed to describe. The structural reason is in §4.1: as ambient
-GABA falls, asymptotic headroom grows without limit while reachable gain barely moves. Both
+criteria.** A criterion such as "R_max > 15× at 0.1 µM" is an asymptote reading: the realisable
+prediction there is ≈ 8×, so a laboratory measuring 8× would report the model falsified when the
+model in fact predicts 8×. This is not a hypothetical — an earlier version of this protocol
+carried exactly that criterion, and two of its four intervals were violated by the model they
+described (Supplementary Note §S3). The structural reason is in §4.1: as ambient GABA falls,
+asymptotic headroom grows without limit while reachable gain barely moves. Both
 columns are printed side by side by `scripts/paper_numbers.py --section falsification`, and a
 regression test now asserts the divergence so that any future criterion written against the
 wrong column fails loudly.
@@ -993,85 +1060,296 @@ it cannot be rescued by re-fitting.
 
 ### 5.3. Limitations and modelling assumptions
 
-**Receptor layer**
+Ordered by how much they constrain the conclusions, worst first.
 
-* **Kinetic topology.** Five states, with affinity modulation acting through k_off. Ligands
-  altering gating or desensitisation kinetics will show different quantitative profiles (§2.6).
-* **Desensitisation is unconstrained by the anchors.** d/r = 25.0 is provisional, and it sets
-  the asymptote directly: ±2-fold moves the dynamic range over 102.4–309.9× (§2.5). Every
-  asymptotic figure in this manuscript is conditional on it.
-* **Three anchors do not identify six rates.** This is one admissible parameterisation.
-* **Ambient GABA.** Evaluated at a representative 0.40 µM. In vivo, GAT-1/GAT-3 transport and
-  synaptic spillover create dynamic microdomains of varying concentration.
+**The two numbers that carry the circuit argument have no source.**
 
-**Distribution layer**
+* **`f_α5,preBötC` = 0.02 is UNSOURCED** — the respiratory-sparing argument rests on it entirely.
+* **`f_extra,α5` = 0.80 is UNSOURCED** — the extrasynaptic-headroom argument rests on it
+  entirely. It was downgraded from FROM_QUALITATIVE while preparing this version, after the
+  candidate source was read and found to have measured α1, α2 and β3 rather than α5 (§4.2, §7).
+* Eight of fifteen Table 5 cells are UNSOURCED, a ninth is an explicit GUESS, and **none is
+  QUANTITATIVE**. `KAPPA = 15.0`, which governs the entire uncertainty model, is UNSOURCED.
+* **Six load-bearing citations do not support the specific numbers attached to them** (§7),
+  including the diazepam benchmark that is the denominator of every selectivity ratio and the
+  τ_IPSC anchor of the kinetic fit.
+* Replacing these point values with sourced *ranges* and re-running the robustness analysis is
+  the highest-value outstanding work in the project. Until then the §4.2–§4.4 results are
+  conditional statements about a model.
 
-* **Seven of fifteen Table 5 cells are UNSOURCED, an eighth is a GUESS, the other seven are
-  FROM_QUALITATIVE, and preBötC α5 — the single most consequential value — has no source**
-  (§4.2). None is QUANTITATIVE. Replacing these point values with sourced
-  *ranges* and re-running the robustness analysis is the highest-value outstanding work.
-* `KAPPA = 15.0`, the Dirichlet concentration governing the entire uncertainty model, is
-  **UNSOURCED**.
-* The repository's internal regional-distribution source does not support the quantity it is
-  attributed to (§4.2), and `pbc_alpha`'s claim support is formally UNASSESSED (full text 403).
+**The reference arm is unstable across implementations.**
 
-**Circuit layer**
+* The non-selective benzodiazepine **reverses sign** on respiratory output between the LIF and
+  conductance substrates (§4.6), and it is the denominator of every R in Table 6. The
+  subtype-selective *ordering* is unaffected; the magnitudes inherit the instability.
+* Whether the sign flip reflects more bursts or longer bursts is **not established**: the burst
+  detector reported 5.63 Hz against the FFT's 0.302 Hz, a 19-fold discrepancy traceable to a
+  0.35 × max threshold firing repeatedly within a single burst. A substrate-matched burst
+  detector is outstanding.
+* A mechanism we initially proposed for the flip was **retracted on resolution grounds**: the
+  supporting frequency differences were 1.02 FFT bins (conductance) and below one bin (LIF). The
+  mean, duty-cycle and peak results survive; the mechanistic account does not.
 
-* **The A4 riluzole dissociation is NOT reproduced** (0 of 3 seeds). This is an *inherited*
-  limitation rather than a tuning failure: Butera–Rinzel–Smith model 1 **is** the pacemaker
-  hypothesis, and riluzole is the principal published argument against it. It is declared, not
-  retuned.
-* **The coupling weights are ours, not published.** Butera, Rinzel & Smith (1999b) — the
-  population paper — was unreachable (journal HTTP 403; every available machine-readable
-  encoding is single-cell), so the network weights were anchored by us.
+**Receptor-layer assumptions.**
+
+* **Three anchors do not identify six microscopic rates.** This is one admissible
+  parameterisation consistent with the stated constraints, not an identified rate set.
+* **Desensitisation is unconstrained by the anchors.** d/r = 25.0 is provisional and sets the
+  asymptote directly: ±2-fold moves the dynamic range over 102.4–309.9× (§2.5). Every asymptotic
+  figure here is conditional on it. This is the largest single source of uncertainty in the
+  manuscript's firmest result.
+* **τ_IPSC = 15.0 ms is a conventional neuronal IPSC value and is not supported by the kinetic
+  source cited beside it** — Haas & Macdonald (1999) measured 76.1 ms deactivation for
+  recombinant α1β3γ2L, about 5× slower (§7).
+* **Affinity modulation acts through k_off only.** Ligands altering gating or desensitisation
+  show different quantitative profiles (§2.6) — and Walters et al. (2000) indicates that
+  diazepam itself has two separable components, so a single affinity parameter is an
+  oversimplification for the reference compound (Table 2 note iii).
+* **Ambient GABA** is evaluated at a representative 0.40 µM; in vivo, GAT-1/GAT-3 transport and
+  spillover create dynamic microdomains. The 0.2–0.8 µM span was not verified against its
+  source's full text (§7).
+
+**Circuit-layer assumptions.**
+
+* **The A4 riluzole dissociation is NOT reproduced** (0 of 3 seeds). This is *inherited* rather
+  than a tuning failure: Butera–Rinzel–Smith model 1 **is** the pacemaker hypothesis, and
+  riluzole is the principal published argument against it. Declared, not retuned.
+* **The coupling weights are ours, not published.** Butera et al. (1999b), the population paper,
+  was unreachable (journal HTTP 403; every available machine-readable encoding is single-cell).
 * **Respiratory calibration remains wet-lab blocked**, and the conductance migration moved the
   > P12 muscimol anchor *further* away by importing neonatal parameters.
-* **The conductance substrate is anchored to an in vitro band** (0.05–1.00 Hz neonatal slice),
-  so its respiratory outputs are slice claims, not ventilatory ones.
-* **The non-selective benzodiazepine reference arm changes sign between substrates** (§4.6), and
-  it is the denominator of every R in Table 6.
-* Four measurement protocols inherited from the LIF substrate had to be re-derived for the
-  conductance cell (warm-up against τ_h = 10 s, validity band, FFT resolution, burst detection
-  threshold). **None failed loudly.** The working rule adopted: on a new substrate, assume every
-  inherited protocol is wrong until re-derived.
+* **The conductance substrate is anchored to an in vitro band** (0.05–1.00 Hz, neonatal slice),
+  so its respiratory outputs are slice claims rather than ventilatory ones; the frequency range
+  was not verified against its source's abstract (§7).
+* Four measurement protocols inherited from the LIF substrate required re-derivation for the
+  conductance cell — warm-up against τ_h = 10 s, validity band, FFT resolution, burst-detection
+  threshold. **None failed loudly.** Working rule: on a new substrate, assume every inherited
+  protocol is wrong until re-derived.
 
-**Scope**
+**Scope.**
 
-* **Pharmacokinetics are absent.** The model evaluates receptor occupancy and network dynamics,
-  not absorption, blood-brain barrier penetration or clearance, which determine clinical
-  dose-occupancy relationships.
-* **No absolute margin is computed.** `Tier.VOID` blocks lethal-dose margins programmatically.
-  R orders candidates; it cannot bound risk. Bounding risk needs the in vitro anchor and
-  per-molecule measurement of intrinsic allosteric efficacy.
-* **The work stays at mechanism and compound-class level**, and reports no formulation or dosing.
-
----
+* **Pharmacokinetics are absent.** Receptor occupancy and network dynamics only; no absorption,
+  blood-brain barrier penetration or clearance, which determine clinical dose-occupancy
+  relationships.
+* **No absolute margin is computed**, and `Tier.VOID` blocks lethal-dose margins
+  programmatically. R orders candidates; it cannot bound risk.
+* **Robustness within the model is not biological validation** (§4.4.4). Every robustness result
+  here is of the first kind.
+* The work stays at mechanism and compound-class level and reports no formulation or dosing.
 
 ## 6. Conclusions
 
-A five-state continuous-time Markov gating scheme shows that allosteric potentiation headroom is
-state- and compartment-dependent. The classical ceiling binds tightly in the synapse
-(**1.32×** peak gain, **1.67×** asymptotic ceiling, with the drug's action redirected into the
-deactivation tail at **1.90×** τ and **2.42×** charge), but expands to a **184.6-fold**
-asymptotic open-probability dynamic range in extrasynaptic microenvironments at submicromolar
-ambient GABA — an **111-fold** contrast between the two compartments' ceilings. A fixed 2.5×
-scalar cap binds only above ≈ 5 µM ambient GABA, so in the extrasynaptic regime it truncates
-rather than saturates.
+**The receptor-kinetic result.** A five-state continuous-time Markov gating scheme shows that
+allosteric potentiation headroom is state- and compartment-dependent. The classical ceiling binds
+tightly in the synapse — **1.32×** peak gain, **1.67×** asymptotic ceiling, with the drug's action
+redirected into the deactivation tail at **1.90×** τ and **2.42×** integrated open probability —
+but expands to an **asymptotic receptor open-probability dynamic range of 184.6×** in
+extrasynaptic microenvironments at submicromolar ambient GABA, an **111-fold** contrast between
+the two compartments' ceilings. A fixed 2.5× scalar cap binds only above ≈ 5 µM ambient GABA, so
+in the extrasynaptic regime it truncates rather than saturates. These are statements about open
+probability within a stated topology and parameterisation; they are reproducible from the cited
+tag, and they are the manuscript's defensible core.
 
-Under the model's assumption of low α5 representation in the preBötzinger complex — a value with
-no source — α5-selective PAMs reduce direct inhibition of the modelled core rhythm generator,
-while their high extrasynaptic localisation exposes forebrain circuits to substantial tonic
-conductance increases during dose escalation. The resulting compound ordering is robust in two
-independent senses: it survives adverse draws of every invented parameter simultaneously
-(5th-percentile R ≥ 2.48× for all three α5-selective arms, in every prior-floor scenario), and
-it survives replacing the neuron model entirely (Spearman ρ = +1.0000 across an
-integrate-and-fire and a conductance-based substrate). The non-selective benzodiazepine
-reference arm does **not** survive the latter test — its sign on respiratory output reverses —
-and that arm is the denominator of every ratio reported here.
+**The 184.6× figure is not a drug effect.** It is the ratio of a limiting open probability to a
+baseline open probability, both internal to this scheme. It is not a predicted fold change in
+whole-cell current, in tonic inhibition, in circuit output, or in any clinical endpoint, and no
+finite modulator approaches it — at the modelled benchmark potency the realised tonic gain is
+**7.88×**, and asymptote and realised gain diverge further as ambient GABA falls.
 
-Overdose-relevant conductance headroom therefore depends jointly on ligand efficacy, receptor
-mechanism, ambient agonist concentration, compartmentalisation and network context. The
-quantity that a fixed scalar cap was standing in for is not a constant, and it is not small.
+**The circuit-level implications are conditional, and two of their load-bearing inputs are
+unsourced.** Under the model's assumptions, low α5 representation in the preBötzinger complex
+reduces direct inhibition of the modelled rhythm generator while high extrasynaptic localisation
+exposes forebrain circuits to large tonic conductance increases during dose escalation. Both the
+preBötC α5 fraction and the α5 extrasynaptic fraction are **UNSOURCED** (§4.2, §7) — the second
+downgraded in preparing this version, after the source that had been carrying it was read and
+found to have measured neighbouring subunits. **This manuscript therefore provides no evidence
+that α5-selective compounds preserve respiration or carry a safety advantage**, and the ordering
+in Table 6 should be read as a model-internal index rather than a property of these molecules.
+
+**Robustness within a model is not validation.** The compound ordering survives 20,000 adverse
+parameter draws and survives replacing the neuron model entirely (Spearman ρ = +1.0000 across an
+integrate-and-fire and a conductance-based substrate). That is a real property of the model and a
+non-trivial one — the ranking is not an artefact of any single invented number nor of the
+integrate-and-fire abstraction. It is not evidence about tissue (§4.4.4). The sweep samples
+*around* two unsourced central values, and the non-selective benzodiazepine reference arm — the
+denominator of every reported ratio — **reverses sign** on respiratory output between the two
+substrates.
+
+**What would settle it.** The patch-clamp protocol of §5.2 tests the compartment asymmetry
+directly, in recombinant receptors, without whole-animal integration; its pre-registered
+intervals are stated against the realisable gain rather than the asymptote, and one of its three
+rules tests the mechanism rather than the parameterisation and so cannot be rescued by refitting.
+For the circuit layer, quantitative preBötC subunit measurement and per-molecule intrinsic
+efficacy are what the unsourced numbers need. Overdose-relevant conductance headroom depends
+jointly on ligand efficacy, receptor mechanism, ambient agonist concentration,
+compartmentalisation and network context — the quantity a fixed scalar cap stood in for is
+neither a constant nor small. Establishing what it is in tissue is an experiment, not a
+simulation.
+
+---
+
+## 7. Citation claim-support audit
+
+Metadata verification and claim support are different checks, and this project has now been
+caught twice by the gap between them (§4.2). A source can resolve perfectly by DOI, sit in the
+right journal, carry a title that matches the claim, and measure a neighbouring quantity.
+
+Every reference was resolved against Crossref by title and by journal/volume/page. For the
+load-bearing ones, abstracts were then retrieved from Europe PMC and read against the specific
+statement each is attached to. **Six load-bearing citations do not support the specific number
+attached to them**, and the corresponding parameters are relabelled UNSOURCED in the text. They
+fail in three distinguishable ways: three measure a *different quantity* than the claim requires
+(Kasugai, Walters, `a5_dist`), two report *no fold shift at all* of the kind the mapping needs
+(Stamenić, Cecere), and one measures the right quantity at a value ~5× from the anchor beside it
+(Haas & Macdonald).
+
+| Citation | Statement attached to it | Metadata | Claim support |
+|---|---|---|---|
+| Kasugai et al. 2010 | `f_extra,α5 = 0.80` (α5 > 80% extrasynaptic) | resolved | **DOES NOT SUPPORT** — measured α1/α2/β3, not α5; found synaptic density 78–132× extrasynaptic. Parameter → UNSOURCED (§4.2) |
+| Walters et al. 2000 | diazepam `ceiling = 2.50` | resolved | **DOES NOT SUPPORT** — reports biphasic nanomolar/micromolar potentiation, no EC₅₀ shift. Parameter → UNSOURCED; and the finding argues *against* a single affinity parameter (Table 2 note iii) |
+| Stamenić et al. 2016 | MP-III-022 `ceiling = 2.50` | resolved | **DIRECTION ONLY** — confirms binding- and efficacy-selective α5 PAM, non-α5 engaged only at top dose; no EC₅₀ shift reported |
+| Cecere et al. 2025 | alogabat `ceiling = 2.50`; "+167% rat / +72% human EC₂₀" | resolved | **PARTIAL** — abstract confirms a potent α5β3γ2 PAM with binding and functional selectivity; the two percentages are not in the abstract and were **not** verified against full text |
+| Haas & Macdonald 1999 | kinetic topology; subunit composition sets deactivation | resolved | **SUPPORTS the topology claim.** Note their α1β3γ2L deactivation is 76.1 ms, ~5× our τ_IPSC = 15 ms anchor; the anchor is a conventional neuronal IPSC value and is **not** supported by this source |
+| Farrant & Nusser 2005 | ambient GABA 0.2–0.8 µM | resolved | **PARTIAL** — abstract states "low concentrations of ambient GABA" without the range; the numeric span is presumably in the review body, unverified here |
+| Revill et al. 2021 | `INVITRO_BAND` 0.05–1.00 Hz | resolved | **PARTIAL** — confirms the preparation (neonatal rat slices retaining respiratory rhythmicity); no frequency range in the abstract |
+| Liu & Wong-Riley 2004 (`pbc_alpha`) | preBötC α1/α2/α3 fractions | resolved by DOI | **UNASSESSED** — full text HTTP 403; covers α1/α2/α3 only; developmental study |
+| `a5_disc` (2005, PMID 15650112) | `w_subj,α5 = 1.0` | resolved | **SUPPORTS direction only** — α5 agonists mimic ethanol's discriminative stimulus, α5 inverse agonist blocks it. Supplies no weight |
+| `a5_dist` (1988, PMID 2844998) | regional subunit composition | resolved, similarity 1.00 | **DOES NOT SUPPORT** — single generic α-subunit probe; measures regional *level*, not *composition* |
+| Jones & Westbrook 1995 | desensitised states prolong brief-pulse responses | resolved | **UNASSESSED** — not indexed in Europe PMC; topology claim, widely replicated |
+| Otis & Mody 1992 | benzodiazepine prolongs IPSC decay | resolved | **UNASSESSED** — not indexed in Europe PMC |
+| Pirker et al. 2000 | qualitative ordering: high medullary α1, low medullary α5 | resolved | **UNASSESSED** — not indexed in Europe PMC; cited for ordering only, no number |
+| Rudolph 1999; Löw 2000; McKernan 2000; Cheng 2006; Olsen & Sieghart 2008; Rudolph & Möhler 2014; Nutt 2006; Rundfeldt & Löscher 2014; Atack 2011; Butera et al. 1999a/b | subtype-endpoint dissociation, review and background claims | all resolved | **not individually claim-audited** — background rather than load-bearing |
+
+**What this audit changes.** Of the compounds whose `ceiling` values appear in Table 6, not one
+has that value supported by a cited source. Of the two anatomical numbers carrying the
+respiratory and headroom arguments, neither has a supporting source. **The receptor-kinetic
+results in §2 and §4.1 are unaffected** — they depend on the three stated calibration anchors
+and the topology, not on these citations — which is why the Scope box places them in a different
+tier from everything downstream.
+
+**What it does not change.** None of the four failures means the underlying statement is false.
+α5 probably *is* enriched extrasynaptically; diazepam probably *does* shift GABA EC₅₀ by
+something in the 2–3× range. What the audit establishes is that **this manuscript cannot cite a
+source for those numbers**, and so must label them as assumptions. That is a weaker position than
+a resolved reference list alone would imply, and a more accurate one.
+
+---
+
+## Supplementary Note
+
+### §S1. Reproducing the numbers
+
+```
+git clone https://github.com/willkhinz/circuitpharm && cd circuitpharm
+git checkout manuscript-v3
+pip install -e '.[dev]'
+python scripts/paper_numbers.py                       # all figures in sections 2, 4.1, 4.3, 5.2
+python scripts/ranking_robustness.py --draws 20000    # section 4.4.3, add --a5-floor 0.01 / 0.02
+python scripts/compare_substrates.py                  # section 4.6
+python scripts/verify_manuscript.py                   # checks this document against a clean
+                                                      # checkout of the tag it cites
+pytest tests/test_manuscript_consistency.py           # checks it against the working tree
+```
+
+`verify_manuscript.py` is the stronger of the two checks: it creates a throwaway git worktree at
+the cited tag, runs the generators with that tree's `src` on the path, and asserts every audited
+figure appears in output produced by code it did not write. It also verifies that the cited tag
+*contains* this document and its tests — a check added because the first tag created for this
+purpose did not, pointing instead at the commit immediately before the manuscript was written.
+The figures reproduced; the citation was still wrong, and nothing else caught it.
+
+Environment at the cited tag: Python 3.11.15, NumPy 2.4.6, SciPy 1.17.1, NumPy PCG64 seeded
+`np.random.default_rng(20261007)`.
+
+### §S2. Two modelling failure modes, with their diagnostic histories
+
+**S2.1. The fixed scalar cap.** Early implementations scaled PAM gain linearly with occupancy and
+clamped the result:
+
+```python
+# legacy formulation (REJECTED)
+gaba_a_gain = min(1.0 + occupancy * (target_gain - 1.0), gaba_a_efficacy_cap)  # cap = 2.5
+```
+
+This manufactured a safety guarantee. Because conductance was clamped at 2.5×, circuits
+inevitably survived dose escalation, and the resulting "overdose ceiling" was a programmer's
+boundary rather than an emergent property of receptor saturation. The present framework lets the
+boundary emerge from the generator matrix Q, and §2.5 locates it: a 2.5× ratio is reached only
+above ≈ 5 µM ambient GABA, roughly an order of magnitude above the extrasynaptic regime.
+
+**S2.2. Lumped-parameter transfer across architectures.** Moving from a single-pool to a dual-pool
+conductance model, `scripts/overdose_kinetic.py` carried over a lumped `SENS_TOTAL = 0.10` fitted
+to the single-pool version. The mismatch collapsed the modelled respiratory effect of a
+non-selective benzodiazepine to **−2% ventilation** against a clinical anchor of −16% to −19%.
+The visible artifact was not an error message: the script reported that **every compound survived
+every dose up to 100% receptor occupancy**, which reads as a reassuring result. A parameter had
+stopped meaning what it meant, and the output stayed plausible.
+
+This failure mode has recurred twice more in the project since. A tonic/phasic split was applied
+to every module except the one written last, where the defect reappeared and was found two
+sessions later by review. More recently, a shared population factory's default silently removed
+spike-triggered adaptation from the spinal circuit while leaving the respiratory circuit correct;
+two phenotype tests caught it and nothing else did. The common shape is **a value duplicated
+across two locations that then diverge, with a plausible rather than loud symptom.** The remedy
+adopted is structural: delete the second copy rather than synchronise it — a shared helper now
+takes no default for a value its callers own, and this manuscript's tables are printed by a
+generator rather than typed.
+
+**S2.3. Why this belongs in a methods note rather than the results.** The project's own
+documentation treats these as recurring-error entries with regression tests attached
+(`tests/test_review_regressions.py`). They are reported here because they bear directly on the
+§5.1 recommendation — that models must decouple synaptic deactivation from standing extrasynaptic
+conductance rather than applying one multiplier to both — and because a reader evaluating the
+reliability tiers in §3 is entitled to know what produced them. They are not results about
+GABA-A receptors.
+
+---
+
+### §S3. Corrections record
+
+This manuscript supersedes an earlier draft. The corrections are recorded here rather than
+in the main text, where they distracted from the argument, and because a reader checking a
+citation is entitled to know it was changed.
+
+**Reference coordinates corrected.** Crestani et al. — 2002 and pages 8980–8985, not 2001 and
+8993–8997. Haas & Macdonald — *J. Physiol.* 514:27–45, not *J. Neurosci.* 19:2435–2445, and under
+its actual title. Kasugai et al. — *Eur. J. Neurosci.* 32:1868–1888, not *J. Neurosci.*
+30:14024–14035. Otis & Mody — *Neuroscience* 49:13–32; the cited *J. Physiol.* 454:477–496 does
+not resolve. Walters et al. — *Nat. Neurosci.* 3:1274–1281, not *Br. J. Pharmacol.*
+131:1307–1314, and under its actual title.
+
+**Three citations withdrawn as unresolvable**, listed after the reference list with the
+parameters they carried relabelled UNSOURCED. MP-III-022's primary characterisation is Stamenić
+et al. (2016), ten years later than the withdrawn attribution.
+
+**Parameterisation.** The earlier draft reported a kinetic parameterisation that no commit of the
+repository produces: `Po_max = 0.84` against the code's 0.75 — outside the module's own declared
+acceptance range of [0.70, 0.80] — and a 3.0 mM / τ_clear = 1.0 ms synaptic transient against
+1.0 mM / 0.30 ms. It also cited a commit hash present in no ref. Every figure moved; the ones
+that moved most were the synaptic ones carrying the argument (peak gain 1.062 → **1.319**,
+ceiling 1.124 → **1.668**, charge 1.655 → **2.419**, tonic headroom 210.7 → **184.6**), and the
+headline compartment contrast fell from 187-fold to **111-fold**. The qualitative conclusion
+survived. `scripts/paper_numbers.py` now emits every table, and `scripts/verify_manuscript.py`
+checks the document against a clean checkout of the cited tag.
+
+**Conflated quantities separated.** The earlier draft used one figure for the *simulated* peak
+open probability at saturating agonist (0.750, the calibration anchor, with desensitisation
+competing throughout the rise) and the *analytic* gating bound β/(α+β) (0.828, unattainable).
+Table 1 now lists them separately.
+
+**Falsification intervals re-derived.** The earlier draft's §5.2 pre-registered four intervals,
+two of which were violated by the model they described — including "R_max > 15× at 0.1 µM" where
+the realisable prediction is ≈ 8×. The intervals were set from the asymptote rather than the
+reachable gain. They are now stated against the reachable gain with the asymptote printed
+alongside, and two mechanism-level rules were added that cannot be rescued by refitting.
+
+**Statistics withdrawn from headline presentation.** The earlier draft's selectivity table
+included the Monte Carlo median and 95th percentile, which `ranking_robustness.py` marks NOT
+QUOTABLE. They appear in §4.4.3 as a prior-sensitivity diagnostic only.
+
+**Provenance downgraded.** `f_extra,α5 = 0.80` moved from FROM_QUALITATIVE to **UNSOURCED** after
+a claim-support read of its candidate source (§4.2, §7). Six load-bearing citations were found
+not to support the specific numbers attached to them.
 
 ---
 
@@ -1096,19 +1374,16 @@ quantity that a fixed scalar cap was standing in for is not a constant, and it i
    *J. Neurosci.*, 26(14), 3713–3720.
 6. Crestani, F., Keist, R., Fritschy, J.-M., et al. (2002). Trace fear conditioning involves
    hippocampal α5 GABA-A receptors. *Proc. Natl. Acad. Sci. USA*, 99(13), 8980–8985.
-   *(Corrected from the previous draft, which gave 2001 and pages 8993–8997.)*
 7. Farrant, M., & Nusser, Z. (2005). Variations on an inhibitory theme: phasic and tonic
    activation of GABA-A receptors. *Nat. Rev. Neurosci.*, 6(3), 215–229.
 8. Haas, K. F., & Macdonald, R. L. (1999). GABA-A receptor subunit γ2 and δ subtypes confer
    unique kinetic properties on recombinant GABA-A receptor currents in mouse fibroblasts.
-   *J. Physiol.*, 514(1), 27–45. *(Corrected from the previous draft, which gave*
-   J. Neurosci. *19(7):2435–2445 under a different title.)*
+   *J. Physiol.*, 514(1), 27–45.
 9. Jones, M. V., & Westbrook, G. L. (1995). Desensitised states prolong GABA-A channel responses
    to brief agonist pulses. *Neuron*, 15(1), 181–191.
 10. Kasugai, Y., Swinny, J. D., Roberts, J. D. B., et al. (2010). Quantitative localisation of
     synaptic and extrasynaptic GABA-A receptor subunits on hippocampal pyramidal cells by
     freeze-fracture replica immunolabelling. *Eur. J. Neurosci.*, 32(11), 1868–1888.
-    *(Corrected from the previous draft, which gave* J. Neurosci. *30(42):14024–14035.)*
 11. Liu, Q., & Wong-Riley, M. T. T. (2004). Developmental changes in the expression of GABA-A
     receptor subunits α1, α2 and α3 in the rat pre-Bötzinger complex. *J. Appl. Physiol.*,
     96(5), 1825–1831. doi:10.1152/japplphysiol.01264.2003 *(metadata verified; full text
@@ -1125,8 +1400,7 @@ quantity that a fixed scalar cap was standing in for is not a constant, and it i
     pharmacology and function. Update. *Pharmacol. Rev.*, 60(3), 243–260.
 16. Otis, T. S., & Mody, I. (1992). Modulation of decay kinetics and frequency of GABA-A
     receptor-mediated spontaneous inhibitory postsynaptic currents in hippocampal neurons.
-    *Neuroscience*, 49(1), 13–32. *(Corrected from the previous draft, which gave*
-    J. Physiol. *454(1):477–496, a coordinate that does not resolve.)*
+    *Neuroscience*, 49(1), 13–32.
 17. Pirker, S., Schwarzer, C., Wieselthaler, A., Sieghart, W., & Sperk, G. (2000). GABA-A
     receptors: immunocytochemical distribution of 13 subunits in the adult rat brain.
     *Neuroscience*, 101(4), 815–850.
@@ -1144,17 +1418,14 @@ quantity that a fixed scalar cap was standing in for is not a constant, and it i
 22. Stamenić, T. T., Poe, M. M., Rehman, S., et al. (2016). Ester to amide substitution improves
     selectivity, efficacy and kinetic behaviour of a benzodiazepine positive modulator of
     GABA-A receptors containing the α5 subunit. *Eur. J. Pharmacol.*, 791, 433–443.
-    doi:10.1016/j.ejphar.2016.09.016 *(replaces the previous draft's unresolvable "Fischer et
-    al. 2010" attribution for MP-III-022)*
+    doi:10.1016/j.ejphar.2016.09.016
 23. Walters, R. J., Hadley, S. H., Morris, K. D. W., & Amin, J. (2000). Benzodiazepines act on
     GABA-A receptors via two distinct and separable mechanisms. *Nat. Neurosci.*, 3(12),
-    1274–1281. *(Corrected from the previous draft, which gave* Br. J. Pharmacol.
-    *131(7):1307–1314 under a different title. This is the reference arm of every selectivity
-    ratio in §4.4.)*
+    1274–1281.
 
 ### Withdrawn citations
 
-The following appeared in the previous draft and could not be resolved against Crossref by
+The following were cited in an earlier version and could not be resolved against Crossref by
 title or by journal/volume/page. Each carried a model parameter; rather than substitute a
 plausible-looking replacement, the parameters they supported are labelled **UNSOURCED** in the
 text above, matching what `circuitpharm.provenance` already records internally.

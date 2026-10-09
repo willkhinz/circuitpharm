@@ -31,6 +31,26 @@ def text():
 
 
 @pytest.fixture(scope="module")
+def main_text(text):
+    """The manuscript WITHOUT its Supplementary Note.
+
+    Superseded values -- the rejected 0.84 anchor, the asymptote-derived falsification
+    criterion, the four-decimal selectivity indices -- appear legitimately in the
+    Supplementary Note, which records what changed and why. They must not appear in the main
+    text, where they would read as live claims. Several assertions below were written against
+    the whole document and failed on exactly that distinction, so the split is explicit.
+    """
+    i = text.find("## Supplementary Note")
+    return text if i == -1 else text[:i]
+
+
+def _table_rows(text, caption, end):
+    """Just the pipe-delimited rows of one table, excluding its caption prose."""
+    block = text[text.index(caption):text.index(end, text.index(caption))]
+    return [ln for ln in block.split("\n") if ln.strip().startswith("|")]
+
+
+@pytest.fixture(scope="module")
 def scheme():
     from circuitpharm import gabaa_kinetics as gk
     return gk.fit_scheme(verbose=False)
@@ -54,7 +74,7 @@ def test_the_cited_commit_and_tag_exist(text):
             f"previous draft's c8f17a9")
 
 
-def test_calibration_anchors_match_the_code(text, scheme):
+def test_calibration_anchors_match_the_code(text, main_text, scheme):
     from circuitpharm import gabaa_kinetics as gk
     _require(text, f"{gk.FIT_TARGETS['ec50_um']:.1f}", "EC50 anchor")
     _require(text, f"{gk.FIT_TARGETS['po_max']:.3f}", "Po_max anchor")
@@ -63,8 +83,15 @@ def test_calibration_anchors_match_the_code(text, scheme):
     # the pulse constants, which is where the previous draft diverged
     _require(text, f"{gk.SYNAPTIC_CLEAR_MS}", "synaptic clearance tau")
     assert "1.0 mM" in text, "the manuscript does not state the 1.0 mM synaptic peak"
-    assert "0.84" not in text.replace("0.8470", "").replace("0.8489", ""), (
-        "0.84 appears outside a known context -- the previous draft's rejected Po_max anchor")
+    # 0.84 was a rejected calibration anchor. It may be discussed in the Supplementary Note;
+    # in the main text it would read as a live value. 0.8470/0.8489 are P_open figures and
+    # 0.8282 is the analytic gating bound, all legitimate.
+    stripped = main_text
+    for ok in ("0.8470", "0.8489", "0.8282"):
+        stripped = stripped.replace(ok, "")
+    assert "0.84" not in stripped, (
+        "0.84 appears in the MAIN TEXT -- that is the rejected Po_max anchor, which belongs "
+        "only in the corrections record")
 
 
 def test_microscopic_rates_and_derived_constants_match(text, scheme):
@@ -127,17 +154,18 @@ def test_falsification_intervals_are_the_reachable_ones(text, scheme):
         for c in cs:
             _require(text, f"{s.pam(affinity=c).po_tonic(g) / b:.2f}",
                      f"falsification bound at {g} uM")
-    # The discredited criterion may be QUOTED while being retracted -- that is §5.2's job --
-    # but it must not appear as a live criterion. Every occurrence must sit next to the
-    # retraction, and the pre-registered rules block must be free of it.
+    # The discredited criterion may be QUOTED while being explained -- that is §5.2's job, and
+    # it is the clearest way to make the asymptote/reachable distinction concrete. But every
+    # occurrence must sit beside that explanation, and the pre-registered rules must be free
+    # of it.
     i = 0
     while (i := text.find("R_max > 15", i)) != -1:
-        near = text[max(0, i - 400):i + 400]
-        assert "previous draft" in near and "asymptote" in near, (
-            "'R_max > 15' appears outside the retraction context -- it reads as a live "
-            "criterion")
+        near = text[max(0, i - 500):i + 500]
+        assert "asymptote" in near, (
+            "'R_max > 15' appears without the asymptote explanation nearby -- it reads as a "
+            "live criterion")
         i += 1
-    rules = text[text.index("**Falsification rules**"):]
+    rules = text[text.index("**Falsification rules**"):text.index("### 5.3.")]
     assert "R_max > 15" not in rules, (
         "the pre-registered falsification rules still contain the asymptote-derived bound")
 
@@ -165,12 +193,34 @@ def test_selectivity_table_matches_subtypes_module(text):
     burden = lambda p: sum(REGIONS["prebotc"][x] * getattr(p, x) * w(x) for x in SUBTYPES)
     ref = PROFILES["nonselective_bz"]
     r0 = drive(ref) / burden(ref)
+    # TWO SIGNIFICANT FIGURES, deliberately. The arithmetic is exact, but R is computed from
+    # stylised efficacy vectors, nine unsourced subunit fractions, four unsourced subjective
+    # weights and one fitted parameter. Printing 8.6442 implies a precision the inputs cannot
+    # carry, so the manuscript rounds and this test enforces BOTH halves of that: the rounded
+    # value must appear, and the 4-decimal value must NOT, so false precision cannot creep
+    # back in via a later edit. Exact values stay available from paper_numbers.py.
+    def two_sf(x):
+        from decimal import Decimal
+        if x == 0:
+            return "0.00"
+        import math
+        exp = math.floor(math.log10(abs(x)))
+        q = round(x, 1 - exp)
+        return f"{q:.{max(0, 1 - exp)}f}"
+
     for k in ("ideal_a5", "alogabat", "mp_iii_022", "hz_166", "neurosteroid",
               "sh053_R", "sh053_S"):
         p = PROFILES[k]
         bd = burden(p)
         assert bd > 1e-15, f"{k} has zero burden; the nominal R is undefined"
-        _require(text, f"{(drive(p) / bd) / r0:.4f}", f"nominal R for {k}")
+        r = (drive(p) / bd) / r0
+        _require(text, two_sf(r), f"nominal R for {k} at two significant figures")
+        # Checked against the TABLE ROWS only. The captions and §4.4.4 cite a four-decimal
+        # value precisely to explain why the table does not carry one.
+        rows = "\n".join(_table_rows(text, "**Table 6. Selectivity ranking", "#### 4.4.2."))
+        assert f"{r:.4f}" not in rows, (
+            f"Table 6 reports R = {r:.4f} for {k} to four decimals; the inputs are stylised "
+            "assumptions and unsourced fractions, so that precision is false")
     # and the input vectors the table reprints
     for region, key in (("prebotc", "preBötC"), ("forebrain", "Forebrain")):
         vals = ", ".join(f"{REGIONS[region][x]:.2f}" for x in SUBTYPES)
@@ -187,6 +237,8 @@ def test_the_disowned_statistics_are_not_presented_as_results(text):
     table = text[start:end]
     assert "NOT QUOTABLE" in table, (
         "Table 6 does not carry the model's own quotability caveat")
+    table = "\n".join([table] + _table_rows(text, "**Table 6. Selectivity ranking",
+                                             "#### 4.4.2."))
     for banned in ("16.05", "84.85", "40.88", "218.65", "12.59", "60.98"):
         assert banned not in table, (
             f"Table 6 presents {banned}, a median or 95th percentile the model marks NOT "
@@ -211,8 +263,7 @@ def test_provenance_claims_match_the_audit(text):
     # Table 5 reprints a basis per cell. Every cell the audit rates UNSOURCED must be
     # labelled as such in the manuscript rather than attributed to a citation -- which is
     # exactly what the previous draft did with Pirker and Kasugai.
-    start = text.index("**Table 5.")
-    table = text[start:text.index("#### Provenance, stated")]
+    table = "\n".join(_table_rows(text, "**Table 5.", "#### Provenance, stated"))
     # Derive the expected counts from the audit rather than asserting a remembered number.
     # The first version of this test asserted "at least 9 UNSOURCED" from the manuscript's own
     # prose, and the prose was wrong: the audit gives 7 UNSOURCED + 1 GUESS + 7

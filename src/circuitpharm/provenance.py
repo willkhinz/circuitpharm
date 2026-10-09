@@ -118,10 +118,25 @@ REGIONS_PROV = {
 EXTRASYN_PROV = {
     "a1":   Record(Basis.UNSOURCED, "", "0.15; no source recorded"),
     "a23":  Record(Basis.UNSOURCED, "", "0.20; no source recorded"),
-    "a5":   Record(Basis.FROM_QUALITATIVE, "", (
+    # DOWNGRADED from FROM_QUALITATIVE after a claim-support read. A manuscript draft
+    # attributed this to Kasugai et al. 2010 (Eur J Neurosci 32:1868-1888), which is the
+    # obvious candidate and the right kind of study -- quantitative freeze-fracture replica
+    # immunogold, synaptic vs extrasynaptic pools, hippocampal CA1 pyramidal cells. Its
+    # abstract says it measured **a1, a2 and b3**. It does not measure a5 at all, and its
+    # quantitative result runs the other way: synaptic labelling density exceeded
+    # extrasynaptic by 78-132x (a1), 94x (a2) and 79x (b3). So it supports a LOW
+    # extrasynaptic fraction for the subunits it did measure, and is silent on this one.
+    #
+    # This is the second source to resolve perfectly and fail to support the number it was
+    # attached to; `a5_dist` was the first. The pattern is specific enough to name: a source
+    # whose title matches the claim, in the right journal, by the right group, measuring a
+    # neighbouring quantity.
+    "a5":   Record(Basis.UNSOURCED, "", (
         "0.80 encodes the widely repeated statement that hippocampal a5 is predominantly "
-        "extrasynaptic. No source key is attached in the repository. The direction is well "
-        "supported in the literature; the number is ours.")),
+        "extrasynaptic. The direction is well supported in review literature, but no primary "
+        "source in this repository supports it, and the best candidate (Kasugai et al. 2010) "
+        "measures a1/a2/b3 and not a5. Load-bearing: this is the whole extrasynaptic-headroom "
+        "argument, so it is recorded as UNSOURCED rather than FROM_QUALITATIVE.")),
     "d_a4": Record(Basis.FROM_QUALITATIVE, "pbc_delta", (
         "1.00: delta-containing receptors are exclusively extrasynaptic. This one is a "
         "structural fact rather than a measured fraction, and is the most defensible entry "
