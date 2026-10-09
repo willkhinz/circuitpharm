@@ -13,6 +13,7 @@ import numpy as np
 from .models.base import Observable, ObservedQuantity
 from .provisional import void
 from .models.kinetic_jw95 import KineticAllosteryModel
+from .config import SYNAPTIC_PULSE
 from .protocols.waveforms import synaptic_transient
 from .results import Quantity, ResultSet, Tier
 
@@ -36,6 +37,25 @@ class DynamicRangeEvaluation:
     collapse_scan: tuple = ()
 
 
+# THE CLEFT PEAK DEFAULT DISAGREES WITH config.SYNAPTIC_PULSE, DELIBERATELY LEFT FOR A
+# DECISION. `cleft_peak_um` defaults to 1000.0 in both public entry points below, while
+# config.SYNAPTIC_PULSE["peak_um"] is 3000.0. So this module evaluates the dynamic range on a
+# transient that matches neither of the project's two historical calibrations:
+#
+#     config.SYNAPTIC_PULSE          3000 uM / 1.00 ms   <- what the manuscript quotes
+#     superseded gabaa_kinetics      1000 uM / 0.30 ms   <- removed by E22
+#     this module's defaults         1000 uM / 1.00 ms   <- neither
+#
+# Nothing published is affected: the manuscript's figures come from gabaa_kinetics via
+# scripts/paper_numbers.py, and no script calls this module -- its only callers are tests,
+# one of which (test_nextgen_models.py) pins cleft_peak_um=1000.0 explicitly. But this is the
+# newer tiered/posterior implementation of the SAME quantity, so the moment the manuscript
+# sources its dynamic range from here the two will disagree on the input.
+#
+# That is recurring error E12/E22 re-forming in the replacement layer. The clearance literal
+# has been pointed at config (behaviour-identical, 1.0 == 1.0, which is why it was invisible);
+# the PEAK is a real numerical choice and changing it would move every dynamic-range figure
+# this module produces, so it is flagged rather than silently switched.
 def evaluate_dynamic_range(
     model: KineticAllosteryModel,
     ambient_gaba_um: float = 0.40,
@@ -85,7 +105,8 @@ def evaluate_dynamic_range(
     # 3. Tier 3: Physiological charge transfer ratio (using default s_max = 2.50)
     t = np.linspace(0.0, transient_duration_ms, 200)
     # Phasic waveform
-    gaba_phasic = synaptic_transient(t, peak_um=cleft_peak_um, rise_ms=0.1, clear_ms=1.0)
+    gaba_phasic = synaptic_transient(t, peak_um=cleft_peak_um, rise_ms=0.1,
+                                     clear_ms=SYNAPTIC_PULSE["clear_ms"])
     res_phasic_ctrl = m.simulate_waveform(t, gaba_phasic, pam_factor=1.0)
     res_phasic_pam = m.simulate_waveform(t, gaba_phasic, pam_factor=2.50)
     
@@ -302,7 +323,8 @@ def dynamic_range_posterior(
     failed = 0
 
     t = np.linspace(0.0, transient_duration_ms, 200)
-    gaba_phasic = synaptic_transient(t, peak_um=cleft_peak_um, rise_ms=0.1, clear_ms=1.0)
+    gaba_phasic = synaptic_transient(t, peak_um=cleft_peak_um, rise_ms=0.1,
+                                     clear_ms=SYNAPTIC_PULSE["clear_ms"])
     gaba_tonic = np.full_like(t, amb)
 
     for row in d:

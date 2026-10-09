@@ -653,15 +653,33 @@ def test_the_synaptic_pulse_has_exactly_one_definition():
     #    everything else must import. The numbers are searched for as literals because that
     #    is the form the third copy took.
     peak, clear = SYNAPTIC_PULSE["peak_um"], SYNAPTIC_PULSE["clear_ms"]
-    pat = re.compile(r"peak_um\s*=\s*([0-9.]+)")
+
+    # RECURSIVE, and VALUE-AWARE. Both halves were learned after this test was written.
+    #
+    # `glob("*.py")` covered only the top-level package, which was every module there was at
+    # the time. The fitting/, protocols/ and models/ subpackages arrived afterwards, and
+    # neither this test nor tests/test_config_single_source.py (which scans scripts/) reached
+    # them -- so the one constant this test exists to protect had an unguarded home.
+    #
+    # The match is on the VALUE, not on the keyword. A bare `peak_um=` scan flags two
+    # legitimate uses: `protocols/waveforms.py` passes peak_um=1.0 as a NORMALISED amplitude
+    # for shape mixing, and `fitting/data.py` carries 3000.0 as a concentration grid point in
+    # a dose-response array. Neither is a copy of the pulse. Only a literal equal to the
+    # configured value is a second definition, so only that is an offence.
+    pat = re.compile(r"(peak_um|clear_ms)\s*=\s*([0-9]+\.?[0-9]*)")
+    want = {"peak_um": float(peak), "clear_ms": float(clear)}
     offenders = []
-    for f in sorted(pathlib.Path("src/circuitpharm").glob("*.py")):
+    for f in sorted(pathlib.Path("src/circuitpharm").rglob("*.py")):
         if f.name == "config.py":
             continue
         for m in pat.finditer(f.read_text()):
-            # a keyword argument forwarding a variable is fine; a literal is not
-            if m.group(1).rstrip(".").isdigit() or "." in m.group(1):
-                offenders.append(f"{f.name}: peak_um={m.group(1)}")
+            key, lit = m.group(1), m.group(2)
+            try:
+                val = float(lit)
+            except ValueError:
+                continue                      # forwarding a variable; fine
+            if val == want[key]:
+                offenders.append(f"{f.relative_to('src/circuitpharm')}: {key}={lit}")
     assert not offenders, (
         "the synaptic pulse is hard-coded outside config.py again: "
         f"{offenders}. Import config.SYNAPTIC_PULSE instead; this constant has had three "
