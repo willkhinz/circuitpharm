@@ -330,6 +330,18 @@ if not sol.success:
 **Never choose a sentinel that is also a plausible correct answer.** If you need one, use
 `float("nan")` and let it propagate to a `VOID` quantity.
 
+**A failure is not the same thing as known-defective machinery, and they get different
+treatment.** A failure is a computation that did not happen: it raises. Known-defective
+machinery is a computation that happened correctly on an input or an objective that cannot
+support the inference drawn from it — the profile likelihood of P0-5, a fit against the
+synthetic datasets of P0-6. That stays **callable**, because the arrays it produces are
+real and someone may legitimately want them; what it must not do is hand back a conclusion
+that reads as sound. So it emits `provisional.ProvisionalResultWarning` on **every** call
+and returns its inferential summaries as `Tier.VOID` quantities, while its raw computed
+arrays stay plain. Disabling such code hides the defect behind an `ImportError`; leaving it
+unmarked hides it behind a docstring. Neither survives a copy-paste into a slide; a
+`VoidQuantityError` at the call site does.
+
 ### 2.5 Parameters come from a registry, never from literal defaults
 
 After P4 closes, every dataclass default in `models/` is marked
@@ -487,8 +499,11 @@ second one). Report `r_squared` so a caller can see a bad fit instead of inferri
 `r_squared == 0.0`; `np.isnan` on the failure path of all three models.
 
 ### P0-5 — the fitting objective cannot see the absolute rates
-**File:** `fitting/identifiability.py:25-46`
+**Files:** `fitting/identifiability.py:25-46`, `fitting/mcmc.py`, new
+`src/circuitpharm/provisional.py`
 **Severity:** critical (invalidates every identifiability and MCMC result produced so far)
+**Disposition:** the machinery **stays callable** behind a loud warning; its conclusions
+become `VOID`. Decided 2026-10-09 in preference to disabling it.
 
 Reproduced: scaling all six rates by 2, 10 and 100 changes the cost by **zero** at 6
 decimal places. The objective's only terms are the equilibrium dose-response (a function
@@ -502,23 +517,92 @@ which are currently being reported as results:
 * `run_ensemble_mcmc` samples a posterior that is flat along three directions, bounded
   only by `log_prior`'s box. The reported "95% credible intervals" are prior widths.
 
-**Required fix (P0 part — the full treatment is P3).** Do not attempt the real fit here.
-In P0: (a) raise `NotImplementedError` from `compute_profile_likelihood`,
-`compute_fisher_information_matrix` and `run_ensemble_mcmc` with a message pointing at
-this register entry and at P3; (b) keep `compute_kinetic_objective` but rename it
-`equilibrium_dose_response_chi2` and document in one line that it constrains only
-`(Kd, E, D)`; (c) delete or `@pytest.mark.skip(reason="blocked on P3")` the three tests
-that assert those functions return plausible values. Shipping a disabled analysis is
-honest; shipping a flat one as a result is not.
+**Required fix (P0 part — the full treatment is P3).** Do not attempt the real fit here,
+and **do not disable these functions.** They stay callable; what changes is that their
+*conclusions* can no longer be read as if they were sound. Three layers, all three
+required — any one alone is the kind of caveat this project has watched get dropped.
 
-**Tests:** anchor — `test_objective_is_invariant_to_uniform_rate_scaling` asserts the
-cost is unchanged to `rtol=1e-12` under ×100, with a docstring explaining that this is the
-*structural* reason the analysis is blocked. That test is the permanent record of why P3
-exists; it must not be deleted when P3 lands, only amended.
+**Layer 1 — a warning category that is not filtered away.** New module,
+`src/circuitpharm/provisional.py`:
+
+```python
+"""Machinery that runs, and whose conclusions rest on a recorded defect.
+
+A FAILURE raises (roadmap §2.4). This module is for the other case: code that computes
+exactly what it says it computes, on inputs or an objective that cannot support the
+inference drawn from it. The computation is available; the conclusion is not.
+"""
+import warnings
+
+class ProvisionalResultWarning(UserWarning):
+    """Emitted by machinery whose conclusions rest on a defect in the P0 register."""
+
+# "always", not the default "once per location": the default shows this to whoever runs
+# the first call in a process and hides it from every later caller, which is precisely
+# how a caveat gets dropped between the run and the write-up.
+warnings.simplefilter("always", ProvisionalResultWarning)
+
+def warn_provisional(what: str, defect: str, register_item: str, promote_by: str,
+                     stacklevel: int = 3) -> None:
+    """Emit the standard banner. Every argument is mandatory and must be specific."""
+    warnings.warn(
+        f"\n{'='*78}\n{what} IS PROVISIONAL -- its conclusions are not usable.\n"
+        f"{'='*78}\n  defect:     {defect}\n  recorded:   roadmap {register_item}\n"
+        f"  promote by: {promote_by}\n"
+        f"  The computation below is real; the inference from it is not. Reading a VOID\n"
+        f"  field of the result raises unless you pass acknowledge_void=True.\n{'='*78}",
+        ProvisionalResultWarning, stacklevel=stacklevel)
+```
+
+Add to `pyproject.toml` so the suite cannot swallow it:
+```toml
+[tool.pytest.ini_options]
+filterwarnings = ["always::circuitpharm.provisional.ProvisionalResultWarning"]
+```
+
+**Layer 2 — the conclusions come back VOID; the computation stays readable.** This is the
+line to hold, and it is not arbitrary: **raw computed arrays are real and stay plain;
+inferential summaries become `Quantity(tier=Tier.VOID)`**, so `.value` raises and
+`.get(acknowledge_void=True)` works at a call site a reviewer can see (`results.py`).
+
+| function | stays plain (a real computation) | becomes `VOID` (an unsupported inference) |
+|---|---|---|
+| `compute_profile_likelihood` | `grid_values`, `profile_costs` | `ci_95_bounds`, `is_identifiable`, `diagnostic_reason` |
+| `compute_fisher_information_matrix` | `hessian`, and the **full** eigenvalue spectrum | `condition_number`, any rank claim |
+| `run_ensemble_mcmc` | `flat_samples`, `acceptance_fraction` | `posterior_means`, `posterior_std`, `credible_intervals_95` |
+
+Add a `defect: str` field to each result dataclass carrying the one-line reason, so the
+object is self-describing when someone pickles it or prints it three weeks later.
+
+**Layer 3 — the objective says what it constrains.** Rename `compute_kinetic_objective`
+to `equilibrium_dose_response_chi2`, keep a thin deprecated alias so existing callers and
+`mcmc.py` keep working, and document in the first docstring line that it is a function of
+`(K_d, E, D)` only and therefore cannot constrain absolute rates.
+
+Keep all three existing tests. Change them from asserting plausibility to asserting the
+new contract: the call warns, the raw arrays are finite and the right shape, and reading a
+VOID field raises.
+
+**Tests:**
+* **ANCHOR** `test_objective_is_invariant_to_uniform_rate_scaling` — cost unchanged to
+  `rtol=1e-12` under ×100. This is the permanent record of *why* the conclusions are VOID;
+  amend it when P3 lands, never delete it.
+* **ANCHOR** `test_provisional_conclusions_are_void` — for each of the three functions,
+  `pytest.warns(ProvisionalResultWarning)` fires **and** reading the VOID field raises
+  `VoidQuantityError` **and** `.get(acknowledge_void=True)` returns a finite number.
+* `test_warning_fires_on_every_call_not_just_the_first` — call twice in one process inside
+  `warnings.catch_warnings(record=True)`, assert two records. This is the one that pins
+  Layer 1's `simplefilter`; without it a future "tidy-up" silently restores once-per-location.
+* `test_raw_arrays_are_not_void` — the computation stays usable without acknowledgement.
+* `test_full_eigenvalue_spectrum_is_returned` — negatives and near-zeros present, not
+  filtered (see P0-12).
 
 ### P0-6 — the deactivation "benchmark" is model-generated and mis-cited
 **File:** `fitting/data.py:43-56`
 **Severity:** critical (scientific integrity; a repeat of a defect retracted 3 commits ago)
+**Disposition:** both datasets **keep their names and stay usable**; they declare
+themselves synthetic and taint any fit that consumes them. Decided 2026-10-09 in
+preference to renaming them.
 
 `_I_DEACT` is `0.70*exp(-t/15) + 0.30*exp(-t/70)`, cited to Haas & Macdonald 1999 —
 recorded in `knowledge/07-paper-review.md` as measuring **76.1 ms** for this quantity, one
@@ -526,17 +610,68 @@ of the six citations that audit found did not support the number it carried. The
 `DOSE_RESPONSE_BENCHMARK` plateau is exactly `0.750`, the model's own fit target, which
 makes the fit partly circular; its `sem` values have no stated origin.
 
-**Required fix.** (a) Rename both to `*_SYNTHETIC` and add a module-level docstring
-stating in the first line that these are **synthetic traces for mechanics testing, not
-data**; (b) register both in `provenance.ALL` as `Basis.UNSOURCED` with the note
-explaining the construction; (c) add the `Observable` tag (`PEAK` for the
-concentration-response, `CHARGE`/current-decay for the trace) so P1's contract applies;
-(d) remove the `citation=` strings or move them to a `motivated_by=` field whose name
-cannot be mistaken for provenance. Real digitisation is P1-2 and must not be faked here.
+**Required fix. Both datasets keep their names and stay usable** — no rename, so no caller
+breaks. What changes is that nothing can mistake them for measurements, and any result
+computed from them is tainted automatically rather than by a reader remembering to.
 
-**Tests:** `tests/test_provenance.py` must fail if either dataset loses its record;
-a test asserting the word "synthetic" appears in the module docstring (blunt on purpose —
-the same technique `test_manuscript_consistency.py` uses, for the same reason).
+(a) Add to `DoseResponseDataset` and `DeactivationDataset`:
+
+```python
+synthetic: bool = False      # True = generated by a formula, not measured
+origin: str = ""             # for synthetic: the exact expression and why it exists
+motivated_by: str = ""       # a paper that INSPIRED the shape; NOT provenance
+source_key: str = ""         # a provenance key; set ONLY for real digitised data
+```
+Set `synthetic=True` and `origin="0.70*exp(-t/15) + 0.30*exp(-t/70); shape placeholder for
+mechanics testing until P1-2 supplies a digitisation"` on `DEACTIVATION_BENCHMARK`, and
+`synthetic=True` with the corresponding note on `DOSE_RESPONSE_BENCHMARK` (its plateau is
+exactly `0.750`, the model's own fit target, so a fit to it is partly circular; its `sem`
+values have no stated origin).
+
+(b) **Move the citation text to `motivated_by`, keeping it verbatim; leave `source_key`
+empty.** This is the one part of this entry that is not about capability, and it is not
+negotiable the way the rename was: a `citation=` field on a formula asserts provenance
+that does not exist, and `knowledge/07-paper-review.md` records Haas & Macdonald 1999 as
+measuring **76.1 ms** for this quantity — so the generated trace's dominant 15 ms
+component is attributed to a paper that measured something five times slower. Keeping the
+reference visible under a field named `motivated_by` loses nothing and claims nothing.
+
+(c) Add the first line of the module docstring: *"Benchmark datasets. Two are currently
+SYNTHETIC — generated from a formula for mechanics testing, not measured. See `synthetic`
+and `origin` on each, and roadmap P1-2 for the digitisation that replaces them."*
+
+(d) Register both in `provenance.ALL` as `Basis.UNSOURCED` with the construction in the
+note.
+
+(e) Add the `Observable` tag (`PEAK` for the concentration-response, `CHARGE` for the
+decay trace) so P1's contract applies.
+
+(f) **The taint is automatic.** Any function in `fitting/` that consumes a dataset with
+`synthetic=True` calls `warn_provisional(...)` from P0-5's module and marks its
+inferential outputs `Tier.VOID`. A helper keeps that from being forgotten in one of five
+places:
+
+```python
+def assert_real_data(datasets, *, caller: str) -> None:
+    """Warn and name every synthetic dataset a fit is about to consume."""
+```
+Call it at the top of every fitting entry point. When P1-2 lands real digitisations the
+flag flips to `False`, the warning stops on its own, and no call site changes — which is
+the property that makes this better than a comment.
+
+**Tests:**
+* **ANCHOR** `test_synthetic_datasets_taint_their_results` — fitting against
+  `DEACTIVATION_BENCHMARK` warns `ProvisionalResultWarning`, the warning text names the
+  dataset, and the inferential output is `VOID`.
+* `test_synthetic_datasets_declare_themselves` — `synthetic is True` and `origin`
+  non-empty for both; `source_key` empty while `synthetic` is True (a dataset cannot be
+  both generated and sourced).
+* `test_no_citation_field_on_synthetic_data` — assert the dataclasses have no attribute
+  named `citation`, so the old field cannot come back by habit.
+* `tests/test_provenance.py` must fail if either dataset loses its record.
+* `test_module_docstring_declares_synthetic` — greps for "SYNTHETIC" in the first
+  docstring line. Blunt on purpose, the same technique
+  `test_manuscript_consistency.py` uses, for the same reason.
 
 ### P0-7 — the environment is not pinned, so the manuscript does not reproduce
 **Files:** `pyproject.toml`, `.github/workflows/tests.yml`,
@@ -789,10 +924,12 @@ prevent the defaults being mistaken for a calibration — it should be *amended*
 deleted, when P4 lands. Plus `pytest.raises(TypeError)` for each entry point called with
 no model.
 
-**P0 Definition of Done.** All thirteen closed; `pytest -q` shows **zero failures** other
-than any explicitly `skip`-marked in P0-5; the three new anchor tests
-(P0-2 continuity, P0-4 biexponential recovery, P0-5 scaling invariance) present and
-passing; `knowledge/09-strategic-roadmap.md` §8 updated to `P0: CLOSED <sha>`.
+**P0 Definition of Done.** All thirteen closed; `pytest -q` shows **zero failures and no
+skips you introduced** — P0-5 and P0-6 keep every function callable, so nothing in this
+phase is allowed to `skip` a test as a way of closing an item; the five new anchor tests
+(P0-2 continuity, P0-4 biexponential recovery, P0-5 scaling invariance, P0-5 VOID
+conclusions, P0-6 synthetic taint) present and passing;
+`knowledge/09-strategic-roadmap.md` §8 updated to `P0: CLOSED <sha>`.
 
 ---
 
@@ -934,7 +1071,9 @@ of being retrofitted.
 * `protocols/oed.py` → every AIC/BIC/weight is **VOID** until P5 closes, with
   `provenance` naming C5 and `promote_by` naming P5. This is the correct tier today: they
   are computed at unfitted parameters, so they rest on something known to be invalid.
-* `fitting/` → `NotImplementedError` per P0-5 until P3.
+* `fitting/` → already warns and returns `VOID` conclusions after P0-5/P0-6; P2 only
+  confirms the quantities are real `Quantity` objects and that `provisional.py`'s banner
+  names the P3 promotion path. Do **not** disable these functions (§2.4).
 * `provenance.ALL` gains `MODEL_PARAM_PROV` and `DATASET_PROV` tables.
 
 **Acceptance.**
@@ -1323,8 +1462,18 @@ different values for weeks; the disagreement surfaced only when a script compare
 strength of the wrong copy (see the note now in `gabaa_kinetics.py:99-121`). Import from
 `config.py`. Always. `resp.py:37` still violates this.
 
-**5.4 The fabricated dataset.** Generating `y` from a formula and attaching a citation.
-`fitting/data.py:43-56`. If you cannot get the real data, say so and stop.
+**5.4 The fabricated dataset.** Generating `y` from a formula and attaching a `citation`.
+`fitting/data.py:43-56`. A synthetic trace may exist and may be used — P0-6 keeps both of
+these, flagged `synthetic=True` and tainting whatever consumes them — but it may never
+carry provenance it does not have, and it may never be the basis of a claim about
+receptors. If you cannot get the real data, say so and stop; do not generate a stand-in
+and move on.
+
+**5.4a The disabled analysis as a fix.** The mirror of 5.4, and the reason P0-5 is written
+the way it is. Deleting or `NotImplementedError`-ing defective machinery looks rigorous and
+destroys a real computation someone may need, while hiding the defect behind an exception
+nobody reads. Keep it callable, warn on every call, and make the *conclusion* unreadable
+without acknowledgement. See §2.4's last paragraph.
 
 **5.5 The neighbouring-quantity citation.** Attaching a source that resolves perfectly by
 DOI and measures something adjacent. Twice in this project: `a5_dist` (regional *level*,
