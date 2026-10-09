@@ -10,8 +10,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 import numpy as np
 
+from .models.base import Observable, ObservedQuantity
 from .models.kinetic_jw95 import KineticAllosteryModel
 from .protocols.waveforms import synaptic_transient
+from .results import Quantity, ResultSet, Tier
 
 
 @dataclass(frozen=True)
@@ -24,6 +26,13 @@ class DynamicRangeEvaluation:
     phasic_charge_gain: float
     tonic_charge_gain: float
     headroom_collapses: bool  # True if tonic advantage drops <= 1.0
+    #: The window the CHARGE tier was integrated over. A charge without its window is not
+    #: a quantity (models.base.ObservedQuantity), and the ratio depends on it.
+    charge_window_ms: float = float("nan")
+    #: Where the tonic advantage reaches 1.0, as a curve rather than the boolean above.
+    #: Maps ambient GABA (uM) -> the charge ratio there. A boolean throws away everything
+    #: the scan computed (roadmap P6-2).
+    collapse_scan: tuple = ()
 
 
 def evaluate_dynamic_range(
@@ -91,6 +100,26 @@ def evaluate_dynamic_range(
     charge_ratio = float(tonic_gain / max(phasic_gain, 1e-12))
     collapses = charge_ratio <= 1.0
 
+    # THE COLLAPSE BOUNDARY AS A CURVE. `headroom_collapses` answers "does the tonic
+    # advantage survive at this one ambient concentration?"; the scan answers "where does
+    # it stop surviving?", which is the question a reader actually has and which the
+    # boolean discarded (roadmap P6-2). Equilibrium gains are used here, not the
+    # charge integrals: this is a boundary location over a sweep, and a 200-point ODE
+    # solve per grid point buys no accuracy in the answer.
+    # `scan_amb`, NOT `amb`: the loop variable must not shadow the ambient concentration
+    # this evaluation is ABOUT. It did, and the returned dataclass reported
+    # ambient_gaba_um = 30.0 (the last grid point) for a run at 0.4 -- the same class of
+    # defect as resp_metrics rebinding its `band` parameter to the FFT mask (P0-12), found
+    # the same way, by reading the output rather than the code.
+    scan = []
+    for scan_amb in (0.05, 0.1, 0.2, 0.4, 0.8, 1.5, 3.0, 10.0, 30.0):
+        base_t = m.steady_state(scan_amb, pam_factor=1.0)
+        pam_t = m.steady_state(scan_amb, pam_factor=2.50)
+        if base_t <= 0.0:
+            continue
+        g_t = pam_t / base_t
+        scan.append((float(scan_amb), float(g_t / max(phasic_gain, 1e-12))))
+
     return DynamicRangeEvaluation(
         ambient_gaba_um=amb,
         theoretical_asymptotic_headroom=asymptotic_headroom,
@@ -99,4 +128,77 @@ def evaluate_dynamic_range(
         phasic_charge_gain=phasic_gain,
         tonic_charge_gain=tonic_gain,
         headroom_collapses=collapses,
+        charge_window_ms=float(transient_duration_ms),
+        collapse_scan=tuple(scan),
     )
+
+
+def dynamic_range_report(model: KineticAllosteryModel, **kw) -> ResultSet:
+    """The three tiers as tiered quantities (roadmap P2).
+
+    THE TIERS OF THE METRIC AND THE TIERS OF THE EVIDENCE ARE DIFFERENT THINGS, and
+    conflating them is how "184.6x" ended up quoted as a result. `DynamicRangeEvaluation`'s
+    three tiers say WHAT is being measured -- asymptotic, reachable, realised. The
+    `results.Tier` on each quantity says how much it can be trusted. Every one here is
+    UNCALIBRATED: the mechanism is sound, the magnitudes rest on three anchors from recalled
+    literature ranges, one declared convention (`gabaa_kinetics.FIT_FIXED_ALPHA`), and d/r,
+    which no anchor constrains.
+    """
+    ev = evaluate_dynamic_range(model, **kw)
+    rs = ResultSet(f"dynamic range at ambient {ev.ambient_gaba_um} uM")
+    promote = ("fit the rates to sourced data on their own observables and propagate the "
+               "posterior (P4); quote a median with a credible interval, never a point")
+
+    rs.add(Quantity(
+        "theoretical_asymptotic_headroom", ev.theoretical_asymptotic_headroom,
+        Tier.UNCALIBRATED, "x",
+        provenance=("P_open,inf / P_open(ambient), where P_open,inf = 1/(1 + (alpha/beta)"
+                    "(1 + d/r)) is the k_off -> 0+ limit. A formula, not a measurement: "
+                    "its inputs are the fitted E and the UNFITTED d/r."),
+        promote_by=promote,
+        caveats=("asymptotic: k_off -> 0+ is reached by no ligand, so this is a ceiling "
+                 "the mechanism cannot deliver, not a predicted effect",
+                 "strictly conditional on d/r = 25, which no anchor constrains")))
+
+    for sm, gain in sorted(ev.reachable_gains_by_smax.items()):
+        rs.add(Quantity(
+            f"reachable_gain_at_smax_{sm:g}", gain, Tier.UNCALIBRATED, "x",
+            provenance=(f"equilibrium open-probability gain at an EQUILIBRIUM EC50 shift "
+                        f"of {sm:g}x, which for this scheme is exactly the factor dividing "
+                        f"K_d"),
+            promote_by=promote,
+            caveats=("s_max here is an EQUILIBRIUM EC50 shift; gabaa_kinetics.calibrate_pam "
+                     "calibrates against the PEAK shift and returns 2.945 for a nominal "
+                     "2.5, so the two must not be interchanged",)))
+
+    rs.add(Quantity(
+        "physiological_charge_ratio", ev.physiological_charge_ratio, Tier.UNCALIBRATED, "x",
+        provenance=(f"(tonic charge gain) / (phasic charge gain), both integrated over "
+                    f"{ev.charge_window_ms:g} ms at PAM 2.50x. Tonic gain "
+                    f"{ev.tonic_charge_gain:.4f}x, phasic {ev.phasic_charge_gain:.4f}x."),
+        promote_by=promote,
+        caveats=(f"CHARGE depends on its window; this is {ev.charge_window_ms:g} ms and a "
+                 f"different window gives a different number",
+                 "the phasic arm is a synaptic transient and the tonic arm a sustained "
+                 "step, so the two charges are not the same kind of integral -- only their "
+                 "RATIO OF GAINS is dimensionless and comparable")))
+
+    if ev.collapse_scan:
+        below = [a for a, x in ev.collapse_scan if x <= 1.0]
+        boundary = min(below) if below else float("nan")
+        rs.add(Quantity(
+            "collapse_ambient_um", boundary, Tier.UNCALIBRATED, "uM",
+            provenance=("lowest ambient GABA in the scan at which the tonic advantage "
+                        "reaches 1.0, i.e. where the compartment divergence stops. Scan: "
+                        + ", ".join(f"{a:g}->{x:.3f}x" for a, x in ev.collapse_scan)),
+            promote_by=promote,
+            caveats=("a grid bound, not an interpolated crossing",
+                     "AMBIENT_GABA_UM itself is UNSOURCED over a 0.1-1 uM literature "
+                     "range, and this boundary is what makes that range matter")))
+    return rs
+
+
+def charge_quantity(ev: DynamicRangeEvaluation) -> ObservedQuantity:
+    """The realised charge ratio as an `ObservedQuantity`, window attached."""
+    return ObservedQuantity(ev.physiological_charge_ratio, Observable.CHARGE,
+                            window_ms=ev.charge_window_ms)

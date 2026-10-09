@@ -198,17 +198,25 @@ def test_electrophys_metrics_extraction():
 # ==============================================================================
 
 def test_mechanistic_decomposition_attribution():
+    """Mechanics. The identity and the mechanism findings live in test_decomposition.py.
+
+    The three factors are now occupancy / double-occupancy / gating and they satisfy
+    ln G = sum exactly; the old occupancy / gating / HEADROOM triple did not, because the
+    proximity-to-ceiling term is not a factor of the gain (roadmap §5.9).
+    """
     model = KineticAllosteryModel()
-    decomp = compare_phasic_tonic_mechanisms(model, tonic_gaba_um=0.40, phasic_gaba_um=1000.0, pam_factor=2.50)
+    decomp = compare_phasic_tonic_mechanisms(model, tonic_gaba_um=0.40,
+                                             phasic_gaba_um=1000.0, pam_factor=2.50)
 
     tonic = decomp["tonic"]
     phasic = decomp["phasic"]
 
-    # Shapley percentages must sum to 100%
-    assert abs(tonic.shapley_pct_occupancy + tonic.shapley_pct_gating + tonic.shapley_pct_headroom - 100.0) < 1e-3
-    assert abs(phasic.shapley_pct_occupancy + phasic.shapley_pct_gating + phasic.shapley_pct_headroom - 100.0) < 1e-3
+    for r in (tonic, phasic):
+        total = (r.log_share_pct_occupancy + r.log_share_pct_double_occupancy
+                 + r.log_share_pct_gating)
+        assert abs(total - 100.0) < 1e-3
+        assert abs(r.residual) < 1e-10 * max(abs(r.log_gain), 1.0)
 
-    # Tonic condition must exhibit higher total fold-gain than phasic
     assert tonic.total_fold_gain > phasic.total_fold_gain
     assert tonic.total_fold_gain > 2.0
     assert phasic.total_fold_gain < 1.5
@@ -219,25 +227,36 @@ def test_mechanistic_decomposition_attribution():
 # ==============================================================================
 
 def test_model_comparison_and_oed():
+    """Mechanics. Every CONCLUSION from this module is VOID until P5/P6.
+
+    Also note the explicit `observable=`: Model A is PEAK-native and Models B and C are
+    EQUILIBRIUM-native, so there is no default axis and omitting it now raises.
+    """
+    from circuitpharm.models.base import Observable
+
     m_a = OperationalScalarModel()
     m_b = KineticAllosteryModel()
     m_c = ExtendedDesensitizationModel()
 
-    # Generate synthetic observations with noise
     concs = np.array([0.1, 1.0, 10.0, 30.0, 100.0, 1000.0])
     y_true = m_b.dose_response(concs)
 
-    comp = evaluate_model_fit([m_a, m_b, m_c], concs, y_true, measurement_noise_std=0.02)
-    assert len(comp) == 3
-    # Akaike weights sum to 1.0
-    total_w = sum(c.akaike_weight for c in comp)
-    assert abs(total_w - 1.0) < 1e-4
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        comp = evaluate_model_fit([m_a, m_b, m_c], concs, y_true,
+                                  measurement_noise_std=0.02,
+                                  observable=Observable.EQUILIBRIUM)
+        assert len(comp) == 3
+        total_w = sum(c.akaike_weight.get(acknowledge_void=True) for c in comp)
+        assert abs(total_w - 1.0) < 1e-4
+        for c in comp:
+            assert c.aic.tier is Tier.VOID
 
-    # OED: discover discriminating protocol
-    protocol = find_discriminating_protocol([m_a, m_b, m_c], noise_sigma=0.02)
-    assert protocol.discrimination_score > 0.0
+        protocol = find_discriminating_protocol([m_a, m_b, m_c], noise_sigma=0.02,
+                                                observable=Observable.EQUILIBRIUM)
+    assert protocol.discrimination_score.get(acknowledge_void=True) > 0.0
     assert len(protocol.predicted_responses) == 3
-    assert len(protocol.falsification_boundaries) == 3
+    assert len(protocol.falsification_boundaries.get(acknowledge_void=True)) == 3
 
 
 # ==============================================================================
