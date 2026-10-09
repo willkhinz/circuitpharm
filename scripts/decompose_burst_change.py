@@ -79,10 +79,33 @@ def run(arm, substrate, seed):
     t, out = A["t"][m], A["Out"][m]
     d = detect_bursts(t, out, BANDS[substrate])
     d["mean"] = float(out.mean())
-    # Burst AMPLITUDE above baseline, not peak: a drug that raises the floor without
-    # changing the burst would otherwise read as stronger bursts.
+
+    # THE DECOMPOSITION MUST BE EXACT, OR ITS RESIDUAL EATS THE RESULT. A first version used
+    # (p95 - p5) as "amplitude" and decomposed log(mean). Those do not compose: `mean`
+    # includes the inter-burst floor, which no burst term can account for, so the residual
+    # ran to 55% of the effect and the script's own guard refused to quote a decomposition
+    # whose direction was in fact unambiguous.
+    #
+    # Over a window containing whole cycles, with `base` the inter-burst floor,
+    #
+    #     mean - base = (total area above base) / T = elevation x duration / period
+    #                 = elevation x duration x frequency
+    #
+    # which is exact up to the floor being steady. So the quantity decomposed is
+    # log(mean - base), and the floor is reported as its own term, because a modulator that
+    # raises or lowers tonic drive changes mean output WITHOUT touching the bursts -- the
+    # likeliest single confound in this measurement.
     th = d.get("thresholds")
-    d["amp"] = float(th["p95"] - th["p5"]) if th else np.nan
+    if th is None or not d["onsets"]:
+        d.update(base=np.nan, elev=np.nan, mean_above=np.nan)
+        return d
+    base = float(th["p5"])
+    inside = np.zeros(t.size, bool)
+    for a_, b_ in zip(d["onsets"], d["offsets"]):
+        inside |= (t >= a_) & (t <= b_)
+    d["base"] = base
+    d["elev"] = float(np.mean(out[inside] - base)) if inside.any() else np.nan
+    d["mean_above"] = float(out.mean() - base)
     return d
 
 
@@ -127,7 +150,7 @@ def main():
               f"min_dur {c0['derived']['min_dur_ms']:.0f} ms, "
               f"smooth {c0['derived']['smooth_ms']:.0f} ms")
         print()
-        print(f"  {'arm':17s} {'dlog mean':>10s} = {'amp':>8s} + {'duration':>9s} + "
+        print(f"  {'arm':17s} {'dlog(m-b)':>10s} = {'elev':>8s} + {'duration':>9s} + "
               f"{'freq':>8s} | {'resid':>7s}  verdict")
         print("  " + "-" * 94)
         for arm in arms:
@@ -138,13 +161,17 @@ def main():
                     print(f"  {arm:17s} seed {s} EXCLUDED: {d['reason'][:66]}")
                     continue
                 c = cmap[s]
-                rows.append((dlog(d["mean"], c["mean"]), dlog(d["amp"], c["amp"]),
+                rows.append((dlog(d["mean_above"], c["mean_above"]),
+                             dlog(d["elev"], c["elev"]),
                              dlog(np.mean(d["durations"]), np.mean(c["durations"])),
-                             dlog(d["freq_hz"], c["freq_hz"])))
+                             dlog(d["freq_hz"], c["freq_hz"]),
+                             dlog(d["mean"], c["mean"]),
+                             dlog(d["base"], c["base"])))
             if not rows:
                 print(f"  {arm:17s} no usable seed")
                 continue
-            M, A_, D, F = (float(np.nanmean([r[i] for r in rows])) for i in range(4))
+            M, A_, D, F, MT, B = (float(np.nanmean([r[i] for r in rows]))
+                                  for i in range(6))
             resid = M - (A_ + D + F)
             # A modulator at full occupancy producing EXACTLY no change is a construction
             # error, not a result -- it is what a drug-free `Compound` looks like. Say so,
@@ -153,17 +180,22 @@ def main():
                 print(f"  {arm:17s} IDENTICAL TO CONTROL in every term -- the compound was "
                       f"probably built without its efficacy vector")
                 continue
-            # The verdict names the dominant POSITIVE contributor to the change in output,
-            # and says so only when one clearly dominates.
-            terms = {"stronger bursts": A_, "longer bursts": D, "more bursts": F}
-            lead = max(terms, key=lambda k: abs(terms[k]))
-            second = sorted((abs(v) for v in terms.values()), reverse=True)[1]
-            clear = abs(terms[lead]) > 2.0 * second and abs(resid) < 0.35 * abs(M)
-            verdict = (f"{lead}" if clear else
-                       "mixed" if abs(resid) < 0.35 * abs(M) else
-                       "DO NOT QUOTE: residual too large")
+            # The verdict names the dominant term WITH ITS SIGN. A first version took the
+            # largest term by absolute value and labelled it "longer bursts" even when the
+            # term was negative, so a shortening read as a lengthening.
+            terms = {"bursts": (D, "longer", "shorter"),
+                     "rate": (F, "more frequent", "less frequent"),
+                     "strength": (A_, "stronger", "weaker")}
+            lead = max(terms, key=lambda k: abs(terms[k][0]))
+            val, up, down = terms[lead]
+            second = sorted((abs(v[0]) for v in terms.values()), reverse=True)[1]
+            dominates = abs(val) > 2.0 * second
+            closes = abs(resid) < 0.35 * abs(M) if abs(M) > 1e-9 else False
+            verdict = ("DO NOT QUOTE: residual too large" if not closes else
+                       f"{up if val > 0 else down} bursts" if dominates else "mixed")
             print(f"  {arm:17s} {M:10.4f} = {A_:8.4f} + {D:9.4f} + {F:8.4f} | "
                   f"{resid:7.4f}  {verdict}")
+            print(f"  {'':17s} {'(raw mean':>10s} {MT:8.4f}{', floor':>9s} {B:8.4f})")
         print()
 
     print("=" * 100)
