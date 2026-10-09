@@ -16,3 +16,6 @@ data/pharmacology.backup-*.db
 
 # generated knowledge-graph cache (graphify); regenerable, not source
 graphify-out/
+
+# cached simulation traces; regenerable, keyed on model source
+.trace-cache/

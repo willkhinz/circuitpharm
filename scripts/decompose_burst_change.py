@@ -55,8 +55,52 @@ DEFAULT_ARMS = ("nonselective_bz", "alogabat", "hz_166", "neurosteroid")
 BANDS = {"lif": EUPNOEA_BAND, "cond": INVITRO_BAND}
 
 
-def run(arm, substrate, seed):
-    """One simulation, returning the burst decomposition plus the raw window mean."""
+#: Trace cache. A conductance simulation is 60 s of model time at 0.1 ms steps -- 600k
+#: integration steps, ~4x the LIF cell's cost -- so a full run of this script is minutes.
+#: The traces are a deterministic function of (arm, substrate, seed, duration, warm-up,
+#: operating point), so re-simulating to fix an ANALYSIS bug is pure waste. It was paid three
+#: times over while this script was being written: once for a constructor that built a
+#: drug-free compound, once for a decomposition whose algebra did not close, once for a
+#: missing seed spread. None of those needed a single new integration step.
+CACHE = pathlib.Path(__file__).resolve().parent.parent / ".trace-cache"
+
+
+def _cache_key(arm, substrate, seed):
+    """Everything that changes the trace goes in the key, so a stale hit is impossible.
+
+    Including the operating point and the module source hash: a cache keyed only on
+    (arm, substrate, seed) would survive a change to COND_RESP_OP or to resp.py and serve a
+    trace from a different model, which is a worse failure than slowness.
+    """
+    import hashlib
+    import circuitpharm.resp as resp_mod
+    from circuitpharm.config import COND_RESP_OP
+    cfg = _SUBSTRATE[substrate]
+    h = hashlib.sha256()
+    h.update(repr((arm, substrate, seed, cfg["duration_ms"], cfg["warm_ms"],
+                   cfg["band"])).encode())
+    h.update(repr(sorted((k, repr(v)) for k, v in dict(COND_RESP_OP).items())).encode())
+    h.update(repr(sorted(RESP_OP.items())).encode())
+    h.update(pathlib.Path(resp_mod.__file__).read_bytes())
+    return h.hexdigest()[:20]
+
+
+def simulate(arm, substrate, seed, use_cache=True):
+    """The (t, Out) trace for one arm/substrate/seed, cached on disk."""
+    key = _cache_key(arm, substrate, seed)
+    f = CACHE / f"{substrate}-{arm}-s{seed}-{key}.npz"
+    if use_cache and f.exists():
+        z = np.load(f)
+        return z["t"], z["out"]
+    t, out = _integrate(arm, substrate, seed)
+    if use_cache:
+        CACHE.mkdir(exist_ok=True)
+        np.savez_compressed(f, t=t, out=out)
+    return t, out
+
+
+def _integrate(arm, substrate, seed):
+    """The actual simulation. Everything above this is caching."""
     from circuitpharm.resp import PreBotC
     # `Compound(arm, ...)` sets NAME ONLY and leaves every subtype efficacy at 0.0, i.e. it
     # builds a drug-free compound wearing a drug's name. `from_profile` is the constructor
@@ -76,7 +120,12 @@ def run(arm, substrate, seed):
             b.record()
     A = b.arrays()
     m = A["t"] > cfg["warm_ms"]
-    t, out = A["t"][m], A["Out"][m]
+    return A["t"][m], A["Out"][m]
+
+
+def run(arm, substrate, seed, use_cache=True):
+    """Burst decomposition for one arm/substrate/seed, from a cached or fresh trace."""
+    t, out = simulate(arm, substrate, seed, use_cache=use_cache)
     d = detect_bursts(t, out, BANDS[substrate])
     d["mean"] = float(out.mean())
 
@@ -118,8 +167,11 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--seeds", type=int, default=3)
     ap.add_argument("--arms", default=",".join(DEFAULT_ARMS))
+    ap.add_argument("--no-cache", action="store_true",
+                    help="re-integrate instead of reading .trace-cache")
     a = ap.parse_args()
     seeds = list(range(a.seeds))
+    use_cache = not a.no_cache
     arms = [x.strip() for x in a.arms.split(",") if x.strip()]
 
     for substrate in ("lif", "cond"):
@@ -130,7 +182,7 @@ def main():
               f"window {(_SUBSTRATE[substrate]['duration_ms']-_SUBSTRATE[substrate]['warm_ms'])/1000:.0f} s")
         print("=" * 100)
 
-        ctrl = [run("control", substrate, s) for s in seeds]
+        ctrl = [run("control", substrate, s, use_cache) for s in seeds]
         bad = [(s, c["reason"]) for s, c in zip(seeds, ctrl) if not c["consistent"]]
         for s, why in bad:
             print(f"  CONTROL seed {s} EXCLUDED: {why}")
@@ -156,7 +208,7 @@ def main():
         for arm in arms:
             rows = []
             for s in ok_seeds:
-                d = run(arm, substrate, s)
+                d = run(arm, substrate, s, use_cache)
                 if not d["consistent"]:
                     print(f"  {arm:17s} seed {s} EXCLUDED: {d['reason'][:66]}")
                     continue
@@ -170,9 +222,16 @@ def main():
             if not rows:
                 print(f"  {arm:17s} no usable seed")
                 continue
-            M, A_, D, F, MT, B = (float(np.nanmean([r[i] for r in rows]))
-                                  for i in range(6))
+            mean_of = lambda i: float(np.nanmean([r[i] for r in rows]))
+            sd_of = lambda i: (float(np.nanstd([r[i] for r in rows], ddof=1))
+                               if len(rows) > 1 else np.nan)
+            M, A_, D, F, MT, B = (mean_of(i) for i in range(6))
             resid = M - (A_ + D + F)
+            # PER-SEED SPREAD, because a 3-seed mean quoted without it is recurring error E6
+            # -- the project has twice reported a single-seed or unspreaded number that the
+            # spread did not support. The dominance test below uses the mean, but the spread
+            # is printed beside every term so a term smaller than its own scatter is visible.
+            sdM, sdA, sdD, sdF = (sd_of(i) for i in range(4))
             # A modulator at full occupancy producing EXACTLY no change is a construction
             # error, not a result -- it is what a drug-free `Compound` looks like. Say so,
             # rather than letting the residual guard swallow it as "0 is not < 0.35*0".
@@ -193,9 +252,20 @@ def main():
             closes = abs(resid) < 0.35 * abs(M) if abs(M) > 1e-9 else False
             verdict = ("DO NOT QUOTE: residual too large" if not closes else
                        f"{up if val > 0 else down} bursts" if dominates else "mixed")
+            # A term smaller than its own seed scatter is not a measurement, whatever the
+            # dominance test says.
+            if np.isfinite(sdD) and abs(D) < sdD:
+                verdict += "  [duration term is within its own seed scatter]"
             print(f"  {arm:17s} {M:10.4f} = {A_:8.4f} + {D:9.4f} + {F:8.4f} | "
                   f"{resid:7.4f}  {verdict}")
-            print(f"  {'':17s} {'(raw mean':>10s} {MT:8.4f}{', floor':>9s} {B:8.4f})")
+            print(f"  {'':17s} {'+/- ':>10s}{sdM:6.4f}   {sdA:8.4f}   {sdD:9.4f}   "
+                  f"{sdF:8.4f}   (n={len(rows)} seeds, SD)")
+            # The floor's LOG change is meaningless when the control floor is ~0, which is
+            # the normal case for a quiescent inter-burst interval -- it reported dlog = 22.
+            floors = [r[5] for r in rows]
+            fl = (f"log {B:+.3f}" if np.isfinite(B) and abs(B) < 10.0
+                  else "control floor ~ 0, log undefined")
+            print(f"  {'':17s} raw mean log {MT:+.4f}; inter-burst floor {fl}")
         print()
 
     print("=" * 100)

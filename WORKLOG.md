@@ -3419,3 +3419,137 @@ Documented in `knowledge/09-strategic-roadmap.md` and linked as entry directive 
 
 **Anti-Complexity Rule:** Do not add biological states, unanchored conductance parameters, or larger circuit models unless they explain empirical data that simpler models cannot, or make distinct, falsifiable predictions.
 
+
+---
+
+# Session 9: a burst detector, and a retraction of my own audit
+
+## E22 — the synaptic pulse had three definitions, and my audit was wrong
+
+Found by accident. `scripts/decompose_burst_change.py` built a `Drug` through the circuit path
+and printed its tonic gain as **7.214** beside a manuscript asserting **7.876**. One quantity,
+two values, and nothing in the project had computed it twice until then.
+
+| | peak / clear | kon | koff | tonic headroom | phasic gain |
+|---|---|---|---|---|---|
+| `config.SYNAPTIC_PULSE` | 3000 µM / 1.00 ms | 0.0147 | 0.4692 | **210.7×** | **1.062×** |
+| `gabaa_kinetics` defaults | 1000 µM / 0.30 ms | 0.0112 | 0.3331 | 184.6× | 1.319× |
+
+Plus a **third** copy as an inline literal in `cpg.Drug.from_kinetics`, matching config's.
+Every pharmacology consumer passes config's pulse explicitly, so the module defaults were
+reached by exactly one caller in the whole project: `scripts/paper_numbers.py`, which I wrote
+to generate the manuscript's tables. **The manuscript I had "corrected" was the only document
+describing a calibration nothing else used.**
+
+**So the original draft was right.** On the config pulse it reproduces to every digit — `kon`
+0.0146842, `koff` 0.469177, `beta` 0.559023, `alpha` 0.107891, `Kd` 31.95, `E` 5.1814,
+`c_affinity` 2.7854, tonic gain 7.2142, phasic gain 1.0623, headroom 210.74, τ ratio 1.6564,
+charge 1.6552 — and **every cell of its sensitivity table** (351.1, 117.4, 229.8, 180.9, 54.7,
+829.7, 3295.5, cap crossing 5.40 µM). Its `c = 2.79 → s_max = 2.50` was right. Its `> 50×`
+across 0.2–0.8 µM was right, and I had "corrected" it to `> 48×`.
+
+**Three errors in my audit:**
+
+1. `git log -S"SYNAPTIC_PEAK_UM = 3000"` returns nothing because that symbol never held the
+   value. **I read the absence of a string as the absence of a value.**
+2. I compared the draft against the wrong one of two calibrations, without noticing there were
+   two.
+3. I claimed `Po_max = 0.84` "would have been rejected" by `FIT_RANGES` [0.70, 0.80]. Both
+   calibrations hit the 0.75 target exactly; 0.8382 is β/(α+β), a different quantity. The
+   *conflation* finding was real, the supporting argument was not.
+
+**What my audit got right and which stands:** the non-existent commit hash; the P_o,max
+conflation; the falsification intervals, two of four violated by the model *on the draft's own
+calibration* (0.1 µM predicts 6.98–7.66× against a pre-registered > 15×; 3.0 µM gives
+3.00–3.10× against < 3.0×); five miscited and three unresolvable references; six claim-support
+failures; the NOT QUOTABLE statistics in a headline table; the "multiscale" mislabel; the
+missing substrate-independence result.
+
+**Fix:** `gabaa_kinetics` imports the pulse from `config`, `cpg`'s literal is gone, and two
+tests pin the single definition — including one that fails if any source file outside
+`config.py` hard-codes `peak_um=` again, and one that requires the kinetic module and the
+circuit path to agree on tonic gain to 1%. Manuscript regenerated on the unified calibration
+(99 count-verified substitutions), retraction written into both
+`knowledge/07-paper-review.md` and the manuscript's corrections record.
+
+**The lesson is the project's own, and I had written it down myself.** A value duplicated
+across locations diverges, with a plausible rather than loud symptom. That sentence is in
+`substrate.py`, in a memory file, and in this worklog — and I then diagnosed a three-way
+duplication as fabrication. The check that catches it is the one I ran by accident: compute
+the quantity twice, by different paths, and compare.
+
+## `circuitpharm.bursts` — and the question it closes
+
+`cpg.burst_metrics` reported 5.63 Hz where the FFT said 0.302 Hz. Three causes, all fine on the
+LIF cell and wrong on a conductance cell: one threshold with no hysteresis, a threshold
+referenced to `max()`, and no minimum inter-burst interval or duration. It measured intra-burst
+ripple and called it rhythm — the fourth inherited measurement protocol to fail on this
+substrate.
+
+The replacement derives its time constants from the preparation's own validity band
+(`min_gap = (1 − duty_max)/f_hi`, `min_dur = duty_min/f_hi`), uses a Schmitt trigger, and
+**returns the FFT peak and a `consistent` flag with every result** — the 19× error was invisible
+because nothing compared the two numbers.
+
+On synthetic traces with known burst count:
+
+| case | truth | new | old |
+|---|---|---|---|
+| clean square | 0.300 Hz | 0.3000 | 0.3000 |
+| 45% intra-burst ripple | 0.300 | 0.3000 | **12.80** |
+| 80% ripple | 0.300 | 0.3001 | **5.40** |
+| starts mid-burst | 0.300 | 0.3000 | **13.60** |
+| 0.08 Hz | 0.080 | 0.0800 | **13.79** |
+| 0.90 Hz | 0.900 | 0.9000 | **13.60** |
+
+A detail that retroactively validates an earlier judgement: the old detector's **duty cycle was
+approximately right** (0.226–0.571 against truth) even where its period was 40× wrong, because
+duration and period inflate together and the ratio survives. That is exactly why the
+duty-cycle result was kept and the frequency result retracted.
+
+### The answer: longer bursts, not more bursts
+
+`scripts/decompose_burst_change.py`. Mean output above the inter-burst floor decomposes exactly
+in logs, since `mean − floor = elevation × duration × frequency`. Non-selective BZ on the
+conductance substrate, 4 seeds:
+
+| term | Δlog ± SD | factor | σ |
+|---|---|---|---|
+| **burst duration** | **+0.5437 ± 0.0861** | **×1.72** | **6.3** |
+| burst elevation | −0.1218 ± 0.0402 | ×0.885 | 3.0 |
+| burst frequency | −0.0571 ± 0.1218 | ×0.944 | **0.5 — unresolved** |
+| measured Δlog(mean − floor) | +0.3563 ± 0.0703 | ×1.43 | residual **2.4%** |
+
+**The duty-cycle increase is a duration effect alone**, 6.3σ, with frequency inside its own seed
+scatter. Mechanistically coherent: burst termination on the Butera cell depends on I_NaP
+inactivation accumulating during the burst, so added shunting slows the accumulation and the
+burst runs longer. The LIF cell terminates on spike-triggered adaptation instead and shows no
+duration increase — its −0.1248 ± 0.0054 is distributed across all three terms with a 34%
+residual, reported as **mixed**.
+
+**And it corroborates the retraction.** Frequency being unresolved is what the earlier
+resolution-grounds retraction predicted (differences at or below one FFT bin). A spectral peak
+and a time-domain burst count now agree that frequency does not move.
+
+### Three analysis bugs of my own, caught by three different guards
+
+1. `Compound(arm, occupancy=1.0)` sets **name only** and leaves every subtype efficacy at 0.0 —
+   a drug-free compound wearing a drug's name. Produced a decomposition in which every term was
+   exactly 0.0000. Now an explicit check: a modulator at full occupancy producing *exactly* no
+   change is a construction error, not a result.
+2. The decomposition did not close — 55% residual — because I decomposed `log(mean)` using
+   `(p95 − p5)` as amplitude. `mean` includes the inter-burst floor, which no burst term can
+   account for. Decomposing `log(mean − floor)` with elevation measured inside bursts closes to
+   2.4%. **My own residual guard refused to quote a result whose direction was in fact
+   unambiguous**, which is the guard working.
+3. The verdict label took the largest term by absolute value and called it "longer bursts" even
+   when negative, so a shortening read as a lengthening. Signed labels now.
+
+### Wall-clock, and the fix
+
+The user asked whether the long waits were acceptable. Half of it was real compute — a
+conductance simulation is 600k integration steps at ~4× the LIF's cost — and half was my own
+waste: I re-simulated three times to fix **analysis** bugs, which needed no new integration
+steps at all. `scripts/decompose_burst_change.py` now caches traces in `.trace-cache/`, keyed on
+arm, substrate, seed, duration, warm-up, both operating points **and the sha256 of `resp.py`**,
+so a stale hit is impossible while analysis iteration costs seconds.

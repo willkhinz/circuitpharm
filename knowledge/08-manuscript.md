@@ -933,11 +933,49 @@ Confirmed by two independent methods (FFT and direct burst counting over 180 s /
 So the effect is a change in *how much of the time* the network is active, with burst height
 essentially unchanged on both substrates.
 
-**3. What is not established.** Whether that is *more* bursts or *longer* bursts. The burst
-detector reported 5.63 Hz on the conductance substrate against the FFT's 0.302 Hz — a 19-fold
-discrepancy — because a 0.35 × max threshold applied after a 20 ms rate low-pass fires
-repeatedly *within* a single burst. A burst-level detector matched to this substrate is
-outstanding work.
+**3. The change is in burst DURATION, not burst rate.** This was previously unresolved,
+because the only burst detector available reported 5.63 Hz against the FFT's 0.302 Hz — a
+19-fold disagreement traceable to a single threshold with no hysteresis and no minimum
+inter-burst interval, which re-triggers on intra-burst ripple. `circuitpharm.bursts` replaces
+it with a Schmitt trigger, a minimum silent interval derived from the preparation's own
+validity band, and an FFT cross-check returned with every result; on synthetic traces of known
+burst count it recovers the true frequency to within 1.5% where the previous detector erred by
+15–90×.
+
+Mean output above the inter-burst floor decomposes exactly in logs, since
+mean − floor = elevation × duration × frequency:
+
+| term | Δlog (4 seeds, ± SD) | factor | significance |
+|---|---|---|---|
+| **burst duration** | **+0.5437 ± 0.0861** | **×1.72** | **6.3 σ** |
+| burst elevation | −0.1218 ± 0.0402 | ×0.885 | 3.0 σ |
+| burst frequency | −0.0571 ± 0.1218 | ×0.944 | **0.5 σ — not resolved** |
+| *sum* | *+0.3648* | | |
+| measured Δlog(mean − floor) | +0.3563 ± 0.0703 | ×1.43 | residual **2.4%** |
+
+So on the conductance substrate the non-selective benzodiazepine **prolongs each inspiratory
+burst by ~72% while leaving burst frequency unchanged within seed scatter**, with each burst
+slightly weaker per unit time. The duration term is 6.3 times its own seed SD and nearly ten
+times the frequency term, whose own scatter exceeds its mean — so "fewer bursts" is *not*
+established, and the duty-cycle increase is a duration effect alone. The decomposition closes
+to 2.4%, so the terms may be read as stated.
+
+This is mechanistically coherent with the substrate difference. Burst termination on the Butera
+cell depends on persistent-sodium inactivation accumulating during the burst; added GABA-A
+shunting conductance slows depolarisation, so inactivation accumulates more slowly and the
+burst runs longer. The LIF cell has no such mechanism — its bursts terminate on spike-triggered
+adaptation with a 400 ms time constant — and correspondingly shows no duration increase.
+
+On the LIF substrate the same arm gives Δlog(mean − floor) = **−0.1248 ± 0.0054**, distributed
+across all three terms (elevation −0.0746 ± 0.0039, duration −0.0554 ± 0.0097, frequency
++0.0478 ± 0.0067) with a 34% residual. No term dominates, so that effect is reported as
+**mixed** and no single-mechanism account of it is offered.
+
+**Consistency with a retracted claim.** The frequency term being unresolved is what the
+retraction in point 4 below predicted: the frequency differences were at or below one FFT bin.
+Two independent measurements — a spectral peak and a time-domain burst count — now agree that
+frequency does not move, which is the outcome that makes the retraction right rather than
+merely cautious.
 
 **4. A mechanism we retracted.** We initially attributed the flip to GABA-A shunting shortening
 bursts → less I_NaP inactivation → faster recovery → higher rate, citing frequency readings as
@@ -1082,10 +1120,10 @@ Ordered by how much they constrain the conclusions, worst first.
 * The non-selective benzodiazepine **reverses sign** on respiratory output between the LIF and
   conductance substrates (§4.6), and it is the denominator of every R in Table 6. The
   subtype-selective *ordering* is unaffected; the magnitudes inherit the instability.
-* Whether the sign flip reflects more bursts or longer bursts is **not established**: the burst
-  detector reported 5.63 Hz against the FFT's 0.302 Hz, a 19-fold discrepancy traceable to a
-  0.35 × max threshold firing repeatedly within a single burst. A substrate-matched burst
-  detector is outstanding.
+* The sign flip is a **burst-duration** effect (×1.72, 6.3 σ over 4 seeds) with burst
+  frequency unresolved (0.5 σ), established with a substrate-matched detector (§4.6). What
+  remains open is the LIF arm, where no term dominates and the log decomposition leaves a 34%
+  residual, so no single-mechanism account of that effect is offered.
 * A mechanism we initially proposed for the flip was **retracted on resolution grounds**: the
   supporting frequency differences were 1.02 FFT bins (conductance) and below one bin (LIF). The
   mean, duty-cycle and peak results survive; the mechanistic account does not.
