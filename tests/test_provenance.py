@@ -147,7 +147,13 @@ def test_the_provenance_gap_is_what_the_audit_recorded():
         f"manuscript updated too.")
 
     a = audit()
-    assert a["total"] == 45, f"parameter count changed to {a['total']}; re-run the audit"
+    # 45 -> 57 when P6-1 registered the twelve WAVEFORM shape parameters. They belong in the
+    # audit for a reason that is not bookkeeping: a CHARGE quantity is a property of the
+    # agonist time course as much as of the receptor, so a spillover amplitude nobody
+    # sourced propagates into every charge ratio downstream of it -- and before this it
+    # appeared in no parameter table at all. None of the twelve is QUANTITATIVE and three
+    # are outright GUESSes.
+    assert a["total"] == 57, f"parameter count changed to {a['total']}; re-run the audit"
     assert a["sourced"] == 7, (
         f"{a['sourced']} parameters now name a source, not 7. If this went UP, update this "
         f"pin and knowledge/06-source-provenance.md. If it went DOWN, something lost its "
@@ -163,18 +169,24 @@ def test_the_provenance_gap_is_what_the_audit_recorded():
         f"audit's coverage grew -- but it must be recorded in "
         f"knowledge/06-source-provenance.md and in this docstring, not just absorbed by "
         f"the pin.")
-    assert a["by_basis"][Basis.FROM_QUALITATIVE.value] == 7
-    assert a["by_basis"][Basis.GUESS.value] == 2, (
-        "2 GUESS entries: EXTRASYN['eps'] (labelled a guess in subtypes.py itself) and "
+    assert a["by_basis"][Basis.FROM_QUALITATIVE.value] == 12
+    assert a["by_basis"][Basis.GUESS.value] == 5, (
+        "5 GUESS entries: EXTRASYN['eps'] (labelled a guess in subtypes.py itself), "
         "ExtendedDesensitizationModel.pam_desens_factor (neither the 0.1 coefficient nor "
-        "the linear form has a source).")
+        "the linear form has a source), and three waveform shape parameters -- "
+        "`weight_fast`, `spillover_peak_um` and `tau_spillover_ms`. The last two are the "
+        "ones to worry about: they set how much agonist an extrasynaptic receptor actually "
+        "sees, which IS the mechanism of the tonic arm, and neither has any source.")
     assert a["by_basis"][Basis.FITTED.value] == 3, (
         "3 FITTED: the GAIN_RATIO prior, plus Model A's po_max and tau_deact_ms, which are "
         "the project's own fit targets rather than independent measurements.")
-    assert a["by_basis"][Basis.CONVENTION.value] == 1, (
-        "1 CONVENTION: gabaa_kinetics.FIT_FIXED_ALPHA. A convention is a legitimate basis "
-        "-- it is a declared choice rather than an unsourced guess -- but it must stay "
-        "countable, because this one determines every derived kinetic number.")
+    assert a["by_basis"][Basis.CONVENTION.value] == 5, (
+        "5 CONVENTIONs: gabaa_kinetics.FIT_FIXED_ALPHA, plus four waveform/protocol "
+        "choices (synaptic rise time, the pulse-train frequencies, and the 300 ms "
+        "application and 600-sample grid that define the PEAK observable). A convention is "
+        "a legitimate basis -- a declared choice rather than an unsourced guess -- but "
+        "each must stay countable: FIT_FIXED_ALPHA determines every derived kinetic "
+        "number, and the 300 ms application IS the definition of this project's PEAK.")
 
 
 def test_the_most_consequential_number_is_flagged_unsourced():

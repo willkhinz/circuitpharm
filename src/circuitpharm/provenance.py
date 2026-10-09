@@ -283,9 +283,77 @@ DATASET_PROV = {
         "NOT that paper's number. The reference survives under `motivated_by`.")),
 }
 
+#: WAVEFORM SHAPE PARAMETERS (roadmap P6-1). Every number that shapes an agonist
+#: time course, with what it rests on -- because a CHARGE quantity is a property of the
+#: waveform as much as of the receptor, and a spillover amplitude nobody sourced propagates
+#: into every charge ratio downstream of it without appearing in any parameter table.
+#:
+#: NOT ONE OF THESE IS QUANTITATIVE. The two that matter most are the spillover amplitude
+#: and its tau: they set how much agonist an extrasynaptic receptor actually sees, which is
+#: the whole mechanism of the tonic arm.
+WAVEFORM_PROV = {
+    ("synaptic_transient", "peak_um"): Record(Basis.FROM_QUALITATIVE, "", (
+        "1000 uM cleft peak. The 0.3-1 mM range is standard for a central synapse and is "
+        "qualitatively well established, but no single measurement is cited for 1000 "
+        "specifically. The fit's anchors are macroscopic and this value enters through "
+        "them, so changing it moves the fitted rates.")),
+    ("synaptic_transient", "rise_ms"): Record(Basis.CONVENTION, "", (
+        "0.10 ms. A declared convention standing in for the solution-exchange time of a "
+        "fast-perfusion experiment; the tau_rise -> tau_clear limit is handled explicitly "
+        "(P0-2) because the closed form is singular there.")),
+    ("synaptic_transient", "clear_ms"): Record(Basis.FROM_QUALITATIVE, "", (
+        "1.00 ms single clearance tau. Kept as the documented special case of the "
+        "biexponential form so existing results reproduce.")),
+    ("synaptic_transient_biexp_clearance", "clear_fast_ms"): Record(
+        Basis.FROM_QUALITATIVE, "", (
+        "1.0 ms, the fast component the technical spec calls for. Diffusion out of the "
+        "cleft is fast and this is the right order; the digit is not measured.")),
+    ("synaptic_transient_biexp_clearance", "clear_slow_ms"): Record(
+        Basis.FROM_QUALITATIVE, "", (
+        "20.0 ms, mid-range of the 10-30 ms the spec gives for the slow component. The "
+        "slow tail is what carries most of the charge -- a transient with it carries more "
+        "than twice the integral of one without -- so this is load-bearing for every "
+        "CHARGE number and is UNSOURCED in its digit.")),
+    ("synaptic_transient_biexp_clearance", "weight_fast"): Record(Basis.GUESS, "", (
+        "0.80. No source at all. It trades the fast component against the slow one and "
+        "therefore sets the charge directly; 0.8 was chosen because it makes the fast "
+        "component dominant, which is qualitatively right and quantitatively arbitrary.")),
+    ("pulse_train", "freq_hz"): Record(Basis.CONVENTION, "", (
+        "10 / 50 / 100 Hz, the three frequencies the design asks for. A protocol choice, "
+        "not a measurement -- and the three are chosen to span the range over which this "
+        "scheme's paired-pulse depression changes threefold.")),
+    ("ambient_with_spillover", "ambient_um"): Record(Basis.FROM_QUALITATIVE, "", (
+        "0.40 uM, the midpoint of the 0.2-0.8 uM range reported for cortex and "
+        "hippocampus. See config.AMBIENT_GABA_UM: the range is attributable, the midpoint "
+        "is a choice, and the asymptotic headroom moves from 482x to 33x across it -- so "
+        "this one number spans more than a decade of the headline result.")),
+    ("ambient_with_spillover", "spillover_peak_um"): Record(Basis.GUESS, "", (
+        "2.0 uM above baseline. NO SOURCE. Spillover amplitude at an extrasynaptic "
+        "receptor depends on release probability, uptake, geometry and distance, none of "
+        "which this model represents; 2.0 uM is five times ambient and was chosen to be "
+        "visible rather than measured. Any charge ratio computed with spillover on "
+        "inherits it.")),
+    ("ambient_with_spillover", "tau_spillover_ms"): Record(Basis.GUESS, "", (
+        "30.0 ms. NO SOURCE. Longer than the synaptic clearance because extrasynaptic "
+        "clearance is diffusion- and uptake-limited rather than cleft-limited, which is "
+        "the correct direction and no more than that.")),
+    ("peak_dose_response", "application_ms"): Record(Basis.CONVENTION, "", (
+        "300 ms, shared with gabaa_kinetics.Scheme.po_peak. NOT arbitrary and NOT to be "
+        "changed: a 1 ms step is binding-rate-limited at low agonist, which inflates the "
+        "fitted EC50, forces an implausibly high microscopic affinity and compresses every "
+        "derived PAM gain. Published concentration-response curves come from applications "
+        "of hundreds of ms.")),
+    ("peak_dose_response", "n_grid"): Record(Basis.CONVENTION, "", (
+        "600 time samples, held at the value the solve_ivp implementation used so that "
+        "replacing it with an exact propagator did not move any PEAK number for a reason "
+        "unrelated to the model. The peak is a maximum over these samples.")),
+}
+
+
 ALL = {"REGIONS": REGIONS_PROV, "EXTRASYN": EXTRASYN_PROV,
        "SUBJECTIVE_WEIGHT": SUBJECTIVE_PROV, "PRIORS": PRIOR_PROV,
-       "MODEL_PARAMS": MODEL_PARAM_PROV, "DATASETS": DATASET_PROV}
+       "MODEL_PARAMS": MODEL_PARAM_PROV, "DATASETS": DATASET_PROV,
+       "WAVEFORMS": WAVEFORM_PROV}
 
 
 #: The tables that feed the SELECTIVITY RANKING -- the project's one VALIDATED result.
