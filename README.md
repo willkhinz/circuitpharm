@@ -164,6 +164,7 @@ tests/                see above
 scripts/              analysis and calibration runs (see WORKLOG.md for which are current)
 WORKLOG.md            append-only development record, including the E1-E12 catalogue
 KNOWLEDGE.md          project state, decisions, and the verdict on what is achievable
+knowledge/09-strategic-roadmap.md  core research manifesto: six advancements to rigorous pharmacology
 ```
 
 ## Reading the development record

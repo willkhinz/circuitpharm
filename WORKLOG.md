@@ -3399,3 +3399,23 @@ looks at pipe-delimited rows rather than surrounding prose.
 Worth recording as a pattern in its own right: a test written to stop a document drifting from
 the code will, if written bluntly, stop the document from saying true things about its own
 history. The second failure mode is less obvious than the first and I hit it repeatedly.
+
+---
+
+## 2026-10-08 — Strategic Research Manifesto: From Numerical Phenomenon to Rigorous Neuropharmacology
+
+Documented in `knowledge/09-strategic-roadmap.md` and linked as entry directive in `KNOWLEDGE.md`.
+
+**The New Target Directive:**
+> Move from *"a Markov model produces a surprising difference between phasic and tonic modulation"* to *"a rigorously tested model explains when that difference should occur, identifies the kinetic mechanisms responsible, and makes predictions that competing models cannot."*
+
+**The Six Strategic Priorities for All Future Agents:**
+1. **Identifiable Mechanisms (Essential):** Disentangle Occupancy, Kinetic redistribution, and Operating point saturation ($P_{\text{o,max}} - P_0$) rather than reporting a lumped output.
+2. **Empirical Data Fitting & Identifiability (Essential):** Fit single-channel and macroscopic patch-clamp datasets; profile likelihood / Bayesian MCMC parameter uncertainty; prove the phasic-tonic divergence holds across the data-consistent posterior ensemble.
+3. **Realistic GABA Waveforms (High):** Drive kinetics with time-varying synaptic transients (rise/decay), trains of pulses, and fluctuating ambient baselines; evaluate charge transfer $\int I\,dt$, decay $\tau$, and recovery.
+4. **Competing Model Hypotheses (Essential):** Contrast Model A (Scalar ceiling), Model B (Kinetic allostery without artificial caps), and Model C (Extended desensitization / state-dependent affinity); identify out-of-sample discriminating protocols.
+5. **Robust Predictive Distributions (High):** Decompose the 184.6-fold asymptotic dynamic range into theoretical vs. pharmacologically reachable vs. physiological current impacts with full confidence intervals.
+6. **Optimal Discriminating Experiment (Transformative):** Formulate Bayesian optimal experimental designs predicting out-of-sample current waveforms under pre-registered falsification criteria.
+
+**Anti-Complexity Rule:** Do not add biological states, unanchored conductance parameters, or larger circuit models unless they explain empirical data that simpler models cannot, or make distinct, falsifiable predictions.
+

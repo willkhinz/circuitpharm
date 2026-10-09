@@ -1,7 +1,8 @@
 # Alcohol-Substitute Project — Knowledge Base
 
-**Entry point for any agent picking this up.** Read this file first, then
-`knowledge/02-reasoning-trail.md` (it will stop you re-deriving several dead ends).
+**Entry point for any agent picking this up.** Read this file first, followed by:
+1. `knowledge/09-strategic-roadmap.md` — **MANDATORY STRATEGIC DIRECTIVE**: The 6 prioritized advancements transforming the GABA-A paper from a numerical result to a rigorous, data-constrained, falsifiable theory.
+2. `knowledge/02-reasoning-trail.md` — Rationale trail preventing re-deriving known dead ends.
 
 ---
 
