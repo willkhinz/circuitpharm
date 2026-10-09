@@ -3232,3 +3232,81 @@ diverges, and the symptom is plausible rather than loud: a spinal circuit that s
 without adaptation, a paper whose numbers are internally consistent and match no commit. The
 answer in both cases was to delete the second copy — `g_adapt` has no default, and the
 manuscript's tables are printed by `scripts/paper_numbers.py` rather than typed.
+
+## Regenerating the manuscript on the 0.75 anchor
+
+Decision: **keep `FIT_TARGETS['po_max'] = 0.75`** and bring the manuscript to the code, rather
+than moving the code to the draft's 0.84. 0.84 sits outside the module's own declared
+`FIT_RANGES` of [0.70, 0.80], so adopting it would have meant widening a validation range to
+accommodate a number that arrived from outside the repository.
+
+Output: `knowledge/08-manuscript.md`, with every figure emitted by `scripts/paper_numbers.py`
+at tag **`manuscript-v2`** (commit `1c0faa5`) — a tag created for the purpose, since the draft's
+`c8f17a9` resolves to nothing.
+
+### A conflation the review had not caught
+
+The draft used one number for two quantities, and so did my review of it. `po_max()` in the code
+is `po_peak(1e4)` — the **simulated** peak during a 300 ms saturating step, with desensitisation
+competing throughout the rise — which is **0.7500**. The **analytic** gating bound β/(α+β) is
+**0.8282**. The draft wrote "P_o,max = β/(α+β) ≈ 0.84" and used 0.8382 for both. They differ by
+10%, the analytic bound is never attained, and Table 1 of the regenerated manuscript now lists
+them as separate rows with the distinction spelled out. Related: the analytic equilibrium
+midpoint [G]₁/₂ = 18.43 µM against the simulated peak EC₅₀ = 20.00 µM, an 8% gap of the same kind.
+
+### What changed, beyond the numbers
+
+* **§5.2 falsification rules rewritten against the reachable column**, with the asymptote
+  printed beside it so the two cannot be confused again. Added two rules the draft lacked, both
+  stronger than the original because they test the mechanism rather than the fit: R_PAM must
+  decline monotonically with ambient GABA (follows from the topology, unrescuable by refitting),
+  and R_PAM at 0.1 µM must not exceed its 0.4 µM value by more than ~1.2× or a gating component
+  should be suspected.
+* **Table 6 drops the median and 95th-percentile columns.** They now appear only in §4.4.3 as a
+  prior-sensitivity diagnostic, with the five-fold swing (alogabat 95th: 84.85 → 14.31 on one
+  prior assumption) stated as the reason.
+* **§4.4 retitled "Algebraic selectivity index"**, with a scope note that the script imports
+  `circuitpharm.subtypes` and nothing else.
+* **Table 5 carries a per-cell provenance column** generated from `provenance.py`: 7 UNSOURCED,
+  1 GUESS, 7 FROM_QUALITATIVE, **0 QUANTITATIVE** over 15 cells.
+* **§4.6 added** — substrate independence (Spearman +1.0000) and the BZ sign flip, including the
+  retracted frequency mechanism and the burst-detector limitation.
+* **§5.3 expanded** to four categories, with the A4 riluzole failure, the unpublished coupling
+  weights, the in vitro band, and the reference-arm instability all declared.
+* **References: 5 corrected, 3 withdrawn.** The withdrawn ones are listed in a dedicated section
+  with the parameters they carried now labelled UNSOURCED, rather than quietly substituting
+  plausible replacements. MP-III-022's real primary source turned out to be Stamenić et al.
+  (2016) *Eur. J. Pharmacol.* 791:433–443, ten years later than the draft's citation.
+* ρ = 6.00 is now reported honestly as sitting *at* the peak-based ratio (5.97) rather than
+  between peak and charge, which is what it did under the draft's parameterisation (6.79/4.36).
+
+### My own error, caught by my own test
+
+`tests/test_manuscript_consistency.py` greps the manuscript for the decimal representation of
+each figure, computed fresh. Ten checks. Two failed on first run and both were mine:
+
+1. An over-naive assertion that `"R_max > 15"` never appears — but §5.2 legitimately **quotes**
+   the discredited criterion while retracting it. Rewritten to require every occurrence to sit
+   within 400 characters of the retraction, and to be absent from the pre-registered rules block.
+2. A provenance assertion written from the manuscript's own prose ("nine of fifteen UNSOURCED")
+   rather than from the audit. **The prose was wrong** — it is 7 UNSOURCED, 1 GUESS,
+   7 FROM_QUALITATIVE. A test that trusts the document it checks checks nothing, so the test now
+   derives every expected count from `REGIONS_PROV`/`EXTRASYN_PROV` and asserts the table
+   reprints them exactly. Fixed three places in the manuscript where I had written "nine".
+
+That second one is the same failure I spent this session documenting, committed inside the test
+written to prevent it. Worth recording for that reason alone.
+
+Suite: **276 passed, 0 failed.**
+
+### Still outstanding
+
+* Replace the UNSOURCED `REGIONS`/`EXTRASYN`/`SUBJECTIVE_WEIGHT` point values with sourced
+  ranges and re-run the robustness analysis. This is the highest-value remaining work, and §5.3
+  says so.
+* `KAPPA = 15.0` governs the whole uncertainty model and has no source.
+* Read `pbc_alpha` (403) and `a5_disc` properly; resolve the 12 UNRESOLVED sources in the
+  registry; `ganaxolone`'s mis-citation.
+* Burst-level detector for the conductance substrate, to settle whether the BZ sign flip is
+  more bursts or longer bursts.
+* Anchor `COND_LOCO_OP` and `COND_SPINAL_OP`.
