@@ -118,7 +118,12 @@ def compartments(s):
             ("tonic Po (0.40 uM)", s.po_tonic(gk.AMBIENT_UM),
              s.pam(affinity=c).po_tonic(gk.AMBIENT_UM), d["tonic_gain"])]
     for nm, bv, mv, rt in rows:
-        out.append(f"{nm:26s} {bv:12.6f} {mv:12.6f} {rt:9.3f}x")
+        # Six decimals for exactness, three in parentheses because that is the precision the
+        # manuscript's Table 4 quotes for the absolute values, and verify_manuscript.py
+        # matches by substring. Same rule as the derived constants above: print what the
+        # document says. Found by that script rejecting a correctly rounded 24.847.
+        out.append(f"{nm:26s} {bv:12.6f} {mv:12.6f} {rt:9.3f}x"
+                   f"   ({bv:.3f} -> {mv:.3f})")
     out.append(_rule())
     out.append(f"{'synaptic MAX headroom':26s} {'':12s} {'':12s} "
                f"{d['phasic_headroom']:9.3f}x")
