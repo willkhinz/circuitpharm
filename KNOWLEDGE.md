@@ -2,7 +2,8 @@
 
 **Entry point for any agent picking this up.** Read this file first, followed by:
 1. `knowledge/09-strategic-roadmap.md` — **MANDATORY STRATEGIC DIRECTIVE**: The 6 prioritized advancements transforming the GABA-A paper from a numerical result to a rigorous, data-constrained, falsifiable theory.
-2. `knowledge/02-reasoning-trail.md` — Rationale trail preventing re-deriving known dead ends.
+2. `knowledge/10-model-technical-spec.md` — **TECHNICAL MODEL SPECIFICATION**: Concrete architecture, competing models (A/B/C), decomposition, MCMC identifiability, and waveform protocols.
+3. `knowledge/02-reasoning-trail.md` — Rationale trail preventing re-deriving known dead ends.
 
 ---
 
