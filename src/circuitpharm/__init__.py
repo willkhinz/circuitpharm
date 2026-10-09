@@ -89,6 +89,13 @@ from .provenance import (  # noqa: E402
     audit as provenance_audit, report as provenance_report,
 )
 
+# Next-generation receptor model hierarchy & electrophysiological protocols
+from .models import (  # noqa: E402
+    ReceptorModel, WaveformResult,
+    OperationalScalarModel, KineticAllosteryModel, ExtendedDesensitizationModel,
+)
+from .dynamic_range import DynamicRangeEvaluation, evaluate_dynamic_range  # noqa: E402
+
 __version__ = "0.1.0"
 
 
@@ -103,5 +110,8 @@ __all__ = [
     "ProvenanceMismatch", "isolated", "run_isolated", "spike_regime",
     "PARAM_PROVENANCE", "Basis", "ProvenanceRecord", "provenance_audit",
     "provenance_report",
+    "ReceptorModel", "WaveformResult",
+    "OperationalScalarModel", "KineticAllosteryModel", "ExtendedDesensitizationModel",
+    "DynamicRangeEvaluation", "evaluate_dynamic_range",
     "__version__",
 ]

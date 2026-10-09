@@ -151,6 +151,14 @@ class Scheme:
         """
         return replace(self, koff=self.koff / affinity, beta=self.beta * gating)
 
+    def to_model(self) -> "KineticAllosteryModel":
+        """Convert to the polymorphic KineticAllosteryModel interface."""
+        from .models.kinetic_jw95 import KineticAllosteryModel
+        return KineticAllosteryModel(
+            kon=self.kon, koff=self.koff, beta=self.beta,
+            alpha=self.alpha, d=self.d, r=self.r,
+        )
+
     # ---- machinery -------------------------------------------------------------------
     def Q(self, conc_um: float) -> np.ndarray:
         """Transition-rate matrix. Q[i,j] = rate i->j for i!=j; rows sum to zero."""
