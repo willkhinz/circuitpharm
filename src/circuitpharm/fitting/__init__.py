@@ -64,6 +64,22 @@ from .likelihood import (
     make_log_likelihood,
     score_holdout,
 )
+from .comparison import (
+    FIT_CONVENTIONS,
+    MODEL_SPECS,
+    ComparisonResult,
+    CVScore,
+    CVVerdict,
+    ModelFit,
+    ModelSpec,
+    RecoveryCheck,
+    blocked_cv,
+    compare_models,
+    comparison_report,
+    fit_one,
+    recovery_check,
+    resolve_cv,
+)
 from .posterior import (
     AgreementResult,
     PosteriorResult,
@@ -138,4 +154,19 @@ __all__ = [
     "agreement_with_profiles",
     "posterior_report",
     "save_chain",
+    # P5: model comparison
+    "MODEL_SPECS",
+    "FIT_CONVENTIONS",
+    "ModelSpec",
+    "ModelFit",
+    "CVScore",
+    "CVVerdict",
+    "ComparisonResult",
+    "RecoveryCheck",
+    "fit_one",
+    "blocked_cv",
+    "resolve_cv",
+    "compare_models",
+    "comparison_report",
+    "recovery_check",
 ]
