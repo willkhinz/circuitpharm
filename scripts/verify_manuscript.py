@@ -53,7 +53,7 @@ CATEGORIES = {
         "31.95", "5.1814", "0.193",
     ],
     "phasic trace: peak, deactivation, integrated open probability": [
-        "0.668282", "0.709902", "1.062", "1.656", "1.655", "1.124", "24.846",
+        "0.668282", "0.709902", "1.062", "1.656", "1.655", "1.124", "24.847",
     ],
     "steady-state asymptote and finite-modulator tonic gains": [
         "0.166169", "210.7", "7.214", "2.7854",
