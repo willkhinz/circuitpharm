@@ -12,7 +12,7 @@ jobs:
   # outside the guard. It passed on a developer machine purely because MuJoCo happened to
   # be present there. So the lean install gets its own job.
   lean:
-    timeout-minutes: 30
+    timeout-minutes: 45
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -54,7 +54,7 @@ jobs:
   # parity tests actually run instead of skipping. This is the job that exercises the
   # published phenotypes.
   full:
-    timeout-minutes: 45
+    timeout-minutes: 60
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -79,11 +79,22 @@ jobs:
         # reads state. Setting MUJOCO_GL=osmesa would instead ADD a failure mode, since it
         # needs libosmesa6 present on the runner. (This project already hit the mirror of
         # that: MUJOCO_GL=osmesa is an invalid backend on macOS and raises at import.)
-        run: pytest -q -rs --cov --cov-report=term --cov-fail-under=90
-      - name: Assert nothing was skipped
+        #
+        # ONE RUN, NOT TWO. The skip check used to re-run the whole suite, which doubled
+        # the job for a grep. That was already wasteful and became a timeout risk when P4-P6
+        # added ~10 minutes of chains, recovery checks and interval calibration. The run's
+        # own `-rs` output is captured here and the next step greps it.
         run: |
-          pytest -q -rs 2>&1 | tee /tmp/out.txt
-          if grep -qi "skipped" /tmp/out.txt; then
+          set -o pipefail
+          pytest -q -rs --cov --cov-report=term --cov-fail-under=90 2>&1 | tee /tmp/out.txt
+      - name: Assert nothing was skipped
+        # `-rs` lists skip reasons, so a skip is visible in the summary above. On the FULL
+        # install there is no legitimate reason to skip: every optional dependency is
+        # present, so a skip means one failed to import.
+        run: |
+          if grep -qiE "^SKIPPED|[0-9]+ skipped" /tmp/out.txt; then
             echo "Tests skipped on the FULL install -- an optional dependency is missing"
+            grep -iE "^SKIPPED|skipped" /tmp/out.txt
             exit 1
           fi
+          echo "nothing skipped"

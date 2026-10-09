@@ -328,8 +328,15 @@ def test_the_verdict_is_void_when_the_two_rankings_disagree(quiet, peak_from_b):
     # prefers Model B. Forced here on purpose -- the point is the VOIDing, not the gap.
     res = compare_models(["kinetic_jw95", "extended_desens"], [peak_from_b], n_folds=4,
                          n_starts=4, cv_starts=2, min_nats=0.0)
-    if res.rankings_agree:
-        pytest.skip("this dataset no longer produces a disagreement even at min_nats=0")
+    # NOT A CONDITIONAL SKIP. The disagreement is deterministic at this seed and this is
+    # the measured case -- CV prefers Model C by 0.84 nats while AICc prefers Model B. If it
+    # ever stops happening that is a finding about the comparison, not a reason to pass
+    # quietly; and the FULL-install CI job fails on any skip, so a skip here would read as a
+    # missing optional dependency.
+    assert not res.rankings_agree, (
+        f"with the parsimony floor disabled the two rankings now agree on "
+        f"{res.cv_winner}. That is the measured disagreement gone, and the VOID path below "
+        f"is then untested -- construct a disagreement explicitly rather than skipping")
     assert res.verdict.tier is Tier.VOID
     with pytest.raises(VoidQuantityError):
         res.verdict.value
