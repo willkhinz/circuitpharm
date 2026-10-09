@@ -541,7 +541,8 @@ the same technique `test_manuscript_consistency.py` uses, for the same reason).
 ### P0-7 — the environment is not pinned, so the manuscript does not reproduce
 **Files:** `pyproject.toml`, `.github/workflows/tests.yml`,
 `knowledge/08-manuscript.md`
-**Severity:** high (6 currently-failing tests; a reproducibility claim that does not hold)
+**Severity:** high (6 currently-failing tests, a reproducibility claim that does not hold,
+and CI that has not completed in six pushes)
 
 Measured above (C7): identical anchors, K_d 31.95 vs 29.48 µM, headline range 210.7× vs
 182.2×, from a SciPy upgrade alone. `pyproject` allows `numpy>=1.26`, `scipy>=1.11`; this
@@ -566,6 +567,33 @@ lean install here: **6 failed, 270 passed, 19 skipped** — the five
 4. Separately, P3 must decide the real answer to C7 — a non-identifiable fit should not be
    quoted to 7 significant figures at all. Pinning makes the number stable; it does not
    make it meaningful. Both are needed.
+
+**And a separate CI defect found while checking this one: CI has not completed on this
+repository for at least the last six pushes.** Every run from `b7f78a5` to `02e684a`
+reports `conclusion: cancelled`, which is what GitHub reports for a job that hits its
+`timeout-minutes`. On run 19 (`02e684a`, the commit before the sprint):
+
+```
+lean (3.11)  "Fast tests"              04:02:00 -> 04:32:01   30m01s  CANCELLED (limit 30)
+lean (3.12)  "Fast tests"              04:02:03 -> 04:31:58   29m55s  CANCELLED (limit 30)
+full         "Full suite with coverage" 04:02:13 -> 04:46:59   44m46s  CANCELLED (limit 45)
+```
+
+The `Circuit integration tests` step never ran in either lean job, and
+`Assert nothing was skipped` never ran in `full`. So **nobody has seen this suite's real
+CI verdict since 2026-10-08**, and the `--cov-fail-under=90` floor and the
+no-skips assertion have not been enforced since then either. Note what that means for the
+sprint: the 3,177 new lines were merged without a completed CI run.
+
+The `-m "not slow"` subset alone exceeding 30 minutes is the signal — it is supposed to be
+the fast one. **Required fix, in this order:** (a) measure it —
+`pytest -m "not slow" -q --durations=25` — and report the table; (b) mark whatever
+dominates it `@pytest.mark.slow` if it is genuinely circuit-scale, or make it cheap if it
+is not (the new `fitting/` tests run optimisers and samplers inside the fast subset and are
+unmarked); (c) only then adjust `timeout-minutes`, and raise it because the measured
+runtime justifies the number, not to make the red go away. Do not raise the timeout first:
+a 30-minute "fast" subset is a defect in the subset, and the timeout is the only thing
+currently reporting it.
 
 ### P0-8 — `Drug.from_kinetics` is missing the NaN guard that `pool_gains` has
 **File:** `cpg.py:88-113`
