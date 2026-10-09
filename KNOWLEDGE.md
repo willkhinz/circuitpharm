@@ -1,8 +1,15 @@
 # Alcohol-Substitute Project — Knowledge Base
 
 **Entry point for any agent picking this up.** Read this file first, followed by:
-1. `knowledge/09-strategic-roadmap.md` — **MANDATORY STRATEGIC DIRECTIVE**: The 6 prioritized advancements transforming the GABA-A paper from a numerical result to a rigorous, data-constrained, falsifiable theory.
-2. `knowledge/10-model-technical-spec.md` — **TECHNICAL MODEL SPECIFICATION**: Concrete architecture, competing models (A/B/C), decomposition, MCMC identifiability, and waveform protocols.
+1. `knowledge/09-strategic-roadmap.md` — **MANDATORY STRATEGIC DIRECTIVE** (Revision 2): the
+   seven invariants every change must preserve, the P0 defect register that blocks all
+   feature work, and the dependency-ordered phase plan P1–P7 with per-task signatures and
+   acceptance tests. Read §2, §5 and §7 in full before writing any code.
+2. `knowledge/10-model-technical-spec.md` — **TECHNICAL MODEL SPECIFICATION**: architecture,
+   competing models (A/B/C), decomposition, MCMC identifiability, waveform protocols.
+   **Caveat: this document currently describes several things that are not implemented**
+   (biexponential clearance, single-channel datasets, Model C's thermodynamic cycle); see
+   roadmap §4.P7. Treat the code as the authority and the spec as the target.
 3. `knowledge/02-reasoning-trail.md` — Rationale trail preventing re-deriving known dead ends.
 
 ---
