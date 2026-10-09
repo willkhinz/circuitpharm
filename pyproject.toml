@@ -48,6 +48,19 @@ markers = ["slow: integrates a full circuit simulation (seconds to minutes)"]
 # Override with `-n 0` when debugging, since xdist hides stdout.
 addopts = "-n auto"
 
+# ProvisionalResultWarning must never be swallowed by the suite.
+#
+# `provisional.py` installs simplefilter("always") for its own category at import, because
+# Python's default shows a UserWarning once per code location per process -- which reaches
+# whoever makes the first call and nobody after. This entry makes the same guarantee hold
+# under pytest, whose own filters would otherwise take precedence. The banner marks
+# machinery whose CONCLUSIONS rest on a recorded defect (roadmap P0-5/P0-6); if it stops
+# appearing, either the defect was fixed and the warning removed deliberately, or
+# something is hiding it.
+filterwarnings = [
+  "always::circuitpharm.provisional.ProvisionalResultWarning",
+]
+
 [tool.coverage.run]
 source = ["circuitpharm"]
 # plant.py and chirality.py need optional extras (mujoco, rdkit); when those are absent

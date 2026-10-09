@@ -100,20 +100,48 @@ def test_the_provenance_gap_is_what_the_audit_recorded():
     The `sourced` count is unchanged at 6 because `EXTRASYN[a5]` never carried a source KEY --
     it was FROM_QUALITATIVE with an empty key, which is itself worth noting: a basis label can
     assert more confidence than any recorded citation supports.
+
+    UPDATED 2026-10-09 (roadmap P0-5/P0-6/P0-13), and the gap widened again, from 28
+    parameters to 43. Nothing was demoted this time; 15 numbers that were ALREADY
+    load-bearing were brought under the audit for the first time:
+
+      * MODEL_PARAMS (13). The three competing receptor models in `models/` carry
+        dataclass defaults that both entry points to the three-tiered headroom hierarchy
+        used to default to. `KineticAllosteryModel`'s are a chimera of two different fits
+        -- beta/alpha from the manuscript's config-pulse fit, kon/koff from the superseded
+        1000 uM / 0.30 ms fit -- giving K_d = 29.62 uM, a value in no fit, no commit and no
+        document. Two of Model A's defaults are the project's own FIT TARGETS (po_max 0.75,
+        tau_deact 15.0 ms) rather than anything fitted, so they are recorded FITTED and are
+        circular if used as anchors.
+      * DATASETS (2). Both `fitting/data.py` benchmarks are synthetic. The deactivation
+        trace carried a citation to Haas & Macdonald 1999, which this project's own
+        claim-support audit records as measuring 76.1 ms for that quantity against the
+        trace's dominant 15 ms component.
+
+    So the sourced FRACTION fell from 21% to 14% without a single citation being lost: the
+    denominator grew because the audit's coverage grew. That is the honest direction, and
+    it is the reason this pin names the composition rather than only the total.
     """
     a = audit()
-    assert a["total"] == 28, f"parameter count changed to {a['total']}; re-run the audit"
+    assert a["total"] == 43, f"parameter count changed to {a['total']}; re-run the audit"
     assert a["sourced"] == 6, (
         f"{a['sourced']} parameters now name a source, not 6. If this went UP, update this "
         f"pin and knowledge/06-source-provenance.md. If it went DOWN, something lost its "
         f"citation.")
-    assert a["by_basis"][Basis.UNSOURCED.value] == 19, (
-        f"{a['by_basis'][Basis.UNSOURCED.value]} UNSOURCED, not 19. Widening this gap is a "
-        f"legitimate finding -- it means a claim-support read demoted something -- but it must "
-        f"be recorded in knowledge/06-source-provenance.md and in this docstring, not just "
-        f"absorbed by the pin.")
+    assert a["by_basis"][Basis.UNSOURCED.value] == 31, (
+        f"{a['by_basis'][Basis.UNSOURCED.value]} UNSOURCED, not 31. Widening this gap is a "
+        f"legitimate finding -- it means a claim-support read demoted something, or the "
+        f"audit's coverage grew -- but it must be recorded in "
+        f"knowledge/06-source-provenance.md and in this docstring, not just absorbed by "
+        f"the pin.")
     assert a["by_basis"][Basis.FROM_QUALITATIVE.value] == 7
-    assert a["by_basis"][Basis.GUESS.value] == 1
+    assert a["by_basis"][Basis.GUESS.value] == 2, (
+        "2 GUESS entries: EXTRASYN['eps'] (labelled a guess in subtypes.py itself) and "
+        "ExtendedDesensitizationModel.pam_desens_factor (neither the 0.1 coefficient nor "
+        "the linear form has a source).")
+    assert a["by_basis"][Basis.FITTED.value] == 3, (
+        "3 FITTED: the GAIN_RATIO prior, plus Model A's po_max and tau_deact_ms, which are "
+        "the project's own fit targets rather than independent measurements.")
 
 
 def test_the_most_consequential_number_is_flagged_unsourced():

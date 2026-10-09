@@ -1,6 +1,8 @@
 """Comprehensive bug checks and unit tests for next-generation GABA-A models and protocols."""
 from __future__ import annotations
 
+import warnings
+
 import numpy as np
 import pytest
 
@@ -27,8 +29,10 @@ from circuitpharm.fitting import (
     compute_kinetic_objective,
     compute_profile_likelihood,
     compute_fisher_information_matrix,
+    equilibrium_dose_response_chi2,
     run_ensemble_mcmc,
 )
+from circuitpharm.results import Tier, VoidQuantityError
 from circuitpharm.dynamic_range import evaluate_dynamic_range
 from circuitpharm.gabaa_kinetics import Scheme
 
@@ -241,25 +245,35 @@ def test_model_comparison_and_oed():
 # ==============================================================================
 
 def test_fitting_objective_and_identifiability():
+    """Mechanics only. The SCIENCE of this layer is pinned in tests/test_provisional.py.
+
+    This test used to assert `cost >= 0.0` and `np.isfinite(cost)` on a chi-squared of
+    9290, which is why nothing noticed (roadmap C9). The value assertions now live in
+    test_provisional.py; what remains here is that the shapes and types are right.
+    """
     model = KineticAllosteryModel()
     x0 = np.array([model.kon, model.koff, model.beta, model.alpha, model.d, model.r])
 
-    # Objective evaluates finite positive chi2
-    cost = compute_kinetic_objective(x0)
-    assert np.isfinite(cost)
-    assert cost >= 0.0
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        # deprecated alias still works; the real name says what it constrains
+        cost = compute_kinetic_objective(x0)
+        assert cost == pytest.approx(equilibrium_dose_response_chi2(x0))
 
-    # Profile likelihood on kon
-    prof = compute_profile_likelihood("kon", model, scan_factors=(0.8, 1.0, 1.2))
-    assert prof.param_name == "kon"
-    assert len(prof.profile_costs) == 3
-    assert prof.ci_95_bounds[0] <= prof.ci_95_bounds[1]
+        prof = compute_profile_likelihood("kon", model, scan_factors=(0.8, 1.0, 1.2))
+        assert prof.param_name == "kon"
+        assert len(prof.profile_costs) == 3
+        # the CI is a VOID Quantity now, not a tuple -- reading it must raise
+        with pytest.raises(VoidQuantityError):
+            prof.ci_95_bounds.value
+        lo, hi = prof.ci_95_bounds.get(acknowledge_void=True)
+        assert lo <= hi
 
-    # Fisher Information Matrix
-    fim, cond = compute_fisher_information_matrix(model)
-    assert fim.shape == (6, 6)
-    assert np.isfinite(cond)
-    assert cond > 0.0
+        # the old FIM name is deprecated; it returns the Hessian and a VOID condition number
+        fim, cond = compute_fisher_information_matrix(model)
+        assert fim.shape == (6, 6)
+        assert cond.tier is Tier.VOID
+        assert np.isfinite(cond.get(acknowledge_void=True))
 
 
 def test_lightweight_ensemble_mcmc():

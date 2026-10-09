@@ -186,8 +186,76 @@ PRIOR_PROV = {
         "a result the same model produces.")),
 }
 
+# ---------------------------------------------------------------------------------------
+# MODEL PARAMETERS for the three competing receptor models (models/). Added with P0-13.
+#
+# All of these are PROVISIONAL dataclass defaults, not calibrations, and the register entry
+# records why that matters: both entry points to the three-tiered headroom hierarchy used
+# to default to them.
+# ---------------------------------------------------------------------------------------
+_CHIMERA = (
+    "KineticAllosteryModel's defaults are a CHIMERA of two fits: beta/alpha are the "
+    "manuscript's current config-pulse fit (0.559023 / 0.107891) while kon/koff are "
+    "approximately the superseded 1000 uM / 0.30 ms fit. The resulting K_d = 29.62 uM "
+    "appears in no fit, no commit and no document, and the set reproduces neither anchor "
+    "(measured EC50 6.34 uM against 20, P_o,max 0.8382 against 0.750).")
+
+MODEL_PARAM_PROV = {
+    ("kinetic_jw95", "kon"):   Record(Basis.UNSOURCED, "", _CHIMERA),
+    ("kinetic_jw95", "koff"):  Record(Basis.UNSOURCED, "", _CHIMERA),
+    ("kinetic_jw95", "beta"):  Record(Basis.UNSOURCED, "", _CHIMERA),
+    ("kinetic_jw95", "alpha"): Record(Basis.UNSOURCED, "", _CHIMERA),
+    ("kinetic_jw95", "d"):     Record(Basis.UNSOURCED, "", (
+        "0.050 ms^-1, carried over from gabaa_kinetics.DEFAULT_RATES, where it is "
+        "explicitly NOT fitted -- the three macroscopic anchors do not constrain "
+        "desensitisation. Every asymptotic headroom number is conditional on it.")),
+    ("kinetic_jw95", "r"):     Record(Basis.UNSOURCED, "", (
+        "0.0020 ms^-1, same status as d. d/r = 25.0 sets the asymptote directly.")),
+    ("extended_desens", "all"): Record(Basis.UNSOURCED, "", (
+        "kon 0.012, koff 0.35, beta 0.60, alpha 0.10 and four desensitisation rates, all "
+        "round numbers with no recorded origin. Measured EC50 5.18 uM against the 20 uM "
+        "anchor and P_o,max 0.8571 against 0.750.")),
+    ("extended_desens", "pam_desens_factor"): Record(Basis.GUESS, "", (
+        "1.0, with the modulation entering as d_fast/(1 + 0.1*(pf-1)*f). Neither the 0.1 "
+        "coefficient nor the linear form has a source; a thermodynamic cycle over the "
+        "R/O/D loop (which the technical spec claims) would constrain it by detailed "
+        "balance instead.")),
+    ("operational", "ec50_um"): Record(Basis.UNSOURCED, "",
+                                       "25.0 uM, a declared round number."),
+    ("operational", "hill_n"):  Record(Basis.UNSOURCED, "", "1.4, no source."),
+    ("operational", "po_max"):  Record(Basis.FITTED, "", (
+        "0.75 -- this is gabaa_kinetics.FIT_TARGETS['po_max'], i.e. the project's own fit "
+        "TARGET rather than something fitted to data. Circular if used as an anchor.")),
+    ("operational", "s_max"):   Record(Basis.UNSOURCED, "", (
+        "2.50, the classical BZ-site intrinsic efficacy range. Carried as a ceiling, not "
+        "measured here.")),
+    ("operational", "tau_deact_ms"): Record(Basis.FITTED, "", (
+        "15.0 ms, again the project's own tau fit target -- and the value the old decay "
+        "estimator returned on failure, which is what made a failed fit look perfect "
+        "(P0-4).")),
+}
+
+# ---------------------------------------------------------------------------------------
+# DATASETS in fitting/data.py. Both currently synthetic (P0-6).
+# ---------------------------------------------------------------------------------------
+DATASET_PROV = {
+    "dose_response_peak": Record(Basis.UNSOURCED, "", (
+        "SYNTHETIC. Hand-written response and SEM arrays shaped to resemble an "
+        "alpha1beta2gamma2 peak concentration-response. Its plateau is exactly 0.750, "
+        "which is the model's own po_max fit target, so a fit against it is partly "
+        "circular; the SEM values have no origin. Mortensen et al. 2012 and Sigel & "
+        "Steinmann 2012 are recorded as MOTIVATION only -- neither was digitised.")),
+    "deactivation_charge": Record(Basis.UNSOURCED, "", (
+        "SYNTHETIC. 0.70*exp(-t/15) + 0.30*exp(-t/70). It previously carried "
+        "citation='Haas & Macdonald 1999 / Jones & Westbrook 1995'; "
+        "knowledge/06-source-provenance.md and 07-paper-review.md record Haas & Macdonald "
+        "1999 as measuring 76.1 ms for this quantity, so the dominant 15 ms component is "
+        "NOT that paper's number. The reference survives under `motivated_by`.")),
+}
+
 ALL = {"REGIONS": REGIONS_PROV, "EXTRASYN": EXTRASYN_PROV,
-       "SUBJECTIVE_WEIGHT": SUBJECTIVE_PROV, "PRIORS": PRIOR_PROV}
+       "SUBJECTIVE_WEIGHT": SUBJECTIVE_PROV, "PRIORS": PRIOR_PROV,
+       "MODEL_PARAMS": MODEL_PARAM_PROV, "DATASETS": DATASET_PROV}
 
 
 def audit() -> dict:
