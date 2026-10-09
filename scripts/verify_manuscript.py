@@ -49,16 +49,17 @@ REQUIRED_AT_REF = (
 CATEGORIES = {
     "calibration targets and fitted rates": [
         "20.0000", "0.7500", "15.000",
-        "0.0112168", "0.333062", "0.646493", "0.134142",
-        "29.69", "4.8195", "0.20749",
+        "0.0146842", "0.469177", "0.559023", "0.107891",
+        "31.95", "5.1814", "0.193",
     ],
     "phasic trace: peak, deactivation, integrated open probability": [
-        "0.419609", "0.553593", "1.319", "1.895", "2.419", "1.668", "28.426",
+        "0.668282", "0.709902", "1.062", "1.656", "1.655", "1.124", "24.846",
     ],
     "steady-state asymptote and finite-modulator tonic gains": [
-        "0.156377", "184.6", "7.876", "2.9321",
-        "2.21", "3.84", "7.18", "20.25", "56.46", "158.08",
-        "2881.1", "725.8", "48.1", "15.0", "4.8",
+        "0.166169", "210.7", "7.214", "2.7854",
+        "2.21", "3.85", "20.64", "59.22", "177.95",
+        "3295.5", "829.7", "54.7",
+        "0.0007885", "0.0003944", "0.0015757", "31.1814", "5.40",
     ],
     # DELIBERATE ROUNDING, so these are checked from both sides: the exact value must appear
     # in generator output (proving the model produces it) and the rounded value must appear in

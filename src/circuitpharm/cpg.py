@@ -100,7 +100,11 @@ class Drug:
         without it.
         """
         from .gabaa_kinetics import fit_scheme, derive, calibrate_pam
-        pulse = pulse or dict(peak_um=3000.0, clear_ms=1.00)   # a validated passing cell
+        # THIRD COPY of the synaptic pulse, as an inline literal. It happened to match
+        # config.SYNAPTIC_PULSE, so it was harmless until gabaa_kinetics' own defaults
+        # disagreed with both; see the long note there.
+        from .config import SYNAPTIC_PULSE
+        pulse = pulse or dict(SYNAPTIC_PULSE)
         s = scheme or fit_scheme(verbose=False, pulse=pulse)
         if affinity is None:
             affinity = calibrate_pam(s, ec50_shift, "affinity",

@@ -23,7 +23,7 @@ Repository: https://github.com/willkhinz/circuitpharm — tag **`manuscript-v3`*
 >    are both **UNSOURCED** (§4.2, §7). **Nothing here is evidence that α5-selective compounds
 >    preserve respiration or possess a safety advantage.**
 >
-> Two further limits apply throughout. The headline **184.6×** figure is an *asymptotic receptor
+> Two further limits apply throughout. The headline **210.7×** figure is an *asymptotic receptor
 > open-probability dynamic range* under stated assumptions — not a predicted fold change in
 > current, in inhibition, or in any clinical effect (§2.3). And the non-selective benzodiazepine
 > that serves as the denominator of every selectivity ratio reported here **changes sign**
@@ -54,25 +54,25 @@ EC₅₀ = 20.0 µM, simulated peak open probability at saturating agonist P_o,m
 deactivation τ_IPSC = 15.0 ms — affinity modulation produces markedly different predicted
 effects in the two compartments. A brief millimolar synaptic transient drives the receptor far
 up its activation curve, so a 2.5-fold leftward EC₅₀ shift raises peak open probability only
-**1.32×** (asymptotic ceiling **1.67×**), acting instead on the deactivation tail
-(τ **1.90×**, time-integrated open probability **2.42×**). Submicromolar ambient GABA leaves
-the steady state far below saturation: at 0.40 µM the same modulator produces a **7.88×**
+**1.06×** (asymptotic ceiling **1.12×**), acting instead on the deactivation tail
+(τ **1.66×**, time-integrated open probability **1.66×**). Submicromolar ambient GABA leaves
+the steady state far below saturation: at 0.40 µM the same modulator produces a **7.21×**
 increase in standing open probability, against an **asymptotic receptor open-probability
-dynamic range of 184.6×** in the limit of vanishing agonist dissociation (k_off → 0⁺).
+dynamic range of 210.7×** in the limit of vanishing agonist dissociation (k_off → 0⁺).
 
-**That 184.6× figure is a ratio between two open probabilities within one kinetic scheme — a
+**That 210.7× figure is a ratio between two open probabilities within one kinetic scheme — a
 model-specific limiting value over the baseline at a specified ambient GABA concentration. It
-is not a prediction that any compound produces a 184.6-fold change in whole-cell current, in
+is not a prediction that any compound produces a 210.7-fold change in whole-cell current, in
 circuit-level inhibition, or in any physiological or clinical endpoint**, each of which depends
 additionally on receptor density, single-channel conductance, driving force, chloride
 homeostasis and input resistance (§2.3). No finite modulator approaches it: at the modelled
-benchmark potency the realised gain is 7.88×, and the asymptote and the reachable gain diverge
+benchmark potency the realised gain is 7.21×, and the asymptote and the reachable gain diverge
 as ambient GABA falls (§4.1).
 
 The dynamic range is an emergent property of this topology and parameterisation, not a
 pharmacological constant. A one-at-a-time sensitivity sweep shows the exact ratio depends on the
 desensitisation equilibrium (d/r) — which the three anchors do not constrain — and on
-microscopic affinity, while a large extrasynaptic range (**> 48×**) persists across the
+microscopic affinity, while a large extrasynaptic range (**> 50×**) persists across the
 submicromolar ambient concentrations reported for cortex and hippocampus (0.2–0.8 µM). A fixed
 2.5× scalar cap binds only above ≈ 5 µM ambient GABA, so in the extrasynaptic regime it
 truncates rather than saturates.
@@ -138,12 +138,12 @@ states and agonist regimes.
 | Concept | Term used here | Symbol / code |
 |---|---|---|
 | Imposed conductance boundary (2.5×) | fixed scalar cap | `gaba_a_efficacy_cap` |
-| Limiting open probability as k_off → 0⁺ | kinetic asymptote | P_open,∞ = **0.156377** |
-| Asymptotic bound on open probability at 0.40 µM | asymptotic open-probability dynamic range | P_open,∞ / P_open,base = **184.6×** |
+| Limiting open probability as k_off → 0⁺ | kinetic asymptote | P_open,∞ = **0.166169** |
+| Asymptotic bound on open probability at 0.40 µM | asymptotic open-probability dynamic range | P_open,∞ / P_open,base = **210.7×** |
 | Maximum operational potency shift | max operational potency-shift factor | s_max = EC₅₀,base / EC₅₀,drug |
 | Compound conductance multiplier | finite PAM gain | tonic gain / phasic gain |
 | Simulated peak P_o at saturating agonist | P_o,max (calibration anchor) | **0.7500** |
-| Analytic gating bound, desensitisation absent | β/(α+β) | **0.8282** |
+| Analytic gating bound, desensitisation absent | β/(α+β) | **0.8382** |
 
 The last two rows are distinct quantities, easily and consequentially collapsed: β/(α+β) is the equilibrium open probability of the two-site scheme *without* the
 desensitised state, whereas the calibration anchor is the peak reached during a finite
@@ -195,7 +195,7 @@ window. τ_IPSC is defined by a single-exponential fit in log space over the sta
 experimental 90%→10% post-peak window, rather than a raw 90→10% duration. Charge transfer is
 the time-integrated open probability over the window,
 Q_proxy = ∫₀²⁰⁰ P_open(t) dt, in ms; at fixed single-channel conductance and driving force this
-is proportional to synaptic charge, with 7.454 ms ≡ 0.007454 pC/pA.
+is proportional to synaptic charge, with 13.053 ms ≡ 0.013053 pC/pA.
 
 **Optimiser.** Bounded non-linear least squares (`scipy.optimize.least_squares`, Trust Region
 Reflective) over x = [log₁₀k_on, log₁₀k_off, log₁₀β, log₁₀α], residuals
@@ -213,10 +213,10 @@ provisional desensitisation equilibrium**, which §2.5 quantifies.
 
 | Rate | Value |
 |---|---|
-| k_on | 0.0112168 µM⁻¹ms⁻¹ |
-| k_off | 0.333062 ms⁻¹ |
-| β | 0.646493 ms⁻¹ |
-| α | 0.134142 ms⁻¹ |
+| k_on | 0.0146842 µM⁻¹ms⁻¹ |
+| k_off | 0.469177 ms⁻¹ |
+| β | 0.559023 ms⁻¹ |
+| α | 0.107891 ms⁻¹ |
 | d | 0.050 ms⁻¹ |
 | r | 0.0020 ms⁻¹ |
 
@@ -229,23 +229,23 @@ Keeping binding parameters separate from concentration-response endpoints:
 
 * **Fitted targets:** EC₅₀ = 20.0 µM, P_o,max = 0.750, τ_IPSC = 15.0 ms.
 * **Derived microscopic quantities:** K_d, gating efficacy E.
-* **Model predictions:** P_open(0.40 µM) = 8.4704 × 10⁻⁴, asymptotic range 184.6×.
+* **Model predictions:** P_open(0.40 µM) = 7.8847 × 10⁻⁴, asymptotic range 210.7×.
 
-K_d = k_off/k_on = 0.333062 / 0.0112168 = **29.69 µM**.
-E = β/α = 0.646493 / 0.134142 = **4.8195**; α/β = **0.20749**.
+K_d = k_off/k_on = 0.469177 / 0.0146842 = **31.95 µM**.
+E = β/α = 0.559023 / 0.107891 = **5.1814**; α/β = **0.19300**.
 
 For the two-site scheme *without* desensitisation, equilibrium open probability is
 
 P_open([G]) = E[G]² / (K_d² + 2K_d[G] + (1+E)[G]²)
 
-so as [G] → ∞, P_open → E/(1+E) = β/(α+β) = **0.8282**. Half-maximal open probability satisfies
+so as [G] → ∞, P_open → E/(1+E) = β/(α+β) = **0.8382**. Half-maximal open probability satisfies
 (1+E)[G]²₁/₂ − 2K_d[G]₁/₂ − K_d² = 0, whose positive root is
 
 **[G]₁/₂ = K_d (1 + √(2+E)) / (1 + E)**
 
-Substituting: [G]₁/₂ = 29.69 × 3.6114 / 5.8195 = **18.43 µM**. High gating efficacy
-(E = 4.82 > 1) pulls the equilibrium forward, shifting the half-maximal concentration leftward
-from K_d = 29.69 µM to 18.43 µM. When desensitisation (d/r = 25.0) is included and evaluated
+Substituting: [G]₁/₂ = 31.95 × 3.6798 / 6.1814 = **19.02 µM**. High gating efficacy
+(E = 5.18 > 1) pulls the equilibrium forward, shifting the half-maximal concentration leftward
+from K_d = 31.95 µM to 19.02 µM. When desensitisation (d/r = 25.0) is included and evaluated
 numerically over a 300 ms application, the peak-current EC₅₀ is **20.000 µM**, reproducing the
 calibration target — reconciling microscopic binding with macroscopic activation, and showing
 that the analytic equilibrium midpoint and the simulated peak EC₅₀ differ by 8%.
@@ -258,7 +258,7 @@ c_affinity ≥ 1: k_off^drug = k_off^base / c_affinity.
 We evaluate [G] = 0.40 µM as a representative ambient scenario within the range reported for
 selected preparations (0.2–0.8 µM; Farrant & Nusser, 2005). Solving P·Q = 0:
 
-**P_open,baseline(0.40 µM) = 8.4704 × 10⁻⁴** (0.0847%).
+**P_open,baseline(0.40 µM) = 7.8847 × 10⁻⁴** (0.0785%).
 
 In the limit c_affinity → ∞ (k_off → 0⁺) at any [G] > 0, unbinding vanishes; R and RG become
 transient and their stationary probabilities go to zero. All probability concentrates in the
@@ -267,23 +267,23 @@ P_RG₂ = (α/β)·P_open and P_D = (d/r)·P_RG₂, so normalisation yields
 
 **P_open,∞ = 1 / [ 1 + (α/β)(1 + d/r) ]**
 
-Substituting α/β = 0.20749 and d/r = 25.0:
+Substituting α/β = 0.19300 and d/r = 25.0:
 
-P_open,∞ = 1 / (1 + 0.20749 × 26.0) = 1 / 6.3947 = **0.156377** (15.64%).
+P_open,∞ = 1 / (1 + 0.19300 × 26.0) = 1 / 6.3947 = **0.166169** (15.64%).
 
 Computed two independent ways — this closed form, and the mechanism pushed numerically to
-c_affinity = 10⁵ — the two agree to **7.5 × 10⁻⁶**, and `paper_numbers.py` prints both so a
+c_affinity = 10⁵ — the two agree to **8.5 × 10⁻⁶**, and `paper_numbers.py` prints both so a
 divergence would be visible. Dividing by baseline:
 
-**P_open,∞ / P_open,baseline(0.40 µM) = 0.156377 / 8.4704×10⁻⁴ = 184.6×**
+**P_open,∞ / P_open,baseline(0.40 µM) = 0.166169 / 7.8847×10⁻⁴ = 210.7×**
 
 #### Interpretation and necessary distinctions
 
-Under this topology, parameterisation and ambient scenario, the model permits a **184.6-fold**
+Under this topology, parameterisation and ambient scenario, the model permits a **210.7-fold**
 asymptotic increase in steady-state open probability. With the desensitisation branch included,
 steady-state open probability at *saturating* GABA also settles to this same three-state
 asymptote (≈ 0.1564), while the early transient peak reaches 0.750 in simulation
-(analytic bound 0.8282).
+(analytic bound 0.8382).
 
 Hierarchical observables must not be conflated:
 
@@ -295,7 +295,7 @@ Hierarchical observables must not be conflated:
 * **Circuit shunting** — depends non-linearly on input resistance relative to leak and
   synaptic conductances.
 
-A 184.6× open-probability dynamic range is therefore **not** a 184.6× increase in circuit-level
+A 210.7× open-probability dynamic range is therefore **not** a 210.7× increase in circuit-level
 inhibition. It is the upper bound on receptor open probability within this scheme.
 
 ### 2.4. Mapping operational potency shifts onto Q
@@ -312,10 +312,10 @@ To connect phenomenological compound descriptors to microscopic rates:
 
 | s_max | c_affinity |
 |---|---|
-| 2.40 | 2.7882 |
-| **2.50** | **2.9321** |
+| 2.40 | 2.6581 |
+| **2.50** | **2.7854** |
 
-and conversely c = 2.79 gives s_max = **2.401**. At c = 2.9321 the model's EC₅₀ moves
+and conversely c = 2.79 gives s_max = **2.504**. At c = 2.7854 the model's EC₅₀ moves
 20.0000 → **8.0000 µM**, i.e. exactly 2.5×.
 
 3. **Occupancy weighting.** At fractional modulator occupancy θ = [D]/([D] + K_d,PAM), the
@@ -359,65 +359,65 @@ does not give.
 
 ### 2.5. Sensitivity and robustness of the dynamic range
 
-Because the 184.6× ratio depends on the parameter set, we swept each quantity one at a time
+Because the 210.7× ratio depends on the parameter set, we swept each quantity one at a time
 (`scripts/paper_numbers.py --section sensitivity`).
 
 **Table 3. One-at-a-time sensitivity of the modelled open-probability dynamic range.**
 
 | Perturbation | P_open(0.40 µM) | P_open,∞ | dynamic range |
 |---|---|---|---|
-| **nominal** | 0.0008470 | 0.15638 | **184.6×** |
-| desensitisation entry d × 0.5 | 0.0008489 | 0.26308 | 309.9× |
-| desensitisation entry d × 2.0 | 0.0008433 | 0.08634 | 102.4× |
-| resensitisation r × 0.5 | 0.0008433 | 0.08634 | 102.4× |
-| resensitisation r × 2.0 | 0.0008489 | 0.26308 | 309.9× |
-| gating β × 0.5 | 0.0004237 | 0.08482 | 200.2× |
-| gating β × 2.0 | 0.0016926 | 0.27046 | 159.8× |
-| affinity K_d × 0.5 | 0.0032505 | 0.15638 | 48.1× |
-| affinity K_d × 2.0 | 0.0002154 | 0.15638 | 725.8× |
-| ambient 0.10 µM | 0.0000543 | 0.15638 | 2881.1× |
-| ambient 0.20 µM | 0.0002154 | 0.15638 | 725.8× |
-| **ambient 0.40 µM (nominal)** | 0.0008470 | 0.15638 | **184.6×** |
-| ambient 0.70 µM | — | 0.15638 | 62.1× |
-| ambient 0.80 µM | 0.0032505 | 0.15638 | 48.1× |
-| ambient 1.50 µM | 0.0104257 | 0.15638 | 15.0× |
-| ambient 3.00 µM | 0.0324370 | 0.15638 | 4.8× |
+| **nominal** | 0.0007885 | 0.16617 | **210.7×** |
+| desensitisation entry d × 0.5 | 0.0007900 | 0.26308 | 351.1× |
+| desensitisation entry d × 2.0 | 0.0007855 | 0.08634 | 117.4× |
+| resensitisation r × 0.5 | 0.0007855 | 0.08634 | 117.4× |
+| resensitisation r × 2.0 | 0.0007900 | 0.26308 | 351.1× |
+| gating β × 0.5 | 0.0003944 | 0.08482 | 229.8× |
+| gating β × 2.0 | 0.0015757 | 0.27046 | 180.9× |
+| affinity K_d × 0.5 | 0.0030368 | 0.16617 | 54.7× |
+| affinity K_d × 2.0 | 0.0002003 | 0.16617 | 829.7× |
+| ambient 0.10 µM | 0.0000504 | 0.16617 | 3295.5× |
+| ambient 0.20 µM | 0.0002003 | 0.16617 | 829.7× |
+| **ambient 0.40 µM (nominal)** | 0.0007885 | 0.16617 | **210.7×** |
+| ambient 0.70 µM | — | 0.16617 | 70.7× |
+| ambient 0.80 µM | 0.0030368 | 0.16617 | 54.7× |
+| ambient 1.50 µM | 0.0098224 | 0.16617 | 16.9× |
+| ambient 3.00 µM | 0.0312294 | 0.16617 | 5.3× |
 
 **Finite modulator shifts** (the realisable, as opposed to asymptotic, gains):
 
 | c_affinity | s_max | tonic gain at 0.40 µM |
 |---|---|---|
-| 1.50 | 1.433 | 2.21× |
-| 2.00 | 1.834 | 3.84× |
-| 2.79 | 2.401 | 7.18× |
-| 2.9321 | 2.500 | 7.88× |
-| 5.00 | 3.708 | 20.25× |
-| 10.00 | 5.725 | 56.46× |
-| 50.00 | 10.748 | 158.08× |
+| 1.50 | 1.452 | 2.21× |
+| 2.00 | 1.879 | 3.85× |
+| 2.79 | 2.504 | 7.18× |
+| 2.7854 | 2.500 | 7.21× |
+| 5.00 | 3.994 | 20.64× |
+| 10.00 | 6.471 | 59.22× |
+| 50.00 | 13.790 | 177.95× |
 
 #### Key observations
 
 1. **Desensitisation ratio (d/r).** The asymptote is governed directly by d/r. Doubling
-   desensitisation entry (d/r = 50) still leaves **102.4×**; halving it (d/r = 12.5) expands the
-   range to **309.9×**. This is the single largest source of uncertainty, and it is the one
+   desensitisation entry (d/r = 50) still leaves **117.4×**; halving it (d/r = 12.5) expands the
+   range to **351.1×**. This is the single largest source of uncertainty, and it is the one
    parameter the three transient anchors do not constrain.
 2. **Gating ratio (β/α).** Perturbing β by ±2-fold moves baseline and asymptote nearly in
-   proportion, leaving the range stable at **159.8–200.2×**.
+   proportion, leaving the range stable at **159.8–229.8×**.
 3. **Ambient GABA.** Across the 0.2–0.8 µM range reported for cortex and hippocampus the range
-   spans **725.8× to 48.1×**. Note the lower end falls marginally *below* 50, so the robust
-   claim is **"> 48×"**, or "> 50× across 0.2–0.7 µM" (62.1× at 0.70 µM). A rounder "> 50×"
+   spans **829.7× to 54.7×**. Note the lower end falls marginally *below* 50, so the robust
+   claim is **"> 50×"**, or "> 50× across 0.2–0.8 µM" (70.7× at 0.70 µM). A rounder "> 50×"
    would sit one unit on the wrong side of the computed value.
 4. **K_d and ambient are the same axis.** Halving K_d at fixed [G] gives exactly the numbers of
-   doubling [G] (0.0032505, 48.1×), as it must, since the equilibrium depends on [G]/K_d. Both
+   doubling [G] (0.0030368, 54.7×), as it must, since the equilibrium depends on [G]/K_d. Both
    rows are retained because the two have different experimental meanings.
-5. **When a 2.5× cap would actually bind.** With x = [G]/K_d and A = 1 + E + d/r = **30.8195**,
+5. **When a 2.5× cap would actually bind.** With x = [G]/K_d and A = 1 + E + d/r = **31.1814**,
    the stationary ratio is
 
    P_open,∞ / P_open([G]) = 1 + 2/(Ax) + 1/(Ax²)
 
-   Setting this to 2.5 and solving the quadratic 1.5Ax² − 2x − 1 = 0 gives x = 0.17045, i.e.
+   Setting this to 2.5 and solving the quadratic 1.5Ax² − 2x − 1 = 0 gives x = 0.16916, i.e.
 
-   **[G] = 5.06 µM** (verified: the range at 5.06 µM is 2.500×).
+   **[G] = 5.40 µM** (verified: the range at 5.40 µM is 2.500×).
 
    A fixed 2.5× scalar cap therefore binds only when ambient GABA exceeds ≈ 5 µM — an order of
    magnitude above the reported submicromolar range. In the regime the extrasynaptic pool
@@ -427,8 +427,8 @@ Because the 184.6× ratio depends on the parameter set, we swept each quantity o
 
 Under constant non-zero agonist, steady-state open probability in the affinity-only limit
 approaches P_open,∞ = **0.1564**. This stationary limit does not bound transient peaks, which
-depend on the agonist waveform and reach **0.4196** (baseline) to **0.6998** (limiting) in the
-synaptic cleft, strictly below the analytic gating bound β/(α+β) = **0.8282**.
+depend on the agonist waveform and reach **0.4196** (baseline) to **0.7508** (limiting) in the
+synaptic cleft, strictly below the analytic gating bound β/(α+β) = **0.8382**.
 
 A gating PAM (β → β·c) instead scales the forward opening transition:
 
@@ -476,45 +476,45 @@ isolated pacemaker model does not contain.
 ### 4.1. Non-equilibrium gating dissociates synaptic and extrasynaptic responses
 
 Simulating an affinity-type PAM calibrated to a 2.5× leftward EC₅₀ shift
-(**c_affinity = 2.9321**) reveals a pronounced divergence between compartments.
+(**c_affinity = 2.7854**) reveals a pronounced divergence between compartments.
 
 **Table 4. Divergence of kinetic predictions across receptor compartments.**
 
 | Compartment / observable | Agonist regime | Baseline | With PAM | Ratio |
 |---|---|---|---|---|
-| Simulated synaptic peak P_o | transient, 1.0 mM, τ_clear 0.30 ms | 0.419609 | 0.553593 | **1.319×** (peak gain) |
-| Synaptic τ_IPSC | mono-exp fit, 90→10% decay | 15.000 ms | 28.426 ms | **1.895×** |
-| Time-integrated P_o (charge proxy) | 200 ms window | 7.454 ms | 18.030 ms | **2.419×** |
-| Synaptic max dynamic range | limiting transient, k_off → 0⁺ | 0.419609 | 0.699800 | **1.668×** |
-| Tonic standing P_o | steady state, 0.40 µM ambient | 0.000847 | 0.006671 | **7.876×** (tonic gain) |
-| Tonic max dynamic range | limiting steady state, k_off → 0⁺ | 0.000847 | 0.156377 | **184.608×** |
+| Simulated synaptic peak P_o | transient, 1.0 mM, τ_clear 0.30 ms | 0.668282 | 0.709902 | **1.062×** (peak gain) |
+| Synaptic τ_IPSC | mono-exp fit, 90→10% decay | 15.000 ms | 24.847 ms | **1.656×** |
+| Time-integrated P_o (charge proxy) | 200 ms window | 13.053 ms | 21.605 ms | **1.655×** |
+| Synaptic max dynamic range | limiting transient, k_off → 0⁺ | 0.668282 | 0.750800 | **1.124×** |
+| Tonic standing P_o | steady state, 0.40 µM ambient | 0.000788 | 0.005688 | **7.214×** (tonic gain) |
+| Tonic max dynamic range | limiting steady state, k_off → 0⁺ | 0.000788 | 0.166169 | **210.737×** |
 
-*Charge proxy: 7.454 ms ≡ 0.007454 pC/pA; 18.030 ms ≡ 0.018030 pC/pA. The simulated synaptic
-peaks (0.4196 baseline, 0.5536 with PAM, 0.6998 limiting) all respect the analytic gating bound
-β/(α+β) = 0.8282, which is not itself attainable because desensitisation competes with
+*Charge proxy: 13.053 ms ≡ 0.013053 pC/pA; 21.605 ms ≡ 0.021605 pC/pA. The simulated synaptic
+peaks (0.4196 baseline, 0.5536 with PAM, 0.7508 limiting) all respect the analytic gating bound
+β/(α+β) = 0.8382, which is not itself attainable because desensitisation competes with
 activation throughout the rise.*
 
 1. **Synaptic cleft.** The brief 1 mM transient drives peak open probability to 0.420. A
-   leftward affinity shift raises that peak only **1.319×**, with an asymptotic ceiling of
-   **1.668×** — so roughly two-thirds of the available synaptic headroom is already consumed by
+   leftward affinity shift raises that peak only **1.062×**, with an asymptotic ceiling of
+   **1.124×** — so roughly two-thirds of the available synaptic headroom is already consumed by
    a 2.5× shift. Instead, slower unbinding prolongs the deactivation tail: τ_IPSC rises
-   **1.895×** (15.00 → 28.43 ms) and integrated open probability **2.419×**, reproducing the
+   **1.656×** (15.00 → 24.85 ms) and integrated open probability **1.655×**, reproducing the
    classical electrophysiological phenotype of benzodiazepine action on IPSC decay
    (Otis & Mody, 1992).
 2. **Extrasynaptic space.** Receptors at steady-state 0.40 µM operate far below saturation
-   (P_open = 8.5 × 10⁻⁴). Slower unbinding moves the activation threshold into the ambient
-   range, producing a **7.876×** potentiation of standing open probability, with theoretical
-   headroom extending to **184.6×**.
+   (P_open = 7.9 × 10⁻⁴). Slower unbinding moves the activation threshold into the ambient
+   range, producing a **7.214×** potentiation of standing open probability, with theoretical
+   headroom extending to **210.7×**.
 
-**The contrast between the two compartments' ceilings is 184.608 / 1.668 = 111-fold.** This is
+**The contrast between the two compartments' ceilings is 210.737 / 1.124 = 188-fold.** This is
 the manuscript's central quantitative claim. It is sensitive to the synaptic ceiling, which at
-this parameterisation is 1.67×; the qualitative conclusion — that two orders of magnitude
+this parameterisation is 1.12×; the qualitative conclusion — that two orders of magnitude
 separate the compartments, so a single scalar multiplier cannot describe both — is not.
 
 A caution that must travel with every figure above. **Headroom and reachable gain are different
 quantities, and they diverge in opposite directions as ambient GABA falls.** Between 0.40 and
-0.10 µM the asymptotic headroom rises 15.6-fold (184.6× → 2881×) while the gain a finite
-s_max ≈ 2.5 modulator actually extracts rises only 1.08-fold (7.88× → 8.47×). Any statement
+0.10 µM the asymptotic headroom rises 15.6-fold (210.7× → 2881×) while the gain a finite
+s_max ≈ 2.5 modulator actually extracts rises only 1.06-fold (7.21× → 8.47×). Any statement
 about what a real compound does must be written against the reachable column. §5.2 returns to
 this, because it is where a falsification criterion can be written against the wrong one.
 
@@ -598,7 +598,7 @@ Two other provenance caveats travel with this table:
    pool. Both legs of that inference are assumptions.
 
 So the model's behaviour is clear and its anatomical grounding is not. Within the model, a
-184.6× receptor dynamic range does not produce 184.6× respiratory depression, and dose
+210.7× receptor dynamic range does not produce 210.7× respiratory depression, and dose
 escalation of a high-efficacy α5 PAM drives substantial tonic shunting in forebrain circuits
 with cognitive blunting and sedation as the expected costs. **Whether that corresponds to
 anything in tissue depends on two numbers that no source in this repository supports.**
@@ -612,26 +612,26 @@ the maximum left-shift it can elicit at full occupancy:
 
 Tonic Gain(occupancy) = 1 + occupancy · (Gain_max(s_max) − 1)
 
-* **Low potency-shift modulators.** Imepitoin (`ceiling` = 1.25, c = 1.2804) meets a narrow
+* **Low potency-shift modulators.** Imepitoin (`ceiling` = 1.25, c = 1.2697) meets a narrow
   biophysical ceiling under this mechanism: at 100% occupancy and 0.40 µM ambient GABA its
-  tonic open-probability gain cannot exceed **1.62×**, against a phasic peak gain of 1.08×.
-  Tonic gain rises steeply from there — TPA023 at `ceiling` = 2.00 reaches **4.70×** and
-  L-838,417 at `ceiling` = 2.20 reaches **5.87×**. The model therefore predicts substantially
+  tonic open-probability gain cannot exceed **1.60×**, against a phasic peak gain of 1.08×.
+  Tonic gain rises steeply from there — TPA023 at `ceiling` = 2.00 reaches **4.42×** and
+  L-838,417 at `ceiling` = 2.20 reaches **5.46×**. The model therefore predicts substantially
   greater tonic headroom once s_max exceeds ≈ 1.3–1.5; that range should be **experimentally
   evaluated as a candidate operational boundary, not treated as an established safety
   threshold**.
 * **High-efficacy scenarios.** For alogabat, recombinant electrophysiology shows selective
   potentiation of EC₂₀ GABA currents (+167% rat, +72% human α5β3γ2; Cecere et al., 2025).
-  Rather than asserting a universal measured EC₅₀ fold shift, s_max = 2.50 (c = 2.9321,
-  **7.88×** tonic gain) is examined as a modelled high-efficacy benchmark calibrated to that
+  Rather than asserting a universal measured EC₅₀ fold shift, s_max = 2.50 (c = 2.7854,
+  **7.21×** tonic gain) is examined as a modelled high-efficacy benchmark calibrated to that
   profile. MP-III-022 carries the same `ceiling = 2.50` in the code, based on partial α5
   potentiation data (Stamenić et al., 2016).
-* **High potency-shift modulators (s_max ≥ 2.5).** Diazepam at `ceiling` = 2.50 (c = 2.9321)
-  gives **7.88×** tonic gain. The relationship is strongly supralinear beyond that: c = 5.00
-  (s_max 3.71) gives **20.25×**, c = 10.0 (s_max 5.73) gives **56.46×**, and the gating-active
-  neurosteroid profile at `ceiling` = 6.00 (c = 10.9059) gives **62.69×** tonic gain against a
-  phasic peak gain of only 1.55×. The neurosteroid arm is the clearest case of the compartment
-  asymmetry: a 40-fold difference between what the compound does to a standing extrasynaptic
+* **High potency-shift modulators (s_max ≥ 2.5).** Diazepam at `ceiling` = 2.50 (c = 2.7854)
+  gives **7.21×** tonic gain. The relationship is strongly supralinear beyond that: c = 5.00
+  (s_max 3.71) gives **20.64×**, c = 10.0 (s_max 5.73) gives **59.22×**, and the gating-active
+  neurosteroid profile at `ceiling` = 6.00 (c = 8.8799) gives **50.52×** tonic gain against a
+  phasic peak gain of only 1.10×. The neurosteroid arm is the clearest case of the compartment
+  asymmetry: a 46-fold difference between what the compound does to a standing extrasynaptic
   conductance and what it does to a synaptic peak.
 
 ### 4.4. Algebraic selectivity index and Monte Carlo robustness
@@ -682,8 +682,8 @@ w(s) = ρ·f_extra,s + (1 − f_extra,s):
 
 1. **Efficacy vector e** per compound (Table 6A).
 2. **Kinetic gain weighting ρ.** The operational weighting of extrasynaptic (tonic) against
-   synaptic (phasic) modulation. For s_max = 2.50 the tonic gain is 7.876×, so
-   ρ_peak = 7.876 / 1.319 = **5.97** and ρ_charge = 7.876 / 2.419 = **3.26**. The nominal
+   synaptic (phasic) modulation. For s_max = 2.50 the tonic gain is 7.214×, so
+   ρ_peak = 7.214 / 1.062 = **6.79** and ρ_charge = 7.214 / 1.655 = **4.36**. The nominal
    **ρ = 6.00** therefore now sits essentially *at* the peak-based ratio rather than between the
    two, so the nominal value effectively weights the peak-based reading. Monte Carlo sweeps
    sample ρ ~ U[3.0, 7.5], which spans both endpoints.
@@ -961,20 +961,20 @@ read accordingly.
 
 The central conclusion is that **allosteric potentiation is state- and compartment-dependent.**
 Representing PAM action as a fixed ≈ 2.5× scalar cap conflates synaptic receptor saturation with
-extrasynaptic headroom. In synapses, agonist exposure restricts potentiation (**1.32×** peak
-gain, **1.67×** asymptotic ceiling); in extrasynaptic compartments, submicromolar ambient GABA
-leaves a wide **asymptotic receptor open-probability dynamic range** (**> 48×** across
-0.2–0.8 µM, **184.6×** at 0.40 µM). A 2.5× cap binds only above ≈ **5 µM** ambient GABA, an
+extrasynaptic headroom. In synapses, agonist exposure restricts potentiation (**1.06×** peak
+gain, **1.12×** asymptotic ceiling); in extrasynaptic compartments, submicromolar ambient GABA
+leaves a wide **asymptotic receptor open-probability dynamic range** (**> 50×** across
+0.2–0.8 µM, **210.7×** at 0.40 µM). A 2.5× cap binds only above ≈ **5 µM** ambient GABA, an
 order of magnitude above the extrasynaptic regime — so there the cap truncates rather than
 saturates.
 
-**The unit of all of these numbers is open probability.** The 184.6× figure is the ratio of a
+**The unit of all of these numbers is open probability.** The 210.7× figure is the ratio of a
 model-specific limiting open probability to the baseline open probability at a stated ambient
 concentration. Converting it into a statement about current requires receptor density, single-
 channel conductance and driving force; into a statement about inhibition, chloride homeostasis;
 into a statement about circuit output, input resistance and network context (§2.3). **No step of
 that chain is measured here, and the asymptote is in any case unreachable: the realised gain at
-the modelled benchmark potency is 7.88×.** What the analysis establishes is that the *available*
+the modelled benchmark potency is 7.21×.** What the analysis establishes is that the *available*
 headroom in the extrasynaptic pool is two orders of magnitude larger than in the synaptic one,
 and therefore that one multiplier cannot describe both — not that any compound realises it.
 
@@ -985,11 +985,11 @@ so resting on the manuscript's firmest results:
    alone. For predominantly extrasynaptic targets the model predicts substantially greater tonic
    headroom above s_max ≈ 1.3–1.5; this warrants **experimental evaluation as a candidate
    efficacy boundary, not interpretation as an established safety threshold.** The supralinearity
-   is the reason it matters: s_max 2.50 → 7.88× tonic gain, s_max 3.71 → 20.25×,
-   s_max 5.73 → 56.46×.
+   is the reason it matters: s_max 2.50 → 7.21× tonic gain, s_max 3.71 → 20.64×,
+   s_max 5.73 → 59.22×.
 2. **Separate synaptic and tonic conductances.** Computational neural models must decouple
-   synaptic deactivation (τ_IPSC, **1.90×** here) from standing extrasynaptic conductance
-   (**7.88×** here) rather than applying one lumped multiplier to all inhibitory inputs. The
+   synaptic deactivation (τ_IPSC, **1.66×** here) from standing extrasynaptic conductance
+   (**7.21×** here) rather than applying one lumped multiplier to all inhibitory inputs. The
    failure mode that follows from not doing so is documented in Supplementary Note §S2.2, where
    it produced an apparently reassuring result — universal survival at every dose — rather than
    an error.
@@ -1023,13 +1023,13 @@ Primary endpoint    The steady-state potentiation ratio surface
 
   | [GABA]_bath | R_PAM predicted (s_max 2.40 – 2.50) | asymptotic ceiling (k_off → 0⁺) |
   |---|---|---|
-  | 0.1 µM | **7.66 – 8.47×** | 2881.1× |
-  | 0.4 µM | **7.18 – 7.88×** | 184.6× |
-  | 1.0 µM | **5.87 – 6.33×** | 31.5× |
-  | 3.0 µM | **2.94 – 3.03×** | 4.8× |
-  | 10.0 µM | **1.34 – 1.35×** | 1.5× |
+  | 0.1 µM | **6.98 – 7.66×** | 3295.5× |
+  | 0.4 µM | **6.61 – 7.21×** | 210.7× |
+  | 1.0 µM | **5.59 – 6.01×** | 35.8× |
+  | 3.0 µM | **3.00 – 3.10×** | 5.3× |
+  | 10.0 µM | **1.36 – 1.37×** | 1.5× |
 
-  *(c_affinity = 2.7882 and 2.9321 respectively.)*
+  *(c_affinity = 2.6581 and 2.7854 respectively.)*
 
 **The asymptote column is unreachable by any finite modulator and must not be used to set
 criteria.** A criterion such as "R_max > 15× at 0.1 µM" is an asymptote reading: the realisable
@@ -1046,7 +1046,7 @@ wrong column fails loudly.
 
 1. If a high-efficacy α5 PAM (s_max ≥ 2.4) shows maximal steady-state **R_PAM ≤ 2.5 at
    [GABA]_bath = 0.40 µM** in recombinant α5β3γ2 channels, the nominal Model-B parameterisation
-   is falsified under the tested construct and conditions. (Model B predicts 7.18–7.88× there,
+   is falsified under the tested construct and conditions. (Model B predicts 6.61–7.21× there,
    comfortably clear of the Model-A ceiling.)
 2. If R_PAM does **not decline monotonically** with increasing [GABA]_bath across the five
    tested concentrations, the affinity-modulation mechanism as formulated is wrong, independently
@@ -1095,7 +1095,7 @@ Ordered by how much they constrain the conclusions, worst first.
 * **Three anchors do not identify six microscopic rates.** This is one admissible
   parameterisation consistent with the stated constraints, not an identified rate set.
 * **Desensitisation is unconstrained by the anchors.** d/r = 25.0 is provisional and sets the
-  asymptote directly: ±2-fold moves the dynamic range over 102.4–309.9× (§2.5). Every asymptotic
+  asymptote directly: ±2-fold moves the dynamic range over 102.4–351.1× (§2.5). Every asymptotic
   figure here is conditional on it. This is the largest single source of uncertainty in the
   manuscript's firmest result.
 * **τ_IPSC = 15.0 ms is a conventional neuronal IPSC value and is not supported by the kinetic
@@ -1141,20 +1141,20 @@ Ordered by how much they constrain the conclusions, worst first.
 
 **The receptor-kinetic result.** A five-state continuous-time Markov gating scheme shows that
 allosteric potentiation headroom is state- and compartment-dependent. The classical ceiling binds
-tightly in the synapse — **1.32×** peak gain, **1.67×** asymptotic ceiling, with the drug's action
-redirected into the deactivation tail at **1.90×** τ and **2.42×** integrated open probability —
-but expands to an **asymptotic receptor open-probability dynamic range of 184.6×** in
-extrasynaptic microenvironments at submicromolar ambient GABA, an **111-fold** contrast between
+tightly in the synapse — **1.06×** peak gain, **1.12×** asymptotic ceiling, with the drug's action
+redirected into the deactivation tail at **1.66×** τ and **1.66×** integrated open probability —
+but expands to an **asymptotic receptor open-probability dynamic range of 210.7×** in
+extrasynaptic microenvironments at submicromolar ambient GABA, an **188-fold** contrast between
 the two compartments' ceilings. A fixed 2.5× scalar cap binds only above ≈ 5 µM ambient GABA, so
 in the extrasynaptic regime it truncates rather than saturates. These are statements about open
 probability within a stated topology and parameterisation; they are reproducible from the cited
 tag, and they are the manuscript's defensible core.
 
-**The 184.6× figure is not a drug effect.** It is the ratio of a limiting open probability to a
+**The 210.7× figure is not a drug effect.** It is the ratio of a limiting open probability to a
 baseline open probability, both internal to this scheme. It is not a predicted fold change in
 whole-cell current, in tonic inhibition, in circuit output, or in any clinical endpoint, and no
 finite modulator approaches it — at the modelled benchmark potency the realised tonic gain is
-**7.88×**, and asymptote and realised gain diverge further as ambient GABA falls.
+**7.21×**, and asymptote and realised gain diverge further as ambient GABA falls.
 
 **The circuit-level implications are conditional, and two of their load-bearing inputs are
 unsourced.** Under the model's assumptions, low α5 representation in the preBötzinger complex
@@ -1322,15 +1322,28 @@ not resolve. Walters et al. — *Nat. Neurosci.* 3:1274–1281, not *Br. J. Phar
 parameters they carried relabelled UNSOURCED. MP-III-022's primary characterisation is Stamenić
 et al. (2016), ten years later than the withdrawn attribution.
 
-**Parameterisation.** The earlier draft reported a kinetic parameterisation that no commit of the
-repository produces: `Po_max = 0.84` against the code's 0.75 — outside the module's own declared
-acceptance range of [0.70, 0.80] — and a 3.0 mM / τ_clear = 1.0 ms synaptic transient against
-1.0 mM / 0.30 ms. It also cited a commit hash present in no ref. Every figure moved; the ones
-that moved most were the synaptic ones carrying the argument (peak gain 1.062 → **1.319**,
-ceiling 1.124 → **1.668**, charge 1.655 → **2.419**, tonic headroom 210.7 → **184.6**), and the
-headline compartment contrast fell from 187-fold to **111-fold**. The qualitative conclusion
-survived. `scripts/paper_numbers.py` now emits every table, and `scripts/verify_manuscript.py`
-checks the document against a clean checkout of the cited tag.
+**Parameterisation — a correction to a correction.** An intermediate revision of this
+manuscript reported figures from `gabaa_kinetics`' module-default synaptic transient
+(1000 µM / 0.30 ms) in the belief that the earlier draft's 3000 µM / 1.00 ms transient was
+unsupported by any commit. That was wrong. `config.SYNAPTIC_PULSE` has held
+(3000 µM, 1.00 ms) throughout; it is the **calibrated** pulse — one of the 9 of 27 (peak,
+clearance) cells in which the scheme reproduced every anchored benzodiazepine observable from a
+single free parameter — and every pharmacology consumer in the repository passes it explicitly.
+The module defaults were a provisional literature estimate reached only by callers that pass no
+pulse, which was the figure-generating script and nothing else.
+
+So the constant had three definitions: `config.SYNAPTIC_PULSE`, an inline literal in
+`cpg.Drug.from_kinetics` that matched it, and the `gabaa_kinetics` defaults that did not. It now
+has one: `gabaa_kinetics` imports from `config`, the literal is gone, and
+`tests/test_review_regressions.py` pins the single definition. Every figure in this manuscript
+is generated on that unified calibration, which restores the original draft's values
+(tonic headroom 210.7×, phasic peak gain 1.062×, c_affinity 2.7854, K_d 31.95 µM, E 5.1814).
+
+The discrepancy surfaced only when `scripts/decompose_burst_change.py` constructed a `Drug`
+through the circuit path and printed its tonic gain as 7.214 beside a manuscript asserting
+7.876. One quantity, two values, and nothing had computed it twice until then. The earlier
+draft's unresolvable **commit hash** was a real defect and is replaced by a tag that
+`scripts/verify_manuscript.py` checks.
 
 **Conflated quantities separated.** The earlier draft used one figure for the *simulated* peak
 open probability at saturating agonist (0.750, the calibration anchor, with desensitisation

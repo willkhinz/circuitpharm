@@ -598,3 +598,86 @@ def test_falsification_intervals_are_set_from_reachable_gain_not_the_asymptote()
         f"reachable gain at 0.1 uM is now {reach[0.1]/reach[0.4]:.2f}x its 0.4 uM value")
     assert reach[0.1] < 0.01 * head[0.1], (
         "a finite s_max=2.5 PAM should reach under 1% of the asymptote at 0.1 uM ambient")
+
+
+# ------------------------------------------------- E22 the synaptic pulse had three
+#                                                   definitions, two of which agreed
+def test_the_synaptic_pulse_has_exactly_one_definition():
+    """E22, and the most expensive error in the project so far, measured in wrong conclusions.
+
+    `config.SYNAPTIC_PULSE` held (3000 uM, 1.00 ms). `cpg.Drug.from_kinetics` carried an
+    inline literal `dict(peak_um=3000.0, clear_ms=1.00)` that matched it. `gabaa_kinetics`
+    carried module defaults of 1000 uM / 0.30 ms that did NOT, and those were reached by any
+    caller that passed no pulse.
+
+    Every pharmacology consumer passes config's pulse explicitly, so for a long time only one
+    caller ever saw the module defaults -- the script written to generate a manuscript's
+    tables. The two calibrations differ materially:
+
+        (3000, 1.00)  kon 0.0147  koff 0.4692  tonic headroom 210.7x  phasic gain 1.062x
+        (1000, 0.30)  kon 0.0112  koff 0.3331  tonic headroom 184.6x  phasic gain 1.319x
+
+    A manuscript draft quoting the first set was audited, declared unreproducible, and
+    "corrected" to the second -- on the strength of `git log -S"SYNAPTIC_PEAK_UM = 3000"`
+    returning nothing, which it does because that symbol never held the value. The absence of
+    a string was read as the absence of a value. The disagreement surfaced only when a script
+    finally computed one quantity by both paths and printed 7.214 beside 7.876.
+
+    So: one definition, and a test that fails if a second appears.
+    """
+    import pathlib
+    import re
+
+    from circuitpharm import gabaa_kinetics as gk
+    from circuitpharm.config import SYNAPTIC_PULSE
+
+    # 1. the module must agree with config, because it reads from it
+    assert gk.SYNAPTIC_PEAK_UM == SYNAPTIC_PULSE["peak_um"], (
+        f"gabaa_kinetics.SYNAPTIC_PEAK_UM is {gk.SYNAPTIC_PEAK_UM}, config says "
+        f"{SYNAPTIC_PULSE['peak_um']} -- the two calibrations have diverged again")
+    assert gk.SYNAPTIC_CLEAR_MS == SYNAPTIC_PULSE["clear_ms"], (
+        f"gabaa_kinetics.SYNAPTIC_CLEAR_MS is {gk.SYNAPTIC_CLEAR_MS}, config says "
+        f"{SYNAPTIC_PULSE['clear_ms']}")
+
+    # 2. no source file may hard-code the pulse values again. config.py is where they live;
+    #    everything else must import. The numbers are searched for as literals because that
+    #    is the form the third copy took.
+    peak, clear = SYNAPTIC_PULSE["peak_um"], SYNAPTIC_PULSE["clear_ms"]
+    pat = re.compile(r"peak_um\s*=\s*([0-9.]+)")
+    offenders = []
+    for f in sorted(pathlib.Path("src/circuitpharm").glob("*.py")):
+        if f.name == "config.py":
+            continue
+        for m in pat.finditer(f.read_text()):
+            # a keyword argument forwarding a variable is fine; a literal is not
+            if m.group(1).rstrip(".").isdigit() or "." in m.group(1):
+                offenders.append(f"{f.name}: peak_um={m.group(1)}")
+    assert not offenders, (
+        "the synaptic pulse is hard-coded outside config.py again: "
+        f"{offenders}. Import config.SYNAPTIC_PULSE instead; this constant has had three "
+        "definitions before and the two that agreed hid the one that did not.")
+
+    # 3. and the fit that every consumer gets must be the config one
+    s = gk.fit_scheme(verbose=False)
+    assert abs(s.koff / s.kon - 31.95) < 0.05, (
+        f"the default fit gives Kd = {s.koff / s.kon:.2f} uM; the config pulse gives 31.95. "
+        "A default-pulse caller is fitting a different scheme from the pipeline.")
+
+
+def test_the_two_calibration_paths_now_agree():
+    """The behavioural half of E22: a Drug built through the circuit path must report the
+    tonic gain the kinetic module derives directly. This is the comparison that finally
+    exposed the divergence, so it is now run every time."""
+    from circuitpharm import gabaa_kinetics as gk
+    from circuitpharm.evaluation import Compound
+
+    s = gk.fit_scheme(verbose=False)
+    c = gk.calibrate_pam(s, 2.5, "affinity")
+    direct = gk.derive(s, affinity=c)["tonic_gain"]
+
+    circuit = Compound.from_profile("nonselective_bz", occupancy=1.0)
+    via_drug = circuit.drug("prebotc").gaba_scale_tonic()
+
+    assert abs(direct - via_drug) < 0.01 * direct, (
+        f"the kinetic module derives a tonic gain of {direct:.4f} and the circuit path "
+        f"reports {via_drug:.4f}. One quantity, two values -- which is E22 exactly.")

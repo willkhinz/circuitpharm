@@ -99,10 +99,33 @@ OPEN = STATES.index("A2O")
 DEFAULT_RATES = dict(kon=0.010, koff=1.00, beta=1.00, alpha=0.30,
                      d=0.050, r=0.0020)
 
-# agonist concentrations the two receptor pools actually experience
-SYNAPTIC_PEAK_UM = 1000.0     # ~1 mM in the cleft
-SYNAPTIC_CLEAR_MS = 0.30      # cleft clearance time constant
-AMBIENT_UM = 0.40             # tonic/extrasynaptic ambient GABA (~0.1-1 uM)
+# Agonist concentrations the two receptor pools actually experience.
+#
+# ONE DEFINITION, IMPORTED. These were literals here (1000 uM / 0.30 ms) while
+# `config.SYNAPTIC_PULSE` held 3000 uM / 1.00 ms and `cpg.Drug.from_kinetics` carried a THIRD
+# copy as an inline literal matching config's. Every pharmacology consumer passed config's
+# pulse explicitly, so the module defaults were reached only by callers that did not pass one
+# -- and those callers were therefore fitting a DIFFERENT scheme from the one the whole
+# pipeline uses, with no indication that they were:
+#
+#     module defaults (1000 / 0.30)   kon 0.0112  koff 0.3331  tonic headroom 184.6x
+#     config pulse    (3000 / 1.00)   kon 0.0147  koff 0.4692  tonic headroom 210.7x
+#
+# A manuscript draft was accused of quoting unreproducible numbers on the strength of the
+# first column. It was quoting the second -- the pipeline's own calibration -- and the audit
+# that "refuted" it had grepped for `SYNAPTIC_PEAK_UM = 3000`, a symbol that never held the
+# value. Three copies of one constant, and the disagreement surfaced only when a script
+# compared a Drug's tonic gain against the manuscript's.
+#
+# config.SYNAPTIC_PULSE is authoritative because it is CALIBRATED: it is one of the 9 of 27
+# (peak, clearance) cells in which the scheme reproduced every anchored benzodiazepine
+# observable from a single free parameter. The former literals here were a provisional
+# literature estimate. `config` imports only `results`, so this direction is safe.
+from .config import AMBIENT_GABA_UM as AMBIENT_UM          # noqa: E402
+from .config import SYNAPTIC_PULSE as _PULSE               # noqa: E402
+
+SYNAPTIC_PEAK_UM = float(_PULSE["peak_um"])
+SYNAPTIC_CLEAR_MS = float(_PULSE["clear_ms"])
 
 
 @dataclass(frozen=True)

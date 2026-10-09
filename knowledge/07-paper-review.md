@@ -10,6 +10,74 @@ Reproduce the whole verification with:
     python scripts/paper_numbers.py
     python scripts/ranking_robustness.py --draws 20000 [--a5-floor 0.01|0.02]
 
+## RETRACTION, 2026-10-08 — §2 and §1b of this review are withdrawn
+
+**The central finding below is wrong, and the draft was right.** This notice is first because
+anyone reading the review needs it before anything else in it.
+
+§2 claimed the draft's kinetic numbers were "not reproducible from this repository" and that
+its parameterisation existed in no commit. In fact the draft was quoting the repository's **own
+pharmacology calibration**, and the audit that "refuted" it made three errors:
+
+1. **It grepped for the wrong symbol.** `git log -S"SYNAPTIC_PEAK_UM = 3000"` finds nothing
+   because the value lives in `config.SYNAPTIC_PULSE`, which has held
+   `(peak_um=3000.0, clear_ms=1.00)` all along — exactly the draft's transient. A third copy
+   sat as an inline literal in `cpg.Drug.from_kinetics`. The absence of a string was read as
+   the absence of a value.
+2. **It compared against the wrong one of two calibrations.** `gabaa_kinetics` carried module
+   defaults of 1000 µM / 0.30 ms, reached only by callers that pass no pulse. Every
+   pharmacology consumer — `cpg.py`, `evaluation.py`, and four calibration scripts — passes
+   `config.SYNAPTIC_PULSE` explicitly. So `scripts/paper_numbers.py`, which I wrote, was the
+   only thing in the project using the module defaults, and the manuscript I "corrected" was
+   the only document describing a calibration nothing else used.
+3. **The `FIT_RANGES` argument was wrong too.** I claimed `Po_max = 0.84` "would have been
+   rejected" by the declared range [0.70, 0.80]. Both calibrations hit the fit target
+   `po_max = 0.7500` exactly. The draft's 0.8382 is **β/(α+β)**, correctly computed for the
+   config-pulse parameters — a different quantity, not an out-of-range anchor.
+
+On the config pulse the draft reproduces to every digit: `kon` 0.0146842, `koff` 0.469177,
+`beta` 0.559023, `alpha` 0.107891, `Kd` 31.95, `E` 5.1814, `c_affinity` 2.7854, tonic gain
+7.2142, phasic gain 1.0623, tonic headroom 210.74, τ ratio 1.6564, charge ratio 1.6552, and
+every cell of its sensitivity table (351.1, 117.4, 229.8, 180.9, 54.7, 829.7, 3295.5, cap
+crossing 5.40 µM). Its `c = 2.79 → s_max = 2.50` was right, and so was its `> 50×` across
+0.2–0.8 µM, which I had "corrected" to `> 48×`.
+
+**How this was found.** Not by re-reading the review. By writing
+`scripts/decompose_burst_change.py`, which built a `Drug` through the circuit path and printed
+its tonic gain as **7.214** — the draft's number — beside a manuscript claiming 7.876. One
+quantity, two values, visible only because something finally computed it twice.
+
+**The fix is structural.** `gabaa_kinetics.SYNAPTIC_PEAK_UM`/`SYNAPTIC_CLEAR_MS` now import
+from `config.SYNAPTIC_PULSE`, and `cpg.py`'s literal is gone, so the constant has **one**
+definition. `tests/test_review_regressions.py` pins that. The manuscript is regenerated on the
+unified calibration, which restores the draft's figures.
+
+**What this review got right, and which still stands:**
+
+* The non-existent commit hash `c8f17a9` (§2).
+* The **`P_o,max` conflation** (§Table 1) — the draft labelled β/(α+β) as the calibration
+  anchor. The anchor is 0.750; β/(α+β) = 0.8382 is unattainable because desensitisation
+  competes during the rise. Real finding, wrong supporting argument.
+* **The falsification intervals** (§7b) — two of four are violated by the model *on the draft's
+  own calibration*: 0.1 µM predicts 6.98–7.66× against a pre-registered > 15×, and 3.0 µM gives
+  3.00–3.10× against < 3.0×. This was the review's most consequential finding and it is
+  independent of the pulse confusion.
+* **The citation errors** (§3): five wrong coordinates, three unresolvable.
+* **The claim-support failures** (§7 of the manuscript): six load-bearing citations that do not
+  support their number, including Kasugai on `f_extra,α5` and Walters on the diazepam benchmark.
+* **The disowned statistics** (§5): Table 6 carried the median and 95th percentile that
+  `ranking_robustness.py` prints NOT QUOTABLE.
+* **The "multiscale" mislabel** (§6).
+* **The missing substrate-independence result** (§7).
+
+**The lesson, which is the project's own and which I committed anyway.** A value duplicated
+across locations diverges, and the symptom is plausible rather than loud. I had written that
+sentence into `substrate.py`, into a memory file, and into this repository's worklog, and then
+diagnosed a three-way duplication as fabrication. The check that would have caught it is the
+one I eventually ran by accident: compute the quantity twice, by different paths, and compare.
+
+---
+
 ## Verdict in one line
 
 The **algebraic half of the paper is sound and reproduces exactly**; the **kinetic half quotes
