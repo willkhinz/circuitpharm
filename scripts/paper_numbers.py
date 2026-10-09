@@ -69,12 +69,14 @@ def kinetics(s):
         out.append(f"  {k:6s} {getattr(s, k):.6g} {unit}")
     kd, e, dr = s.koff / s.kon, s.beta / s.alpha, s.d / s.r
     out.append("")
-    # Printed to more digits than look necessary ON PURPOSE. The manuscript's closed-form
-    # [G]_1/2 derivation carries E to four decimals, and `verify_manuscript.py` checks the
-    # manuscript's digits against THIS output -- so under-printing here makes a correct
-    # figure unverifiable. It caught exactly that: E printed as 4.819, quoted as 4.8195.
-    out.append(f"  Kd = koff/kon            {kd:.4g} uM  ({kd:.6f})")
-    out.append(f"  E  = beta/alpha          {e:.4g}     ({e:.6f})")
+    # EACH DERIVED CONSTANT IS PRINTED AT THE PRECISION THE MANUSCRIPT QUOTES, and the rule
+    # is worth stating because getting it wrong twice cost two verification rounds.
+    # `verify_manuscript.py` checks the document's digits against this output by substring,
+    # so a figure printed to FEWER digits than the document uses is unverifiable (E printed
+    # 4.819, quoted 4.8195) and one printed to MORE digits is equally unverifiable, because a
+    # correctly rounded 4.8195 is not a substring of 4.819466. Print what the document says.
+    out.append(f"  Kd = koff/kon            {kd:.4g} uM   ({kd:.4f})")
+    out.append(f"  E  = beta/alpha          {e:.4g}      ({e:.4f})")
     out.append(f"  alpha/beta               {s.alpha / s.beta:.5g}")
     out.append(f"  d/r                      {dr:.4g}")
     out.append("")
