@@ -69,8 +69,12 @@ def kinetics(s):
         out.append(f"  {k:6s} {getattr(s, k):.6g} {unit}")
     kd, e, dr = s.koff / s.kon, s.beta / s.alpha, s.d / s.r
     out.append("")
-    out.append(f"  Kd = koff/kon            {kd:.4g} uM")
-    out.append(f"  E  = beta/alpha          {e:.4g}")
+    # Printed to more digits than look necessary ON PURPOSE. The manuscript's closed-form
+    # [G]_1/2 derivation carries E to four decimals, and `verify_manuscript.py` checks the
+    # manuscript's digits against THIS output -- so under-printing here makes a correct
+    # figure unverifiable. It caught exactly that: E printed as 4.819, quoted as 4.8195.
+    out.append(f"  Kd = koff/kon            {kd:.4g} uM  ({kd:.6f})")
+    out.append(f"  E  = beta/alpha          {e:.4g}     ({e:.6f})")
     out.append(f"  alpha/beta               {s.alpha / s.beta:.5g}")
     out.append(f"  d/r                      {dr:.4g}")
     out.append("")

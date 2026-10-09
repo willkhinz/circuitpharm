@@ -60,8 +60,15 @@ CATEGORIES = {
         "2.21", "3.84", "7.18", "20.25", "56.46", "158.08",
         "2881.1", "725.8", "48.1", "15.0", "4.8",
     ],
+    # DELIBERATE ROUNDING, so these are checked from both sides: the exact value must appear
+    # in generator output (proving the model produces it) and the rounded value must appear in
+    # the manuscript (proving the document rounds rather than drifts). A plain substring check
+    # cannot express that, and the first version of this script failed here for exactly that
+    # reason -- it demanded the manuscript contain 4-decimal indices it had deliberately
+    # rounded to two significant figures.
     "selectivity indices and Monte Carlo lower tail": [
-        "10.87", "8.64", "7.87", "1.20", "0.56", "9.34", "3.62",
+        ("10.8750", "11"), ("8.6442", "8.6"), ("7.8750", "7.9"), ("1.2083", "1.2"),
+        ("0.5633", "0.56"), ("9.3487", "9.3"), ("3.6250", "3.6"),
         "2.51", "2.49", "2.57", "2.48", "2.55", "63.8", "99.9",
     ],
 }
@@ -143,14 +150,23 @@ def main() -> int:
         print(f"\n[4/4] checking the manuscript's figures against that output")
         bad = 0
         for cat, vals in CATEGORIES.items():
-            misses = [v for v in vals if v not in out]
-            absent = [v for v in vals if v not in text]
+            misses, absent = [], []
+            for v in vals:
+                # a bare string must appear in both; a pair is (exact in output, as printed
+                # in the manuscript) for figures the manuscript rounds on purpose
+                in_out, in_text = v if isinstance(v, tuple) else (v, v)
+                if in_out not in out:
+                    misses.append(in_out)
+                if in_text not in text:
+                    absent.append(in_text)
             status = "ok" if not misses and not absent else "FAIL"
             print(f"      {status:4s} {cat}  ({len(vals)} figures)")
             for v in misses:
-                print(f"           {v!r} is in the manuscript but NOT in clean-tree output")
+                print(f"           {v!r} is quoted by the manuscript but NOT produced by the "
+                      f"clean tree")
             for v in absent:
-                print(f"           {v!r} is expected in the manuscript but absent from it")
+                print(f"           {v!r} is produced by the clean tree but absent from the "
+                      f"manuscript")
             bad += len(misses) + len(absent)
 
         print()
