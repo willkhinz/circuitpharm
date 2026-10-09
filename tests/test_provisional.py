@@ -294,13 +294,42 @@ def test_module_docstring_declares_synthetic():
     assert "SYNTHETIC" in first
 
 
-def test_a_dataset_cannot_be_both_generated_and_sourced():
-    with pytest.raises(ValueError, match="synthetic AND carries source_key"):
+def test_a_wholly_invented_dataset_cannot_carry_a_source():
+    """`kind="synthetic"` means invented, so a source_key on it asserts provenance that
+    does not exist. A PARAMETRIC dataset may carry one -- its parameters are real -- which
+    is why the three-way `DataKind` exists rather than a synthetic/not-synthetic flag."""
+    with pytest.raises(ValueError, match="wholly generated trace has no provenance"):
         DoseResponseDataset(
             citation_label="x", preparation="p",
             concs_um=np.array([1.0]), mean_response=np.array([0.1]),
-            sem=np.array([0.01]), synthetic=True, origin="formula",
+            sem=np.array([0.01]), kind="synthetic", synthetic=True, origin="formula",
             source_key="some_key")
+
+
+def test_kind_and_synthetic_cannot_disagree():
+    """Two fields describing one property must not be settable into contradiction."""
+    with pytest.raises(ValueError, match="implies synthetic"):
+        DoseResponseDataset(
+            citation_label="x", preparation="p", concs_um=np.array([1.0]),
+            mean_response=np.array([0.1]), sem=np.array([0.01]),
+            kind="digitised", synthetic=True, origin="o", source_key="k",
+            figure="f", digitisation="d")
+    with pytest.raises(ValueError, match="implies synthetic"):
+        DoseResponseDataset(
+            citation_label="x", preparation="p", concs_um=np.array([1.0]),
+            mean_response=np.array([0.1]), sem=np.array([0.01]),
+            kind="parametric", synthetic=False, origin="o", source_key="k")
+
+
+def test_parametric_data_must_name_its_source_and_its_construction():
+    for kw, match in (
+        (dict(kind="parametric", synthetic=True, origin="o"), "names no `source_key`"),
+        (dict(kind="parametric", synthetic=True, source_key="k"), "no `origin` stating"),
+    ):
+        with pytest.raises(ValueError, match=match):
+            DoseResponseDataset(
+                citation_label="x", preparation="p", concs_um=np.array([1.0]),
+                mean_response=np.array([0.1]), sem=np.array([0.01]), **kw)
 
 
 def test_real_data_must_name_its_source_and_figure():
@@ -353,3 +382,99 @@ def test_holdout_is_unreachable_from_fitting():
 def test_datasets_declare_an_observable():
     assert DOSE_RESPONSE_BENCHMARK.observable is Observable.PEAK
     assert DEACTIVATION_BENCHMARK.observable is Observable.CHARGE
+
+
+# ======================================================================== P1-2 real data
+def test_the_jahn_dataset_is_parametric_and_sourced():
+    """ANCHOR. The project's first quantitatively sourced kinetic dataset.
+
+    The published parameters are EC50 = 11.6 +/- 0.9 uM and nH = 2.2 +/- 0.4 (Jahn et al.
+    1997, NeuroReport 8(16):3443-6). The generated curve must reproduce that EC50 exactly
+    at its half-maximum -- it is constructed from it, so anything but equality means the
+    construction is wrong.
+    """
+    from circuitpharm.fitting import JAHN1997_PEAK_CRC as ds
+
+    assert ds.kind == "parametric"
+    assert ds.synthetic is True, "a parametric curve must still taint a fit"
+    assert ds.source_key == "jahn_a1b2g2_kinetics"
+    assert ds.observable is Observable.PEAK
+    assert ds.role == "train"
+    assert "NOT digitised" in ds.digitisation
+    assert ds.motivated_by == "", "a sourced dataset uses source_key, not motivated_by"
+
+    # The curve is a Hill function with the published parameters, so recover BOTH of them
+    # by regression in logit space, where log(y/(1-y)) = nH * (log c - log EC50) is exactly
+    # linear. Doing it this way rather than by interpolating the half-maximum on the
+    # concentration grid matters: the grid is decade-spaced, and a log-linear interpolation
+    # between 3 and 30 uM returns 12.08 uM for a curve whose EC50 is exactly 11.6 -- a 4%
+    # artefact of the interpolation that would have looked like a 4% construction error.
+    c, y = ds.concs_um, ds.mean_response
+    m = (y > 1e-6) & (y < 1.0 - 1e-6)
+    slope, intercept = np.polyfit(np.log10(c[m]), np.log10(y[m] / (1.0 - y[m])), 1)
+    ec50 = float(10.0 ** (-intercept / slope))
+    assert slope == pytest.approx(2.2, rel=1e-9), "the published Hill slope is not recovered"
+    assert ec50 == pytest.approx(11.6, rel=1e-9), "the published EC50 is not recovered"
+    # The Hill asymptote is 1 and is APPROACHED, not reached: at the paper's 3 mM
+    # saturating concentration the curve is 0.999995. "Saturates" means the last decade
+    # buys nothing measurable, not that the formula equals its limit.
+    assert y.max() == pytest.approx(1.0, abs=1e-4)
+    assert y.max() < 1.0
+    assert np.all(np.diff(y) > 0), "a concentration-response curve must be monotone"
+    assert np.all(ds.sem >= 0.01), "the SEM floor is not being applied"
+
+
+def test_the_jahn_source_resolves_in_the_knowledge_base():
+    """A source_key that names nothing is worse than no key at all."""
+    import sqlite3
+
+    con = sqlite3.connect("data/pharmacology.db")
+    rows = list(con.execute("select citation, verification from sources where key = ?",
+                            ("jahn_a1b2g2_kinetics",)))
+    assert rows, "jahn_a1b2g2_kinetics is not in the sources table"
+    citation, verification = rows[0]
+    assert "NeuroReport" in citation and "3443" in citation
+    # the record must say plainly what was and was not read
+    assert "FULL TEXT NOT READ" in verification
+    assert "CLAIM_SUPPORT_DOES_NOT_SUPPORT for MEAN OPEN TIME" in verification
+
+
+def test_the_scheme_cannot_reproduce_the_measured_hill_slope():
+    """ANCHOR, and the first falsifiable mismatch against a sourced measurement.
+
+    Jahn et al. report a Hill-type slope of 2.2 +/- 0.4 and read it as evidence for at
+    least three binding sites. The 5-state scheme has TWO, and its peak curve comes out at
+    1.294 -- below even the lower error bound of 1.8. This is structural: no choice of
+    rates makes a two-site scheme that steep, so it cannot be fitted away, and P5's model
+    comparison is where it gets adjudicated.
+
+    Tolerance: asserted as an inequality against the measured lower bound rather than as a
+    value, because the point is the direction and the size of the gap, not the third digit.
+    """
+    from circuitpharm.config import SYNAPTIC_PULSE
+    from circuitpharm.gabaa_kinetics import fit_scheme
+
+    s = fit_scheme(verbose=False, pulse=dict(SYNAPTIC_PULSE))
+    c = np.logspace(-1, 4, 60)
+    y = np.array([s.po_peak(x) for x in c])
+    f = y / y.max()
+    m = (f > 0.1) & (f < 0.9)
+    slope = float(np.polyfit(np.log10(c[m]), np.log10(f[m] / (1 - f[m])), 1)[0])
+
+    assert slope == pytest.approx(1.294, rel=0.05)
+    assert slope < 2.2 - 0.4, (
+        f"the scheme's peak Hill slope is {slope:.3f}; Jahn et al. measured 2.2 +/- 0.4. "
+        f"If this ever rises above 1.8 the structural argument in fitting/data.py needs "
+        f"re-examining.")
+
+
+def test_the_missing_datasets_are_named_not_forgotten():
+    """The gap is the finding, so it is in the code rather than only in a commit message."""
+    from circuitpharm.fitting import MISSING_DATASETS
+
+    assert set(MISSING_DATASETS) == {"deactivation_peak_pulse",
+                                     "single_channel_mean_open_time", "holdout"}
+    for key, note in MISSING_DATASETS.items():
+        assert len(note) > 100, f"{key}'s note does not say what is needed or why"
+    assert "k_off" in MISSING_DATASETS["deactivation_peak_pulse"]
+    assert "FIT_FIXED_ALPHA" in MISSING_DATASETS["single_channel_mean_open_time"]

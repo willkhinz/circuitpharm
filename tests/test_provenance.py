@@ -113,7 +113,12 @@ def test_the_provenance_gap_is_what_the_audit_recorded():
         document. Two of Model A's defaults are the project's own FIT TARGETS (po_max 0.75,
         tau_deact 15.0 ms) rather than anything fitted, so they are recorded FITTED and are
         circular if used as anchors.
-      * DATASETS (2). Both `fitting/data.py` benchmarks are synthetic. The deactivation
+      * DATASETS (3, of which one is sourced). `fitting/data.py` gained the project's
+        FIRST quantitatively sourced kinetic dataset: Jahn et al. 1997's
+        alpha1beta2gamma2L peak concentration-response, EC50 11.6 +/- 0.9 uM with a Hill
+        slope of 2.2 +/- 0.4, generated from those published parameters rather than
+        digitised from the figure (kind="parametric"). The other two are synthetic. The
+        deactivation
         trace carried a citation to Haas & Macdonald 1999, which this project's own
         claim-support audit records as measuring 76.1 ms for that quantity against the
         trace's dominant 15 ms component.
@@ -142,11 +147,16 @@ def test_the_provenance_gap_is_what_the_audit_recorded():
         f"manuscript updated too.")
 
     a = audit()
-    assert a["total"] == 44, f"parameter count changed to {a['total']}; re-run the audit"
-    assert a["sourced"] == 6, (
-        f"{a['sourced']} parameters now name a source, not 6. If this went UP, update this "
+    assert a["total"] == 45, f"parameter count changed to {a['total']}; re-run the audit"
+    assert a["sourced"] == 7, (
+        f"{a['sourced']} parameters now name a source, not 7. If this went UP, update this "
         f"pin and knowledge/06-source-provenance.md. If it went DOWN, something lost its "
         f"citation.")
+    assert a["by_basis"].get(Basis.QUANTITATIVE.value, 0) == 1, (
+        "exactly 1 QUANTITATIVE entry is expected: fitting/data.py's Jahn 1997 "
+        "concentration-response, the first parameter in this project read as a number from "
+        "a named source. If this goes up, that is a real advance -- record it in "
+        "knowledge/06-source-provenance.md.")
     assert a["by_basis"][Basis.UNSOURCED.value] == 31, (
         f"{a['by_basis'][Basis.UNSOURCED.value]} UNSOURCED, not 31. Widening this gap is a "
         f"legitimate finding -- it means a claim-support read demoted something, or the "

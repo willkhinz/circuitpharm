@@ -261,6 +261,20 @@ DATASET_PROV = {
         "which is the model's own po_max fit target, so a fit against it is partly "
         "circular; the SEM values have no origin. Mortensen et al. 2012 and Sigel & "
         "Steinmann 2012 are recorded as MOTIVATION only -- neither was digitised.")),
+    "jahn1997_peak_crc": Record(Basis.QUANTITATIVE, "jahn_a1b2g2_kinetics", (
+        "PARAMETRIC, and the project's FIRST sourced kinetic dataset. Jahn et al. 1997 "
+        "(NeuroReport 8(16):3443-6, PMID 9427304) measured alpha1beta2gamma2L in HEK293 "
+        "with ultra-fast solution exchange and published EC50 = 11.6 +/- 0.9 uM and a "
+        "Hill-type slope of 2.2 +/- 0.4 over 1-10 uM, saturating at 3 mM. The nine points "
+        "in the dataset are generated from those two parameters, so the PARAMETERS are the "
+        "measurement and the points are the paper's own model of its data -- recorded "
+        "QUANTITATIVE on that basis, with kind='parametric' and the fit tainted as for a "
+        "synthetic trace. The full text could not be read (pubmed/PMC/EuropePMC are "
+        "egress-blocked here), so the figure was never digitised. "
+        "TWO DISCREPANCIES IT SURFACES, neither resolved: FIT_TARGETS['ec50_um'] is 20.0 uM "
+        "against this 11.6; and the scheme's peak Hill slope is 1.294 against this 2.2, "
+        "which is structural -- two binding sites against the at-least-three the authors "
+        "infer -- so it cannot be fitted away.")),
     "deactivation_charge": Record(Basis.UNSOURCED, "", (
         "SYNTHETIC. 0.70*exp(-t/15) + 0.30*exp(-t/70). It previously carried "
         "citation='Haas & Macdonald 1999 / Jones & Westbrook 1995'; "
