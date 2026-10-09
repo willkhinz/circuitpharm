@@ -86,6 +86,7 @@ def test_booleans_print_as_booleans_not_as_1_and_0():
 
 
 # ============================================ 5. NMDA arm of the subjective index
+@pytest.mark.slow
 def test_nmda_arm_is_reported_and_the_total_is_void():
     """Moving evaluation out of the old simulator dropped the NMDA subjective term, so any
     compound with an NMDA component was silently under-reported -- and the two-arm design
@@ -102,6 +103,7 @@ def test_nmda_arm_is_reported_and_the_total_is_void():
     assert rs.quantity("subjective_index_total").tier is Tier.VOID
 
 
+@pytest.mark.slow
 def test_no_nmda_arm_means_no_nmda_quantities():
     from circuitpharm.evaluation import evaluate
     rs = evaluate(Compound.from_profile("alogabat", occupancy=0.35), n_seed=1,
@@ -130,6 +132,7 @@ def test_unreachable_intrinsic_efficacy_raises_instead_of_producing_nan():
         Compound("impossible", a5=1.0, s_max=500.0).pool_gains()
 
 
+@pytest.mark.slow
 def test_plausible_intrinsic_efficacy_still_works():
     g = Compound("ok", a5=1.0, s_max=2.5, occupancy=0.5).pool_gains()
     assert all(math.isfinite(g[k]) for k in ("tonic", "phasic", "tau"))
@@ -216,6 +219,7 @@ def test_direct_agonist_raises_with_actionable_guidance():
 
 @pytest.mark.parametrize("key", ["alogabat", "neurosteroid", "imepitoin", "tpa023",
                                  "hz_166", "mp_iii_022", "ideal_a5", "zolpidem"])
+@pytest.mark.slow
 def test_every_modulator_profile_evaluates_at_its_own_ceiling(key):
     """All non-agonist profiles must work with their real s_max. The neurosteroid arm
     (ceiling 6.0) needs the gating fallback, since an affinity-only mechanism cannot
@@ -520,6 +524,7 @@ def test_kinetic_calibration_target_lies_inside_its_own_accepted_range():
             "the fit would be asked to reach a value the module rejects")
 
 
+@pytest.mark.slow
 def test_manuscript_numbers_are_generated_not_transcribed():
     """E21, second half. Every figure the manuscript quotes must come out of
     `scripts/paper_numbers.py`, which recomputes it from the model. The draft's numbers
@@ -617,6 +622,11 @@ def test_the_synaptic_pulse_has_exactly_one_definition():
         (3000, 1.00)  kon 0.0147  koff 0.4692  tonic headroom 210.7x  phasic gain 1.062x
         (1000, 0.30)  kon 0.0112  koff 0.3331  tonic headroom 184.6x  phasic gain 1.319x
 
+    (Both rows are from the four-parameter fit, which roadmap P0-7 showed is not
+    reproducible across SciPy versions; the pulse divergence they document is real and
+    independent of that. The square fit now in use gives kon 0.0075785, koff 0.180415 and
+    tonic headroom 123.3x on the config pulse.)
+
     A manuscript draft quoting the first set was audited, declared unreproducible, and
     "corrected" to the second -- on the strength of `git log -S"SYNAPTIC_PEAK_UM = 3000"`
     returning nothing, which it does because that symbol never held the value. The absence of
@@ -657,13 +667,26 @@ def test_the_synaptic_pulse_has_exactly_one_definition():
         f"{offenders}. Import config.SYNAPTIC_PULSE instead; this constant has had three "
         "definitions before and the two that agreed hid the one that did not.")
 
-    # 3. and the fit that every consumer gets must be the config one
+    # 3. and the fit that every consumer gets must be the config one.
+    #
+    # UPDATED 2026-10-09 (roadmap P0-7). This asserted Kd = 31.95 +/- 0.05 -- a 0.16%
+    # tolerance on a quantity that was not reproducible at all. The four-parameter fit gave
+    # 26.60 / 29.44 / 29.48 uM under scipy 1.14.1 / 1.11.4 / 1.17.1, every one reproducing
+    # all three anchors exactly, against the 31.95 recorded here from one machine. The test
+    # was right to exist; its number was an artefact.
+    #
+    # `fit_scheme` now holds alpha at FIT_FIXED_ALPHA, making the system square (three
+    # unknowns, three anchors) and well-posed, so Kd is a determined 23.806 uM --
+    # identical to 6 significant figures across all three of those environments. The
+    # tolerance stays tight BECAUSE it is now reproducible; that is the point of the change.
     s = gk.fit_scheme(verbose=False)
-    assert abs(s.koff / s.kon - 31.95) < 0.05, (
-        f"the default fit gives Kd = {s.koff / s.kon:.2f} uM; the config pulse gives 31.95. "
-        "A default-pulse caller is fitting a different scheme from the pipeline.")
+    assert abs(s.koff / s.kon - 23.806) < 0.01, (
+        f"the default fit gives Kd = {s.koff / s.kon:.3f} uM; the config pulse with alpha "
+        f"held at gabaa_kinetics.FIT_FIXED_ALPHA gives 23.806. A default-pulse caller is "
+        f"fitting a different scheme from the pipeline.")
 
 
+@pytest.mark.slow
 def test_the_two_calibration_paths_now_agree():
     """The behavioural half of E22: a Drug built through the circuit path must report the
     tonic gain the kinetic module derives directly. This is the comparison that finally

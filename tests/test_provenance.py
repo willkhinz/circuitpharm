@@ -105,7 +105,7 @@ def test_the_provenance_gap_is_what_the_audit_recorded():
     parameters to 43. Nothing was demoted this time; 15 numbers that were ALREADY
     load-bearing were brought under the audit for the first time:
 
-      * MODEL_PARAMS (13). The three competing receptor models in `models/` carry
+      * MODEL_PARAMS (14). The three competing receptor models in `models/` carry
         dataclass defaults that both entry points to the three-tiered headroom hierarchy
         used to default to. `KineticAllosteryModel`'s are a chimera of two different fits
         -- beta/alpha from the manuscript's config-pulse fit, kon/koff from the superseded
@@ -118,12 +118,31 @@ def test_the_provenance_gap_is_what_the_audit_recorded():
         claim-support audit records as measuring 76.1 ms for that quantity against the
         trace's dominant 15 ms component.
 
-    So the sourced FRACTION fell from 21% to 14% without a single citation being lost: the
+    One of the 14 is `gabaa_kinetics.FIT_FIXED_ALPHA`, the first CONVENTION-rated entry in
+    the audit: the channel closing rate held fixed so the kinetic fit is well-posed. It is
+    deliberately NOT in RANKING_INPUT_TABLES -- it is a kinetic fit convention, not an
+    input to the selectivity ranking, and putting it there would have moved the figure the
+    manuscript quotes.
+
+    So the sourced FRACTION fell from 21% to 13% without a single citation being lost: the
     denominator grew because the audit's coverage grew. That is the honest direction, and
     it is the reason this pin names the composition rather than only the total.
     """
+    from circuitpharm.provenance import RANKING_INPUT_TABLES
+
+    # TWO SCOPES, both pinned. The ranking's inputs are what the manuscript quotes and
+    # what the project's one VALIDATED result rests on; the full audit additionally covers
+    # the receptor-model defaults and the benchmark datasets, which feed the
+    # receptor-kinetic results instead. Conflating them would let either drift behind the
+    # other.
+    rank = audit(RANKING_INPUT_TABLES)
+    assert (rank["sourced"], rank["total"]) == (6, 28), (
+        f"the ranking-input scope is now {rank['sourced']} of {rank['total']}, not 6 of "
+        f"28. knowledge/08-manuscript.md quotes this figure, so a change here needs the "
+        f"manuscript updated too.")
+
     a = audit()
-    assert a["total"] == 43, f"parameter count changed to {a['total']}; re-run the audit"
+    assert a["total"] == 44, f"parameter count changed to {a['total']}; re-run the audit"
     assert a["sourced"] == 6, (
         f"{a['sourced']} parameters now name a source, not 6. If this went UP, update this "
         f"pin and knowledge/06-source-provenance.md. If it went DOWN, something lost its "
@@ -142,6 +161,10 @@ def test_the_provenance_gap_is_what_the_audit_recorded():
     assert a["by_basis"][Basis.FITTED.value] == 3, (
         "3 FITTED: the GAIN_RATIO prior, plus Model A's po_max and tau_deact_ms, which are "
         "the project's own fit targets rather than independent measurements.")
+    assert a["by_basis"][Basis.CONVENTION.value] == 1, (
+        "1 CONVENTION: gabaa_kinetics.FIT_FIXED_ALPHA. A convention is a legitimate basis "
+        "-- it is a declared choice rather than an unsourced guess -- but it must stay "
+        "countable, because this one determines every derived kinetic number.")
 
 
 def test_the_most_consequential_number_is_flagged_unsourced():

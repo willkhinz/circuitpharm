@@ -20,6 +20,14 @@ jobs:
         python-version: ["3.11", "3.12"]
     steps:
       - uses: actions/checkout@v4
+        # FETCH TAGS. The default is fetch-depth: 1 with fetch-tags: false, so
+        # `git cat-file -t manuscript-v3` fails on the runner and
+        # tests/test_manuscript_consistency.py::test_the_cited_commit_and_tag_exist
+        # reports the manuscript's reproducibility anchor as missing when it exists and
+        # points at the right commit. Verified in CI: "fatal: Not a valid object name
+        # manuscript-v3" (roadmap P0-7).
+        with:
+          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
@@ -50,6 +58,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        # FETCH TAGS. The default is fetch-depth: 1 with fetch-tags: false, so
+        # `git cat-file -t manuscript-v3` fails on the runner and
+        # tests/test_manuscript_consistency.py::test_the_cited_commit_and_tag_exist
+        # reports the manuscript's reproducibility anchor as missing when it exists and
+        # points at the right commit. Verified in CI: "fatal: Not a valid object name
+        # manuscript-v3" (roadmap P0-7).
+        with:
+          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"

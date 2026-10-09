@@ -65,6 +65,7 @@ def test_A1_slow_voltage_gated_gate_moves():
         f"(0.4544); got {r['h_span']:.4f}")
 
 
+@pytest.mark.slow
 def test_A1_h_is_what_terminates_the_burst():
     """THE STRONG FORM, and the test that supersedes the h-span threshold above.
 
@@ -123,6 +124,7 @@ def test_A2_bursting_requires_the_persistent_sodium_current():
 
 
 # ============================================ A3 / A5: the published excitability sequence
+@pytest.mark.slow
 def test_A3_excitability_sequence_quiescent_bursting_tonic():
     """Raising tonic drive must move the cell quiescent -> bursting -> tonic spiking. This is
     published behaviour of the model and was not fitted by us, so reproducing it is
@@ -142,6 +144,7 @@ def test_A5_firing_rate_increases_monotonically_with_drive():
 
 
 # =========================================================== E13: integration convergence
+@pytest.mark.slow
 def test_E13_burst_period_is_converged_at_the_shipped_step():
     """An HH cell integrated with too large a step does not blow up -- it produces a
     plausible but WRONG firing rate. That is this project's signature failure mode, so the
@@ -208,6 +211,7 @@ def test_E14_registry_entry_carries_its_source_and_preparation():
     assert "not from recall" in p.provenance
 
 
+@pytest.mark.slow
 def test_E14_the_one_parameter_that_was_misremembered_is_right():
     """E_L is the bifurcation parameter of this model -- the knob that moves the cell
     quiescent -> bursting -> tonic. The recalled value was -65 mV; the published value read

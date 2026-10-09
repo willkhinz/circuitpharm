@@ -249,9 +249,14 @@ def test_provenance_claims_match_the_audit(text):
     """Table 5 must not attribute an UNSOURCED cell to a citation. The previous draft
     attributed the whole table to Pirker and Kasugai; the audit rates 9 of 15 cells
     UNSOURCED and one an outright GUESS."""
-    from circuitpharm.provenance import ALL, Basis, audit
+    from circuitpharm.provenance import ALL, RANKING_INPUT_TABLES, Basis, audit
 
-    a = audit()
+    # SCOPED to the ranking's inputs, which is what the manuscript's sentence is about.
+    # The audit later grew to cover the receptor-model defaults and the benchmark datasets
+    # (43 records); those feed the receptor-kinetic results, not the ranking, and folding
+    # them in would change what this claim means without the sentence changing. See
+    # provenance.RANKING_INPUT_TABLES.
+    a = audit(RANKING_INPUT_TABLES)
     # the headline provenance fraction the manuscript quotes, and its percentage
     _require(text, f"{a['sourced']} of {a['total']}", "the sourced-parameter fraction")
     _require(text, f"({100 * a['sourced_fraction']:.0f}%)", "the sourced-parameter percentage")

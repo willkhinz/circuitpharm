@@ -27,7 +27,7 @@ class DynamicRangeEvaluation:
 
 
 def evaluate_dynamic_range(
-    model: KineticAllosteryModel | None = None,
+    model: KineticAllosteryModel,
     ambient_gaba_um: float = 0.40,
     cleft_peak_um: float = 1000.0,
     smax_values: tuple[float, ...] = (1.25, 1.50, 2.40, 2.50),
@@ -37,8 +37,13 @@ def evaluate_dynamic_range(
 
     Parameters
     ----------
-    model : KineticAllosteryModel, optional
-        Kinetic model instance (defaults to nominal).
+    model : KineticAllosteryModel
+        REQUIRED. There is deliberately no default: this function used to fall back to
+        `KineticAllosteryModel()`, whose parameters are a chimera of two fits reproducing
+        neither anchor (EC50 6.34 uM against 20, P_o,max 0.8382 against 0.750), so the
+        three-tiered headroom hierarchy -- the whole point of Advancement 5 -- was being
+        computed at parameters nothing anchored. Obtain one from
+        `circuitpharm.parameters.get(...)` (roadmap P0-13).
     ambient_gaba_um : float
         Basal ambient extrasynaptic GABA (uM).
     cleft_peak_um : float
@@ -48,7 +53,12 @@ def evaluate_dynamic_range(
     transient_duration_ms : float
         Window length for dynamic charge integration (ms).
     """
-    m = model or KineticAllosteryModel()
+    if model is None:
+        raise TypeError(
+            "evaluate_dynamic_range() requires an explicit `model`. The former fallback to "
+            "KineticAllosteryModel() produced headline headroom numbers at uncalibrated "
+            "chimeric defaults; see roadmap P0-13.")
+    m = model
     amb = max(float(ambient_gaba_um), 1e-4)
 
     # 1. Tier 1: Theoretical asymptotic headroom

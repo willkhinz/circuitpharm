@@ -229,6 +229,22 @@ MODEL_PARAM_PROV = {
     ("operational", "s_max"):   Record(Basis.UNSOURCED, "", (
         "2.50, the classical BZ-site intrinsic efficacy range. Carried as a ceiling, not "
         "measured here.")),
+    ("gabaa_kinetics", "FIT_FIXED_ALPHA"): Record(Basis.CONVENTION, "", (
+        "0.30 ms^-1, the channel closing rate HELD FIXED in gabaa_kinetics.fit_scheme so "
+        "the fit is well-posed. 1/alpha is the mean open time, 3.33 ms, which is inside "
+        "the 1-5 ms range reported for alpha1beta2gamma2 single channels. "
+        "WHY: four parameters against three anchors left the optimiser's landing point "
+        "dependent on the environment -- measured k_on 0.0088044 / 0.0109865 / 0.0110210 "
+        "and asymptotic headroom 151.1x / 181.8x / 182.2x across scipy 1.14.1 / 1.11.4 / "
+        "1.17.1, every one reproducing all three anchors, against the manuscript's own "
+        "0.0146842 and 210.7x which none of them reproduces. Holding alpha makes the "
+        "system square (3 unknowns, 3 anchors); verified identical to 6 significant "
+        "figures across all three environments and from a distant starting guess. "
+        "A minimum-norm regularisation was tried first and rejected on measurement: it "
+        "narrowed the spread to ~0.8% without actually selecting the minimum-norm fit. "
+        "This is a CONVENTION about a REAL single-channel observable, so roadmap P1-2 can "
+        "replace it with a digitised mean open time and the fit becomes data-determined; "
+        "it makes the rates REPRODUCIBLE, not identifiable.")),
     ("operational", "tau_deact_ms"): Record(Basis.FITTED, "", (
         "15.0 ms, again the project's own tau fit target -- and the value the old decay "
         "estimator returned on failure, which is what made a failed fit look perfect "
@@ -258,25 +274,51 @@ ALL = {"REGIONS": REGIONS_PROV, "EXTRASYN": EXTRASYN_PROV,
        "MODEL_PARAMS": MODEL_PARAM_PROV, "DATASETS": DATASET_PROV}
 
 
-def audit() -> dict:
-    """Count the bases across every registered parameter."""
+#: The tables that feed the SELECTIVITY RANKING -- the project's one VALIDATED result.
+#:
+#: This subset exists because "6 of 28 parameters name a source" is a claim about the
+#: ranking's inputs, and the audit later grew to cover the receptor-model defaults and the
+#: benchmark datasets as well (43 records). Those are a different layer: they feed the
+#: receptor-kinetic results, not the ranking. Folding them into one number would silently
+#: change what the manuscript's sentence means, which is the same scoping error as
+#: comparing `subjective_index` with `regional_sens` -- see `subtypes.subjective_index`.
+RANKING_INPUT_TABLES = ("REGIONS", "EXTRASYN", "SUBJECTIVE_WEIGHT", "PRIORS")
+
+
+def audit(tables: tuple[str, ...] | None = None) -> dict:
+    """Count the bases across registered parameters.
+
+    `tables` selects a scope by name; `None` audits everything. Pass
+    `RANKING_INPUT_TABLES` for the figure the manuscript quotes.
+    """
+    names = tuple(ALL) if tables is None else tuple(tables)
+    unknown = [n for n in names if n not in ALL]
+    if unknown:
+        raise KeyError(f"unknown provenance table(s) {unknown}; have {list(ALL)}")
+
     tally: dict = {}
-    for table in ALL.values():
-        for rec in table.values():
+    for name in names:
+        for rec in ALL[name].values():
             tally[rec.basis.value] = tally.get(rec.basis.value, 0) + 1
     total = sum(tally.values())
-    sourced = sum(1 for t in ALL.values() for r in t.values() if r.is_sourced)
-    return dict(total=total, sourced=sourced, by_basis=tally,
+    sourced = sum(1 for n in names for r in ALL[n].values() if r.is_sourced)
+    return dict(total=total, sourced=sourced, by_basis=tally, tables=names,
                 sourced_fraction=sourced / total if total else 0.0)
 
 
 def report() -> str:
     a = audit()
+    rank = audit(RANKING_INPUT_TABLES)
     out = ["=" * 78,
            "PARAMETER PROVENANCE",
            "=" * 78,
-           f"{a['sourced']} of {a['total']} load-bearing parameters name a source "
-           f"({100*a['sourced_fraction']:.0f}%).",
+           f"SELECTIVITY-RANKING INPUTS: {rank['sourced']} of {rank['total']} name a "
+           f"source ({100*rank['sourced_fraction']:.0f}%). This is the figure the "
+           f"manuscript quotes;",
+           "it is the scope of the project's one VALIDATED result.",
+           f"ALL REGISTERED PARAMETERS: {a['sourced']} of {a['total']} "
+           f"({100*a['sourced_fraction']:.0f}%), adding the receptor-model defaults and "
+           f"the benchmark datasets.",
            "A named source means the derivation is traceable, NOT that the number is right:",
            "a5_dist resolves perfectly by DOI and does not support the numbers it is the",
            "obvious candidate for. See knowledge/06-source-provenance.md.",

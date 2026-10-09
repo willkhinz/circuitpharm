@@ -100,7 +100,10 @@ class Compound:
         on (s_max, ambient, pulse) -- not on occupancy, which enters linearly afterwards.
         """
         pulse = pulse or dict(SYNAPTIC_PULSE)
-        key = (self.s_max, ambient_um, tuple(sorted(pulse.items())))
+        # MODALITY IS IN THE KEY. Without it, setting `modality` after a first call
+        # returned the earlier mechanism's gains from cache -- an affinity-type result
+        # served for a gating-type request, silently (roadmap P0-12).
+        key = (self.s_max, ambient_um, self.modality, tuple(sorted(pulse.items())))
         if key not in self._gains:
             from .gabaa_kinetics import fit_scheme, derive, calibrate_pam
             s = fit_scheme(verbose=False, pulse=pulse)
@@ -138,20 +141,18 @@ class Compound:
             aff_kw = {kind: calibrate_pam(s, self.s_max, kind,
                                           pulse=pulse, ambient_um=ambient_um)}
             aff = aff_kw[kind]
-            # calibrate_pam returns NaN when the requested EC50 shift is UNREACHABLE by an
-            # affinity-type mechanism. Unchecked, that NaN becomes koff=NaN, then NaN
-            # conductances, then NaN voltages inside the LIF integrator -- surfacing as
-            # "SVD did not converge in Linear Least Squares" and raw LAPACK complaints far
-            # from the cause. Fail here, where the reason is still visible.
-            if not np.isfinite(aff):
-                raise ValueError(
-                    f"an EC50 left-shift of {self.s_max}x is not reachable by EITHER an "
-                    f"affinity-type or a gating-type mechanism in this scheme at ambient "
-                    f"{ambient_um} uM. Both saturate: a modulator can only move the "
-                    f"receptor up its own dose-response curve. Classical "
-                    f"benzodiazepine-site ligands sit around 2-3x. Lower s_max, or if this "
-                    f"compound is a direct agonist rather than a modulator, model it as a "
-                    f"standing conductance (see scripts/predict_muscimol.py).")
+            # calibrate_pam returns NaN when the requested EC50 shift is UNREACHABLE.
+            # Unchecked, that NaN becomes koff=NaN, then NaN conductances, then NaN
+            # voltages inside the LIF integrator -- surfacing as "SVD did not converge in
+            # Linear Least Squares" and raw LAPACK complaints far from the cause.
+            #
+            # The check now lives in gabaa_kinetics.require_reachable so this module and
+            # cpg.Drug.from_kinetics share one implementation; cpg had no guard at all,
+            # which is recurring error E12 (roadmap P0-8). `kind` names whichever mechanism
+            # was tried last, since "auto" has already fallen back by this point.
+            from .gabaa_kinetics import require_reachable
+            aff = require_reachable(aff, self.s_max, ambient_um, kind)
+            aff_kw[kind] = aff
             self._gains[key] = derive(s, ambient_um=ambient_um, pulse=pulse, **aff_kw)
         full = self._gains[key]
         lin = lambda g: 1.0 + self.occupancy * (g - 1.0)
@@ -410,14 +411,22 @@ def evaluate(cand: Compound, n_seed=4, reference="nonselective_bz",
 
     # --- motor endpoints, if the body plant is installed ----------------------------
     # These are an optional extra (mujoco), so their absence must not fail an evaluation.
+    #
+    # NO EARLY RETURN. This branch used to `return rs` when `assays` would not import,
+    # which skipped the VOID block below -- so the result SHAPE depended on the install,
+    # in a package whose whole thesis is that the VOID entries always appear.
+    # tests/test_evaluate.py asserts `overdose_index` is present, and on a lean install it
+    # was present only because `assays` imports mujoco lazily (roadmap P0-10).
+    motor_available = True
     if include_motor:
         try:
             from .assays import stretch_reflex, locomotion
         except Exception as e:                       # pragma: no cover
+            motor_available = False
             rs.add(Quantity("motor_endpoints", None, Tier.UNCALIBRATED,
                             provenance=f"body plant unavailable ({type(e).__name__}); "
                                        "install the 'plant' extra for motor endpoints"))
-            return rs
+    if include_motor and motor_available:
         stm, spm = cand.sens("spinal")
         d = cand.drug("spinal")
         try:

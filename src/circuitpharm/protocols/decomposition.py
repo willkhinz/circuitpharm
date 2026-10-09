@@ -108,13 +108,21 @@ def decompose_modulation_gain(
 
 
 def compare_phasic_tonic_mechanisms(
-    model: KineticAllosteryModel | None = None,
+    model: KineticAllosteryModel,
     tonic_gaba_um: float = 0.40,
     phasic_gaba_um: float = 1000.0,
     pam_factor: float = 2.50,
 ) -> dict[str, FactorialDecompositionResult]:
-    """Run comparative mechanistic decomposition between Phasic and Tonic conditions."""
-    m = model or KineticAllosteryModel()
+    """Run comparative mechanistic decomposition between Phasic and Tonic conditions.
+
+    `model` is REQUIRED: the former `model or KineticAllosteryModel()` fallback ran the
+    decomposition at provisional chimeric defaults (roadmap P0-13).
+    """
+    if model is None:
+        raise TypeError(
+            "compare_phasic_tonic_mechanisms() requires an explicit `model`; see roadmap "
+            "P0-13 for why the default was removed.")
+    m = model
     tonic_res = decompose_modulation_gain(m, tonic_gaba_um, pam_factor=pam_factor, condition_label="tonic")
     phasic_res = decompose_modulation_gain(m, phasic_gaba_um, pam_factor=pam_factor, condition_label="phasic")
     return {"tonic": tonic_res, "phasic": phasic_res}
