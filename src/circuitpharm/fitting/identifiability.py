@@ -455,6 +455,31 @@ IDENTIFIABLE_BOUNDS = {
 }
 
 
+def _require_equilibrium_dataset(dataset):
+    """The EQUILIBRIUM entry points have NO runnable default, and must say so.
+
+    They defaulted to `DOSE_RESPONSE_BENCHMARK`, which is tagged `Observable.PEAK`, so
+    calling any of them with no argument raised `ObservableMismatch` from deep inside the
+    objective -- `fit_identifiable()` and `identifiability_report()` were simply uncallable
+    at their own signatures. Verified: both raise.
+
+    The cause is not a wrong default, it is that no default EXISTS. `fitting.data`'s
+    MISSING_DATASETS records that this project has no measured equilibrium
+    concentration-response at all, so the honest signature is one that demands the dataset
+    and names the two ways to obtain one. A default that cannot run is worse than a required
+    argument, because the failure arrives as a type confusion rather than as a request.
+    """
+    if dataset is None:
+        raise ValueError(
+            "this is an EQUILIBRIUM objective and no default equilibrium dataset exists. "
+            "DOSE_RESPONSE_BENCHMARK is tagged PEAK, and fitting an equilibrium curve to "
+            "peak-current data drives D to its bound by deleting desensitisation. Either "
+            "pass a measured EQUILIBRIUM dataset, or generate a METHOD CHECK with "
+            "`fitting.data.equilibrium_crc_from_model(model)` -- which is synthetic, so its "
+            "conclusions stay provisional.")
+    return dataset
+
+
 def equilibrium_chi2_identifiable(theta, dataset=None) -> float:
     """Chi-squared of the EQUILIBRIUM dose-response, over (log K_d, log E, log D).
 
@@ -470,7 +495,7 @@ def equilibrium_chi2_identifiable(theta, dataset=None) -> float:
     from ..models.base import Observable, ObservableMismatch
     from ..models.kinetic_jw95 import KineticAllosteryModel
 
-    ds = dataset if dataset is not None else DOSE_RESPONSE_BENCHMARK
+    ds = _require_equilibrium_dataset(dataset)
     obs = getattr(ds, "observable", None)
     if obs is not None and obs is not Observable.EQUILIBRIUM:
         raise ObservableMismatch(
@@ -492,7 +517,7 @@ def fit_identifiable(dataset=None, *, x0=None) -> tuple[IdentifiableParams, floa
     """MLE over (log10 K_d, log10 E, log10 D). Returns the parameters and the cost."""
     from scipy.optimize import minimize
 
-    ds = dataset if dataset is not None else DOSE_RESPONSE_BENCHMARK
+    ds = _require_equilibrium_dataset(dataset)
     assert_real_data([ds], caller="fit_identifiable")
     start = np.array([1.4, 0.6, 1.4] if x0 is None else x0, dtype=float)
     best, best_cost = None, np.inf
@@ -541,7 +566,7 @@ def profile_likelihood(param: str, dataset=None, *, n_grid: int = 25,
             f"which names the measurement that would make it identifiable.")
     from scipy.optimize import minimize
 
-    ds = dataset if dataset is not None else DOSE_RESPONSE_BENCHMARK
+    ds = _require_equilibrium_dataset(dataset)
     mle, base_cost = fit_identifiable(ds)
     idx = EQUILIBRIUM_IDENTIFIABLE.index(param)
     x_mle = mle.as_vector(with_timescale=False)
@@ -645,7 +670,7 @@ def profile_likelihood(param: str, dataset=None, *, n_grid: int = 25,
 
 def identifiability_report(dataset=None) -> ResultSet:
     """Profile all three identifiable combinations and report them as tiered quantities."""
-    ds = dataset if dataset is not None else DOSE_RESPONSE_BENCHMARK
+    ds = _require_equilibrium_dataset(dataset)
     mle, cost = fit_identifiable(ds)
     rs = ResultSet(f"equilibrium identifiability against {getattr(ds, 'citation_label', ds)}")
     prov = ("profile likelihood over the equilibrium-identifiable combinations "

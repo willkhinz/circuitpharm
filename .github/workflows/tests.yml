@@ -54,7 +54,12 @@ jobs:
   # parity tests actually run instead of skipping. This is the job that exercises the
   # published phenotypes.
   full:
-    timeout-minutes: 60
+    # 90, RAISED FROM 60. The full job completed in 57:15 on the first green run -- two
+    # minutes inside the limit -- and the same job on the commit before it was killed at
+    # exactly 60:00. A build decided by runner variance is not a signal. Lengthening the MCMC
+    # chains (see fitting/posterior.py) adds sampling on top of that, so the headroom is
+    # needed rather than merely tidy.
+    timeout-minutes: 90
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

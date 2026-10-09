@@ -494,19 +494,6 @@ def evaluate(cand: Compound, n_seed=4, reference="nonselective_bz",
             rs.add(Quantity(
                 "walking", loco["walking"], Tier.UNCALIBRATED,
                 provenance="whether rhythmic joint movement persists at all"))
-            # the metric that looks right and is not
-            rs.add(Quantity(
-                "joint_excursion", float("nan"), Tier.VOID, "rad",
-                provenance="reports the WRONG SIGN: a sedative INCREASES joint excursion "
-                           "here (1.607 rad control -> 1.940 at a 4x PAM), because less "
-                           "antagonist co-contraction leaves the joint less stiff. The "
-                           "mechanism is real but the metric is an artefact of a "
-                           "single-joint preparation with the body fixed, no gravitational "
-                           "load and no ground contact — in an animal, lost co-contraction "
-                           "presents as instability, and this model has nothing to "
-                           "collapse against.",
-                promote_by="a whole-body preparation with ground reaction forces; this "
-                           "cannot be fixed by reweighting the metric"))
         except (ImportError, FileNotFoundError) as e:
             # ImportError MUST be caught HERE, not only around the import of the assay
             # functions above. `assays` imports mujoco lazily INSIDE each function, so the
@@ -521,6 +508,32 @@ def evaluate(cand: Compound, n_seed=4, reference="nonselective_bz",
                 promote_by="pip install -e '.[plant]' for the reflex and locomotor "
                            "endpoints"))
 
+
+        # UNCONDITIONAL, and outside the try/except on purpose. This Quantity records that
+        # `joint_excursion` is permanently invalid (wrong sign), which is a property of the
+        # METRIC, not of whether the body plant happens to be installed. It used to sit
+        # inside the try, after the assay calls, so on a lean install (`.[dev]`, no plant --
+        # i.e. exactly what CI's lean jobs use) the ImportError jumped past it and the
+        # quantity was simply absent: `rs.quantity("joint_excursion")` raised KeyError with
+        # mujoco missing and returned a VOID quantity with it present.
+        #
+        # An environment-dependent result SCHEMA is the problem, not the missing number. A
+        # caller cannot write `if rs.quantity("joint_excursion").tier is Tier.VOID` and have
+        # it mean the same thing on two machines, and the VOID tier exists precisely so that
+        # an invalid metric is visible rather than absent.
+        # the metric that looks right and is not
+        rs.add(Quantity(
+            "joint_excursion", float("nan"), Tier.VOID, "rad",
+            provenance="reports the WRONG SIGN: a sedative INCREASES joint excursion "
+                       "here (1.607 rad control -> 1.940 at a 4x PAM), because less "
+                       "antagonist co-contraction leaves the joint less stiff. The "
+                       "mechanism is real but the metric is an artefact of a "
+                       "single-joint preparation with the body fixed, no gravitational "
+                       "load and no ground contact — in an animal, lost co-contraction "
+                       "presents as instability, and this model has nothing to "
+                       "collapse against.",
+            promote_by="a whole-body preparation with ground reaction forces; this "
+                       "cannot be fixed by reweighting the metric"))
     # --- VOID: quantities that rest on something invalid ----------------------------
     rs.add(Quantity(
         "overdose_index", float("nan"), Tier.VOID, "x",

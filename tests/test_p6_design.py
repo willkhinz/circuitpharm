@@ -444,7 +444,11 @@ def real_posteriors():
             out[name] = sample_posterior_vector(
                 spec.factory, [ds], param_names=spec.param_names,
                 bounds=dict(zip(spec.param_names, spec.bounds)), caller=f"prereg/{name}",
-                n_steps=12000, burn_in=4000, seed=11)
+                # chain length INHERITED, not restated. These two call sites carried
+                # n_steps=12000, burn_in=4000 -- a copy of the library default, which then did
+                # not move when the default did. Restating a default is the duplication that
+                # recurring error E12/E22 is about.
+                seed=11)
     return ds, out
 
 
@@ -573,7 +577,7 @@ def test_posterior_intervals_are_calibrated_across_seeds():
             p = sample_posterior_vector(
                 spec.factory, [ds], param_names=spec.param_names,
                 bounds=dict(zip(spec.param_names, spec.bounds)), caller="calibration",
-                n_steps=12000, burn_in=4000, seed=11)
+                seed=11)      # chain length inherited; see the note above
             converged += bool(p.converged)
             hits = []
             for i, name in enumerate(spec.param_names):

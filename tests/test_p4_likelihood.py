@@ -508,6 +508,41 @@ def test_a_single_stretch_scale_below_one_is_refused():
 
 # ======================================================= the posterior (P4-4), slow
 @pytest.mark.slow
+def test_the_convergence_gate_is_met_with_margin_not_on_the_nose(posterior):
+    """The gate must be met by more than the diagnostic varies BETWEEN PLATFORMS.
+
+    E23. At the former default of 12000 steps / 4000 burn-in this posterior reached split-Rhat
+    = 1.01089 against `max_rhat = 1.01`, i.e. it failed by 0.0009. The chain is seeded, so it
+    is deterministic on any one machine -- and that is what made it nasty. x86/OpenBLAS and
+    arm64/Accelerate sum in different orders, that propagates through the matrix exponentials
+    and 24 walkers into the third decimal of Rhat, and the result was CI permanently GREEN
+    while a macOS checkout was permanently RED on identical code. A test that passes on the
+    build machine and fails on every developer's is worse than one that fails everywhere.
+
+    `converged` decides whether percentiles are reported as credible intervals or marked VOID,
+    so the honest fix was a longer chain (24000/8000, measured Rhat 1.00377), not a looser
+    threshold -- 1.01 is the Vehtari et al. recommendation and worth keeping.
+
+    This test pins the MARGIN rather than the pass, because a pass alone cannot distinguish
+    "converged" from "converged by 0.0001 on this machine only". If a future scheme or sampler
+    change erodes the margin, this fails while `converged` is still True, which is the early
+    warning the previous arrangement did not have.
+    """
+    rhat = (posterior.diagnostics.get("split_rhat")
+            or posterior.diagnostics.get("rhat") or {})
+    assert rhat, f"no split-Rhat in diagnostics: {sorted(posterior.diagnostics)}"
+    worst = max(rhat.values())
+
+    #: Half the distance between the achieved 1.00377 and the 1.01 gate. Any platform
+    #: difference large enough to cross this is large enough to want investigating.
+    MARGIN_FLOOR = 1.006
+    assert worst <= MARGIN_FLOOR, (
+        f"worst split-Rhat is {worst:.5f}, inside {MARGIN_FLOOR} of the 1.01 gate. The chain "
+        f"converges on this machine but the margin is now thinner than the arithmetic "
+        f"difference between platforms, so CI and a local checkout can disagree. Lengthen the "
+        f"chain rather than moving the gate.")
+
+
 def test_posterior_recovers_known_parameters(posterior):
     """ANCHOR. Every 95% interval must cover the truth it was generated from.
 

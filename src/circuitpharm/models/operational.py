@@ -62,7 +62,25 @@ class OperationalScalarModel(ReceptorModel):
         return replace(self, **kwargs)
 
     def effective_ec50(self, pam_factor: float = 1.0) -> float:
-        """Apply operational potency shift with ceiling s_max."""
+        """Apply operational potency shift with ceiling s_max.
+
+        REJECTS pam_factor < 1.0, as models B and C already do. This model clamped with
+        `max(shift, 1e-6)` instead, so `effective_ec50(0.5)` returned 2x the EC50 -- a
+        silent NEGATIVE allosteric modulator -- while `KineticAllosteryModel.apply_pam` and
+        `ExtendedDesensitizationModel.apply_pam` both raise ValueError on the same input.
+        Verified before the fix: 25 -> 50 uM at pam_factor=0.5.
+
+        An asymmetric interface across the three models is worse than any one of them being
+        wrong, because model COMPARISON is what this layer exists for: a sweep that silently
+        measures a NAM in model A and a rejection in B and C compares two different
+        questions.
+        """
+        if float(pam_factor) < 1.0:
+            raise ValueError(
+                f"pam_factor={pam_factor!r} is below 1.0, which is negative allosteric "
+                f"modulation. This operational model represents POSITIVE modulation only "
+                f"(roadmap P0-12), as do the kinetic models -- a NAM needs its own "
+                f"parameterisation, not a reciprocal potency shift.")
         shift = min(float(pam_factor), self.s_max)
         return self.ec50_um / max(shift, 1e-6)
 

@@ -109,8 +109,28 @@ def sample_posterior_vector(
     caller: str = "sample_posterior_vector",
     x0=None,
     n_walkers: int = 24,
-    n_steps: int = 12000,
-    burn_in: int = 4000,
+    # 24000/8000, RAISED FROM 12000/4000 BECAUSE THE OLD DEFAULT SAT ON THE GATE.
+    # At 12000/4000 the P4 anchor posterior reaches split-Rhat = 1.01089 against
+    # max_rhat = 1.01 -- it FAILS by 0.0009. And it fails only on some machines: the chain is
+    # seeded, so it is deterministic per platform, but arm64/Accelerate and x86/OpenBLAS sum
+    # in different orders and that propagates through the matrix exponentials and 24 walkers
+    # into the third decimal of Rhat. CI (x86) was permanently green and a macOS checkout
+    # permanently red, on identical code.
+    #
+    # A gate that discriminates finer than the diagnostic's own platform reproducibility is
+    # not measuring convergence, it is measuring the BLAS. The gate is right -- 1.01 is the
+    # Vehtari et al. recommendation, and `converged` decides whether percentiles are reported
+    # as credible intervals or marked VOID -- so the chain was lengthened to meet it with
+    # margin rather than the threshold loosened to admit it.
+    #
+    # Measured on this scheme (worst split-Rhat, 24 walkers, seed 11):
+    #     12000/4000  1.01089  FAIL      3.4 s
+    #     18000/6000  1.00521            5.2 s
+    #     24000/8000  1.00377            7.1 s   <- chosen: 0.0062 of margin, ~3x the
+    #     36000/12000 1.00240           10.7 s      shortfall it had to cover
+    #     48000/16000 1.00257           14.2 s   <- plateau; more steps buy nothing
+    n_steps: int = 24000,
+    burn_in: int = 8000,
     seed: int = 11,
     stretch_a=(2.0, 20.0, 200.0),
     min_tau_multiples: float = 50.0,

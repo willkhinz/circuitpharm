@@ -181,8 +181,26 @@ def decompose_modulation_gain(
     d_gate = float(np.log(gate_p / gate_b))
     residual = log_gain - (d_occ + d_dbl + d_gate)
 
-    total = abs(d_occ) + abs(d_dbl) + abs(d_gate)
-    if total > 1e-12:
+    # NORMALISED BY THE SIGNED TOTAL, not by the sum of absolute values. The docstring and
+    # `test_the_shares_sum_to_one_hundred_percent` both assert that the three shares sum to
+    # 100%, and that identity holds only against the signed sum: with any negative term,
+    # sum(|d_i|) > |sum(d_i)| and the shares silently sum to less than 100%.
+    #
+    # HARDENING, NOT A LIVE BUG FIX, and the distinction is worth recording. Probing 175
+    # (gaba_um, pam_factor) combinations across 10^-3 to 10^5 uM found NO negative term: for
+    # an affinity-type PAM the gating term is identically 0.0 and both occupancy terms are
+    # non-negative, so abs-sum equals signed-sum and the shares do sum to 100% today. The
+    # premise becomes reachable the moment a modulator with a negative component exists --
+    # a NAM, or a gating modulator that trades double occupancy for gating -- and NAMs are
+    # currently rejected by every model's `apply_pam`. So this is correct-by-construction
+    # rather than a repair, and the identity no longer depends on an invariant enforced
+    # somewhere else.
+    total = d_occ + d_dbl + d_gate
+    # abs(), because the total is now SIGNED. `total > 1e-12` was correct for a sum of
+    # magnitudes and wrong the moment the sum could be negative: a modulator with a net
+    # NEGATIVE log gain would fall through to the zero branch and report 0%/0%/0% shares for
+    # a real effect. My own regression, introduced by the line above.
+    if abs(total) > 1e-12:
         pct = (100.0 * d_occ / total, 100.0 * d_dbl / total, 100.0 * d_gate / total)
     else:
         # All three terms vanish: the modulator did nothing. Reporting thirds (the old

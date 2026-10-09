@@ -260,7 +260,19 @@ def paired_pulse_ratio(res: WaveformResult, gaba: np.ndarray, *,
     if thr <= 0:
         raise ValueError("the agonist trace has no positive amplitude")
     above = g > thr
+    # A RISING-EDGE SEARCH CANNOT SEE A PULSE THAT IS ALREADY HIGH AT t=0, so t=0 is
+    # treated as an onset when the trace starts above threshold.
+    #
+    # HARDENING, NOT A LIVE BUG FIX. This cannot be triggered through `pulse_train`, which
+    # was the suspected route: even at `start_ms=0.0` the 0.1 ms rise leaves the first
+    # sample below the 5% threshold, so `above[0]` is False and both edges are found --
+    # verified. It bites only a hand-built waveform, or a train whose rise is shortened to
+    # zero. Left unguarded, the symptom is not an exception but a SILENT off-by-one: with
+    # `n_expected` matching it raises, but a longer train quietly compares pulse 2 against
+    # pulse 3 and reports the wrong ratio.
     onsets = np.flatnonzero(np.diff(above.astype(int)) == 1) + 1
+    if above.size and above[0]:
+        onsets = np.insert(onsets, 0, 0)
     if onsets.size < 2:
         raise ValueError(
             f"found {onsets.size} pulse onset(s) in the agonist trace, expected "

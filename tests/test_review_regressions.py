@@ -722,3 +722,98 @@ def test_the_two_calibration_paths_now_agree():
     assert abs(direct - via_drug) < 0.01 * direct, (
         f"the kinetic module derives a tonic gain of {direct:.4f} and the circuit path "
         f"reports {via_drug:.4f}. One quantity, two values -- which is E22 exactly.")
+
+
+# ------------------------------------------------- E24-E26: a static audit of the P0-P7
+#                                                   branch, verified by execution first
+def test_equilibrium_entry_points_have_no_runnable_default():
+    """E24. Four public EQUILIBRIUM functions declared `dataset=None` and defaulted to
+    `DOSE_RESPONSE_BENCHMARK`, which is tagged `Observable.PEAK` -- so calling any of them at
+    its own signature raised `ObservableMismatch` from inside the objective. They were
+    uncallable as declared.
+
+    The fix is not a better default: `fitting.data.MISSING_DATASETS` records that no measured
+    equilibrium concentration-response exists in this project, so there IS no default. A
+    required argument that names the two ways to get a dataset is honest; a default that
+    cannot run reports the absence as a type confusion.
+    """
+    import pytest as _pytest
+
+    from circuitpharm.fitting import identifiability as idf
+
+    for name, args in (("fit_identifiable", ()), ("identifiability_report", ()),
+                       ("profile_likelihood", ("log10_kd",)),
+                       ("equilibrium_chi2_identifiable", ([1.4, 0.6, 1.4],))):
+        fn = getattr(idf, name, None)
+        if fn is None:
+            continue
+        with _pytest.raises(ValueError) as e:
+            fn(*args)
+        msg = str(e.value)
+        assert "EQUILIBRIUM" in msg and "equilibrium_crc_from_model" in msg, (
+            f"{name} refuses without a dataset but does not say how to get one: {msg[:160]}")
+
+
+def test_every_model_rejects_negative_allosteric_modulation():
+    """E25. `OperationalScalarModel.effective_ec50` clamped with `max(shift, 1e-6)` instead of
+    guarding, so `effective_ec50(0.5)` returned 2x the EC50 -- a silent NAM -- while the two
+    kinetic models raise on the same input. Measured before the fix: 25 -> 50 uM.
+
+    The invariant is SYMMETRY, which is why this test covers all three rather than the one
+    that was wrong. Model comparison is what this layer exists for, and a sweep that
+    silently measures a NAM in model A and a rejection in B and C is comparing two different
+    questions.
+    """
+    import pytest as _pytest
+
+    from circuitpharm.models.kinetic_jw95 import KineticAllosteryModel
+    from circuitpharm.models.operational import OperationalScalarModel
+    try:
+        from circuitpharm.models.extended_desens import ExtendedDesensitizationModel
+    except ImportError:                      # pragma: no cover
+        ExtendedDesensitizationModel = None
+
+    with _pytest.raises(ValueError):
+        OperationalScalarModel().effective_ec50(0.5)
+    with _pytest.raises(ValueError):
+        KineticAllosteryModel().apply_pam(0.5)
+    if ExtendedDesensitizationModel is not None:
+        with _pytest.raises(ValueError):
+            ExtendedDesensitizationModel().apply_pam(0.5)
+
+    # and a genuine PAM must still work on all of them
+    assert OperationalScalarModel().effective_ec50(2.5) > 0.0
+
+
+def test_the_result_schema_does_not_depend_on_the_environment():
+    """E26. `joint_excursion` -- a permanently VOID quantity recording a metric with the wrong
+    sign -- was added inside the try block that calls the body-plant assays. On a lean
+    install the ImportError jumped past it, so `rs.quantity("joint_excursion")` raised
+    KeyError without mujoco and returned a VOID quantity with it.
+
+    The missing number is not the problem; the environment-dependent SCHEMA is. A caller
+    cannot write `rs.quantity("joint_excursion").tier is Tier.VOID` and have it mean the same
+    thing on two machines, and the VOID tier exists so an invalid metric is visible rather
+    than absent.
+
+    Checked statically, because the condition is "mujoco absent" and this test must give the
+    same answer whether or not it is installed.
+    """
+    import inspect
+
+    from circuitpharm import evaluation as ev
+
+    # COMMENTS STRIPPED FIRST. `inspect.getsource` returns the comments too, and the note
+    # explaining this very fix names `joint_excursion` three times -- so a naive count of the
+    # raw source counts prose. My own bug, caught by this test on its first run.
+    src = inspect.getsource(ev.evaluate)
+    code = "\n".join(ln for ln in src.splitlines() if not ln.lstrip().startswith("#"))
+
+    assert code.count('"joint_excursion"') == 1, (
+        f"{code.count(chr(34) + 'joint_excursion' + chr(34))} code sites now add it; there "
+        "must be exactly one, and it must be unconditional")
+    at = code.index('"joint_excursion"')
+    handler = code.index("except (ImportError")
+    assert at > handler, (
+        "joint_excursion is added before the ImportError handler, i.e. inside the try. On a "
+        "lean install it will be skipped and the result schema becomes environment-dependent.")
