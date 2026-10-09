@@ -29,6 +29,7 @@ All pharmacologically load-bearing nodes are conductance-based:
   NMDA on RG->PF, PF->Mn and Ia->Mn            <- NMDA antagonist (subunit-resolved)
 """
 import numpy as np
+from . import substrate as sub
 from .cpg import Pop, Syn, Drug, E_REV, spindle_ia
 from .rg2 import GroupPacemakerRG
 
@@ -71,8 +72,23 @@ class SpinalCircuit:
                  gaba_sens=1.0, gaba_sens_tonic=None, gaba_sens_phasic=None,
                  glyr_sens=1.0,
                  drive_pf=110.0, drive_mn=100.0, drive_in=75.0,
-                 rg_kw=None, w=None, seed=0):
+                 rg_kw=None, w=None, seed=0,
+                 substrate="lif", cell=None, op=None):
         self.drug = drug or Drug()
+        self.substrate = substrate
+        # The spinal circuit's OWN operating point. Separate from the RG's: these are
+        # different populations with different drives, so one op cannot serve both, and the
+        # RG gets its own via rg_kw/COND_LOCO_OP.
+        from .config import COND_SPINAL_OP
+        _op = sub.resolve_op(substrate, op, COND_SPINAL_OP,
+                             required_w=(), required_scalars=(
+                                 "drive_pf", "drive_mn", "drive_in", "gaba_tonic"),
+                             what="the spinal circuit")
+        if _op is not None:
+            drive_pf, drive_mn = _op["drive_pf"], _op["drive_mn"]
+            drive_in, gaba_tonic = _op["drive_in"], _op["gaba_tonic"]
+            if _op.get("w"):
+                w = dict(_op["w"], **(w or {}))
         # separate tonic/phasic sensitivities; both default to gaba_sens, which reproduces
         # the legacy single-pool behaviour exactly
         self.gaba_sens_tonic = gaba_sens if gaba_sens_tonic is None else gaba_sens_tonic
@@ -89,7 +105,10 @@ class SpinalCircuit:
         # period and coordination was overstated.
         #
         # `rg_kw` still wins, so a caller can override deliberately.
-        rg_defaults = dict(gaba_sens_tonic=self.gaba_sens_tonic,
+        # The RG inherits the substrate. It resolves its OWN operating point
+        # (COND_LOCO_OP), because its populations and drives are not the spinal circuit's.
+        rg_defaults = dict(substrate=substrate, cell=cell,
+                           gaba_sens_tonic=self.gaba_sens_tonic,
                            gaba_sens_phasic=self.gaba_sens_phasic,
                            glyr_sens=self.glyr_sens)
         rg_defaults.update(rg_kw or {})
@@ -122,10 +141,19 @@ class SpinalCircuit:
         for half in ("F", "E"):
             for base, n in self.POPS.items():
                 nm = f"{base}_{half}"
-                self.pops[nm] = Pop(n=n, name=nm + str(seed))
                 # physiological firing ceilings: rat motoneurons saturate near
-                # 50-100 Hz, so tref=2 ms (=> 500 Hz cap) is far too permissive
-                self.pops[nm].tref = 8.0 if base == "Mn" else 4.0
+                # 50-100 Hz, so tref=2 ms (=> 500 Hz cap) is far too permissive.
+                # (tref has no meaning on the conductance cell -- it has no reset -- so
+                # make_pop ignores it there; the cell's own dynamics set its ceiling, and
+                # above ~200 pA it stops firing entirely by depolarisation block.)
+                # g_adapt=None keeps `Pop`'s own default (0.55 nS). This circuit never
+                # set it -- it built bare `Pop`s -- and passing make_pop's former default
+                # of 0.0 here deleted spike-triggered adaptation from every spinal
+                # population, which the stretch-reflex and step-cycle phenotypes caught.
+                # Naming the number here instead would duplicate `Pop`'s default.
+                self.pops[nm] = sub.make_pop(
+                    substrate, n, nm + str(seed), nap=False, g_adapt=None,
+                    tref=8.0 if base == "Mn" else 4.0, cell=cell)
                 for rec in ("ampa", "nmda", "gabaa", "gly"):
                     self.syn[(nm, rec)] = Syn(
                         n, rec, self.drug,
@@ -165,22 +193,27 @@ class SpinalCircuit:
             for post, rec in (("Mn","ampa"), ("Mn","nmda"), ("IaIn","ampa")):
                 self._rate_inject(f"{post}_{h}", rec, self.W[("Ia",post,rec)], total, dt)
         # integrate
+        raw = sub.raw_receptors(self.substrate)
         for nm, p in self.pops.items():
             base = nm.split("_")[0]
             g, E = {}, {}
             for rec in ("ampa", "nmda", "gabaa", "gly"):
-                s = self.syn[(nm, rec)]
-                g[rec] = s.conductance(p.V); E[rec] = E_REV[rec]
+                syn = self.syn[(nm, rec)]
+                g[rec] = syn.g if rec in raw else syn.conductance(p.V)
+                E[rec] = E_REV[rec]
             if base in ("PF", "Mn"):               # tonic extrasynaptic GABA-A
                 # Clamped at zero; see the note in resp.py. A negative tonic term can drive
                 # the total gabaa conductance negative, which inverts the inhibitory shunt
                 # into regenerative negative damping rather than failing visibly.
-                eff = max(0.0, 1.0 + self.gaba_sens_tonic
-                          * (self.drug.gaba_scale_tonic() - 1.0))
-                g["gabaa"] = np.maximum(0.0, g["gabaa"] + self.gaba_tonic * eff)
-            p.step(dt, g, E, self.drive.get(base, 0.0), self.rng)
-        for s in self.syn.values():
-            s.decay(dt)
+                g["gabaa"] = sub.tonic_gaba(self.gaba_tonic, self.gaba_sens_tonic,
+                                            self.drug.gaba_scale_tonic(), g["gabaa"])
+            Id = self.drive.get(base, 0.0)
+            if raw:
+                p.step(dt, g, E, Id, self.rng, raw=raw)
+            else:
+                p.step(dt, g, E, Id, self.rng)
+        for syn in self.syn.values():
+            syn.decay(dt)
         self.t += dt
         return {nm: p.rate for nm, p in self.pops.items()}
 

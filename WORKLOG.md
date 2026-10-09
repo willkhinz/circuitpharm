@@ -3106,3 +3106,129 @@ this substrate**, after the 4 s warm-up against a 10 s τ_h, the in vivo band on
 preparation, and the FFT resolution. The pattern is consistent enough to state as a rule: on
 the conductance substrate, assume every inherited protocol is wrong until re-derived. None of
 the four failed loudly; each produced a plausible number.
+
+---
+
+# Session 8: the E20 regression, and reviewing the manuscript against the model
+
+## E20 — the substrate factory's default erased the LIF cell's adaptation
+
+The `substrate.py` migration left the suite at **2 failed, 258 passed**:
+`test_benzodiazepine_depresses_the_reflex` and
+`test_sedative_degrades_coordination_and_slows_the_step_cycle`. Both LIF-path motor
+phenotypes, both green at 251/251 before the refactor, so a regression I introduced.
+
+**Cause, exactly as predicted before the break.** `sub.make_pop` carried `g_adapt=0.0` as a
+default. `resp.py` and `rg2.py` had always set adaptation explicitly, so routing them through
+the factory was faithful. `circuit.py` had **not** — it built bare `Pop`s and set only `tref`,
+inheriting the dataclass's `g_adapt = 0.55` — so the factory's default silently deleted
+spike-triggered adaptation from every spinal population.
+
+**The fix is structural, not a number.** Writing `g_adapt=0.55` in `circuit.py` would have
+duplicated `Pop`'s default into a second file, which is the divergence `substrate.py` exists to
+prevent. So `g_adapt` now has **no default at all** — every caller states its intent — and
+`None` means "keep the cell class's own value". `tau_adapt` likewise; it happened to equal
+`Pop`'s default, so it hid behind the same mistake without contributing to it.
+
+**Then I ran the check I should have run before claiming the LIF path was preserved.** I had
+verified `resp.py` byte-identical and asserted the same for `circuit.py`/`rg2.py` without
+testing it. A git worktree at HEAD, 28 trace hashes over `rg2` and `circuit` (control and BZ
+arms, every population, 2 s at dt = 0.25 ms): **all 28 identical**. That is the check that
+would have caught E20 in the first place, and it costs one worktree.
+
+Pinned as two tests: `make_pop` must have no `g_adapt` default, and every spinal population
+must carry `Pop`'s value. Suite: **262 passed, 0 failed**.
+
+## Reviewing `initial_paper.md` against the code it claims to describe
+
+Full review in `knowledge/07-paper-review.md`. Regenerator in `scripts/paper_numbers.py`.
+
+**The algebraic half reproduces exactly.** Every nominal R (10.8750, 8.6442, 7.8750, 1.2083,
+1.0000, 0.5633, 0.0000), the stereoisomer pair (9.3487 / 3.6250), every Table 6A input vector,
+all three Monte Carlo floor scenarios to the digit (5th percentiles 2.51/2.49/2.57; alogabat
+median 16.05→10.79→7.57, 95th 84.85→23.42→14.31), the 38% tail, and the declared
+Python/NumPy/SciPy versions and seed. §4.2–4.5 is publishable as it stands, and its Dirichlet
+dispersion derivation is better than the repo's own documentation — it found the 175% CV on
+preBötC α5 that explains the 38% tail `ranking_robustness.py` reports but never explained.
+
+**The kinetic half quotes numbers no commit of this repository produces.** The draft calibrated
+to `Po_max = 0.84` against a 3.0 mM / τ_clear = 1.0 ms transient; the repo says **0.75** and
+**1.0 mM / 0.30 ms**. `git log -S` finds neither 0.84 nor 3000 anywhere in history,
+`FIT_RANGES` declares po_max acceptable only on **[0.70, 0.80]** so 0.84 would have been
+**rejected by the module's own validation**, and the commit hash the draft cites twice
+(`c8f17a9`) **exists in no ref**.
+
+Not a rounding complaint. The thesis is the contrast between a saturated synapse and an open
+extrasynaptic space, and the synaptic half — the part the abstract leads with — moved most:
+
+| | draft | repo |
+|---|---|---|
+| phasic peak gain | 1.062× | **1.319×** |
+| phasic max headroom | 1.124× | **1.668×** |
+| charge ratio | 1.655× | **2.419×** |
+| tonic max headroom | 210.7× | **184.6×** |
+| the headline contrast | 187× | **111×** |
+
+The qualitative conclusion survives. Every quoted figure does not.
+
+**The worst finding is in §5.2, the falsification test.** The draft pre-registers four intervals
+for a wet lab to run. Two are violated by the model itself:
+
+| `[GABA]_bath` | draft | repo (s_max 2.40–2.50) | asymptote |
+|---|---|---|---|
+| 0.1 µM | **> 15×** | **7.66–8.47×** | 2881× |
+| 0.4 µM | [7, 15] | 7.18–7.88× | 184.6× |
+| 3.0 µM | **< 3.0×** | **2.94–3.03×** | 4.8× |
+| 10.0 µM | < 1.5× | 1.34–1.35× | 1.5× |
+
+A lab measuring 8× at 0.1 µM would have reported the model falsified when the model predicts
+8×. The intervals read like asymptote values, and the cause is structural: **as ambient GABA
+falls, asymptotic headroom grows without limit while the gain a finite s_max can reach barely
+moves.** From 0.4 to 0.1 µM the asymptote rises 15.6× and the reachable gain 1.08×. Headroom
+and reachable gain are different quantities and the draft's own Table 4 keeps them apart —
+then §5.2 pre-registers against the wrong one. Pinned as a test.
+
+**8 of 20 references are defective**, four carrying load-bearing parameters: Walters 2000 (the
+diazepam s_max = 2.50 that is the index's denominator — actually Nat. Neurosci. 3:1274–1281, not
+Br. J. Pharmacol. 131:1307–1314), Haas & Macdonald 1999 (the kinetic topology — J. Physiol.
+514:27–45, not J. Neurosci. 19:2435–2445), Kasugai 2010 (`EXTRASYN['a5'] = 0.80`, the whole
+headroom argument — Eur. J. Neurosci. 32:1868–1888, not J. Neurosci. 30:14024–14035), and three
+**unresolvable**: Nutt 2007, Fischer 2010 for MP-III-022 (anachronistic — the earliest primary
+MP-III-022 literature Crossref indexes is 2024–2026), and Saba 2017 (which carries
+`w_subj,δ = 0.0`, the assignment producing gaboxadol's R = 0.00). Crestani is cited to the wrong
+year *and* pages; Otis & Mody to a non-existent coordinate.
+
+The Kasugai error is already on record: `provenance.report()` says *"a5_dist resolves perfectly
+by DOI and does not support the numbers it is the obvious candidate for."* The draft reached the
+same source independently and cited it to the wrong journal.
+
+**The draft also quotes the two statistics the model refuses to stand behind.**
+`ranking_robustness.py` prints "NOT QUOTABLE: the median and 95th percentile"; the draft's
+Table 6 makes both of them columns. §4.4.3 then explains the prior-sensitivity correctly — so
+the draft knows — but a reader who stops at Table 6 has taken numbers the model disowns.
+
+**And it overstates provenance.** `provenance.report()` says 6 of 28 parameters name a source
+(21%). The draft attributes Table 5 to Pirker 2000 and Kasugai 2010; `prebotc.a5`, four of five
+forebrain fractions, `EXTRASYN.a1`, `EXTRASYN.a23`, four of five `w_subj` weights and `KAPPA`
+are all **UNSOURCED** in the audit.
+
+**§4.4 is titled "Multiscale Circuit Selectivity Pipeline" and is not multiscale.**
+`ranking_robustness.py` imports `circuitpharm.subtypes` and nothing else — no neuron, no
+circuit, no simulation; its own docstring says so. The draft's §4.4.1 subheading already says
+"Algebraic Pipeline", so the section heading contradicts its own first line.
+
+**What the draft is missing is this project's best result.** It contains no circuit simulation
+at all, and so omits link 5: **Spearman +1.0000 over the five subtype-selective arms** across
+an integrate-and-fire cell and a Butera–Rinzel–Smith conductance cell that share almost no
+mechanism. That perturbs the model's *structure*, not its parameters, and is a stronger
+robustness argument than the Dirichlet sweep. It also omits the finding that cuts against the
+draft's own reference arm: the non-selective BZ's sign on respiratory output **flips**
+(+0.079 → −0.377), and diazepam is the denominator of every R in Table 6.
+
+## The pattern, stated once
+
+E20 and the manuscript are the same failure at two scales. A number that lives in two places
+diverges, and the symptom is plausible rather than loud: a spinal circuit that still runs
+without adaptation, a paper whose numbers are internally consistent and match no commit. The
+answer in both cases was to delete the second copy — `g_adapt` has no default, and the
+manuscript's tables are printed by `scripts/paper_numbers.py` rather than typed.

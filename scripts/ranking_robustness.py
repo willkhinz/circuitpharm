@@ -52,8 +52,12 @@ def draw_params(rng, a5_floor=0.0):
         # described in the verdict section. Renormalised so the fractions still sum to 1.
         if a5_floor > 0.0 and region == "prebotc":
             i5 = SUBTYPES.index("a5")
-            d[i5] = max(d[i5], a5_floor)
-            d = d / d.sum()
+            f5 = float(d[i5])
+            q5 = max(f5, a5_floor)
+            if q5 > f5:
+                scale = (1.0 - q5) / max(1e-12, 1.0 - f5)
+                d = d * scale
+                d[i5] = q5
         frac[region] = dict(zip(SUBTYPES, d))
     ex = {}
     for s in SUBTYPES:
@@ -168,8 +172,8 @@ if __name__ == "__main__":
     # It is not, for the statistic that matters. Flooring the drawn preBotC a5 at 0.005,
     # 0.01 and the full nominal 0.02 leaves the 5th percentile UNCHANGED (alogabat 2.51 in
     # every condition, P(>1) 99.9%, corr(score, 1/a5) = 0.02). What the near-zero tail
-    # drives is the OPTIMISTIC end: alogabat's median falls 16.05 -> 7.63 and its 95th
-    # percentile 84.9 -> 14.5 as the floor rises to nominal.
+    # drives is the OPTIMISTIC end: alogabat's median falls 16.05 -> 7.57 and its 95th
+    # percentile 84.85 -> 14.31 as the floor rises to nominal.
     #
     # CONCLUSION, and it is a restriction on what may be quoted: the 5th-percentile FLOOR
     # and the ordering are robust. The MEDIAN and 95th percentile are prior artifacts and
@@ -185,7 +189,7 @@ if __name__ == "__main__":
     print("NOT QUOTABLE: the median and 95th percentile. 38% of draws put preBotC a5 below")
     print("            a tenth of nominal, and an a5-selective compound's burden is roughly")
     print("            proportional to it, so the upper tail measures the prior. Flooring at")
-    print("            nominal moves alogabat's median 16.05 -> 7.63 and its 95th 84.9 -> 14.5.")
+    print("            nominal moves alogabat's median 16.05 -> 7.57 and its 95th 84.85 -> 14.31.")
     print(f"            Reproduce with:  --a5-floor 0.02")
     print("\n" + "=" * 70)
     print("VERDICT")

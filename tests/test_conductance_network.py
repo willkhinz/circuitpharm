@@ -129,7 +129,7 @@ def test_cond_populations_have_no_spike_triggered_adaptation():
 
 
 # ================================= E15: NMDA handed over unevaluated on the cond substrate
-def test_cond_substrate_passes_nmda_raw_so_the_block_tracks_voltage():
+def test_cond_substrate_passes_nmda_raw_so_the_block_tracks_voltage(monkeypatch):
     """`Syn.conductance(V)` applies the Mg2+ block at the PRE-STEP voltage, which discards
     the entire voltage-dependent relief on a cell that sub-steps through a 70 mV spike. The
     symptom would be "the substrate change did not move the NMDA result" -- a reassuring
@@ -148,10 +148,31 @@ def test_cond_substrate_passes_nmda_raw_so_the_block_tracks_voltage():
         "the raw conductance is not larger than the pre-evaluated one, so Syn.conductance "
         "is not attenuating and this test cannot detect the defect it is for")
 
-    import inspect
-    src = inspect.getsource(PreBotC.step)
-    assert 'raw = ("nmda",) if self.substrate == "cond" else ()' in src
-    assert "s.g if rec in raw else s.conductance(p.V)" in src
+    # CHECKED AT THE SEAM, BEHAVIOURALLY. This used to assert on the source text of
+    # PreBotC.step and broke the moment that logic moved into the shared substrate helper --
+    # a legitimate refactor failing a test that was pinning an implementation rather than a
+    # behaviour. What matters is what the CELL receives, so capture it.
+    captured = {}
+    orig = type(p).step
+
+    def spy(self, dt, g, E, Idrive, rng, raw=()):
+        # Keyed by population name. Guarding on "nmda" not in `captured` while storing
+        # under "g_nmda" let every population overwrite the last, so this captured Out
+        # (g=0) instead of Exc (g=3) -- my own bug, and the test failed for it rather than
+        # for the defect it is about.
+        if "nmda" in g:
+            captured[self.name] = (float(np.asarray(g["nmda"]).ravel()[0]), tuple(raw))
+        return orig(self, dt, g, E, Idrive, rng, raw=raw)
+
+    monkeypatch.setattr(type(p), "step", spy)
+    net.step(0.1)
+    g_exc, raw_exc = captured["Exc0"]
+    assert raw_exc == ("nmda",), (
+        f"the cell was handed raw={raw_exc}; NMDA is not being passed unevaluated, so the "
+        f"Mg block stays frozen at the pre-step voltage")
+    assert g_exc == pytest.approx(3.0, rel=1e-9), (
+        f"the Exc cell received g_nmda={g_exc:.4f} rather than the raw 3.0, so "
+        f"Syn.conductance attenuated it before handover")
 
 
 # ============================= the control cache must not mix substrates
@@ -271,3 +292,96 @@ def test_the_in_vitro_band_is_sourced_not_convenient():
     assert row, "the in vitro frequency source is not in the knowledge base"
     assert "HAND:" in row[1] and "SUPPORTS" in row[1], (
         f"the in vitro band's source carries no hand-read claim-support verdict: {row[1][:90]}")
+
+
+# =============== the shared substrate helper, and the two newly-wired circuits
+def test_derive_weights_separates_nmda_from_everything_else():
+    """The correction that took four failed sweeps to find. A single scale cannot carry a
+    weight table between these cells: NMDA needs the Mg-relief ratio on top of the g_L
+    ratio, making it ~11x smaller than AMPA.
+
+    tau_nmda is 100 ms, 20x the AMPA tau, so lumped population NMDA accumulates 20x more
+    conductance per unit firing rate. The LIF's weights were tuned where Mg block held NMDA
+    at a measured mean relief of 0.063; on a cell that relieves to ~0.70 the same weight is
+    ~11x too strong -- and since relief RISES with depolarisation it is positive feedback
+    into depolarisation block, not a scale error.
+    """
+    from circuitpharm.substrate import GL_RATIO, RELIEF_RATIO, derive_weights
+    lif = dict(ee_ampa=1.0, ee_nmda=1.0, ie_gaba=1.0, ie_gly=1.0)
+    w = derive_weights(lif)
+    assert w["ee_ampa"] == pytest.approx(GL_RATIO)
+    assert w["ie_gaba"] == pytest.approx(GL_RATIO)
+    assert w["ie_gly"] == pytest.approx(GL_RATIO)
+    assert w["ee_nmda"] == pytest.approx(GL_RATIO * RELIEF_RATIO)
+    ratio = w["ee_ampa"] / w["ee_nmda"]
+    assert 9.0 < ratio < 13.0, (
+        f"AMPA/NMDA scale ratio is {ratio:.1f}, not ~11. Losing this separation is what "
+        f"made the network unanchorable through three consecutive sweeps.")
+
+
+def test_minimum_settle_is_three_tau_h():
+    from circuitpharm.substrate import MIN_SETTLE_MS, TAU_H_MS
+    assert TAU_H_MS == 10000.0
+    assert MIN_SETTLE_MS >= 3 * TAU_H_MS
+
+
+@pytest.mark.parametrize("ctor,kw", [
+    ("GroupPacemakerRG", {}),
+    ("SpinalCircuit", {}),
+])
+def test_newly_wired_circuits_refuse_the_cond_substrate_unanchored(ctor, kw):
+    """`rg2` and `circuit` now take `substrate=`, and both must refuse 'cond' while their
+    operating points are unanchored rather than silently inheriting LIF-scaled pA and nS."""
+    import circuitpharm.circuit as circuit_mod
+    import circuitpharm.rg2 as rg2_mod
+    cls = {"GroupPacemakerRG": rg2_mod.GroupPacemakerRG,
+           "SpinalCircuit": circuit_mod.SpinalCircuit}[ctor]
+    with pytest.raises(ValueError, match="needs its own operating point"):
+        cls(substrate="cond", seed=0, **kw)
+
+
+@pytest.mark.parametrize("ctor", ["GroupPacemakerRG", "SpinalCircuit"])
+def test_newly_wired_circuits_reject_an_unknown_substrate(ctor):
+    import circuitpharm.circuit as circuit_mod
+    import circuitpharm.rg2 as rg2_mod
+    cls = {"GroupPacemakerRG": rg2_mod.GroupPacemakerRG,
+           "SpinalCircuit": circuit_mod.SpinalCircuit}[ctor]
+    with pytest.raises(ValueError, match="must be 'lif' or 'cond'"):
+        cls(substrate="definitely-not-a-substrate", seed=0)
+
+
+def test_locomotor_interneuron_bias_is_no_longer_a_literal():
+    """`drive_in` was the literal 70.0 in rg2's step loop -- pA against the LIF cell, and
+    the third LIF-scaled quantity found hiding in a step loop after the drive and the weight
+    table had both been moved out. resp.py had the identical trap at 60.0."""
+    import inspect
+    from circuitpharm.rg2 import GroupPacemakerRG
+    src = inspect.getsource(GroupPacemakerRG.step)
+    assert "else 70.0" not in src
+    assert "self.drive_in" in src
+    assert GroupPacemakerRG(seed=0).drive_in == 70.0, "the LIF default must not change"
+
+
+def test_spinal_circuit_forwards_the_substrate_to_its_rhythm_generator():
+    """Review 4 found SpinalCircuit failing to forward sensitivity into its RG. The same
+    omission for `substrate` would leave a conductance spinal circuit driven by a LIF
+    rhythm generator -- a mixed-substrate network, which is worse than either."""
+    import inspect
+    from circuitpharm.circuit import SpinalCircuit
+    src = inspect.getsource(SpinalCircuit.__init__)
+    assert "substrate=substrate" in src, "the substrate is not forwarded into the RG"
+    assert SpinalCircuit(seed=0).rg.substrate == "lif"
+
+
+def test_all_three_circuits_share_one_substrate_implementation():
+    """Recurring error E12 was a fix applied everywhere except the module written later,
+    where the same defect reappeared. Three circuits now route through `substrate.py` rather
+    than carrying three copies of the logic."""
+    import inspect
+    from circuitpharm import circuit, resp, rg2
+    for mod in (resp, rg2, circuit):
+        src = inspect.getsource(mod)
+        assert "substrate as sub" in src, f"{mod.__name__} does not use the shared helper"
+        assert "sub.make_pop(" in src, f"{mod.__name__} builds populations directly"
+        assert "sub.raw_receptors(" in src, f"{mod.__name__} does not use shared raw-NMDA"
+        assert "sub.tonic_gaba(" in src, f"{mod.__name__} inlines the tonic GABA clamp"

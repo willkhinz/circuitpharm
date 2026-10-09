@@ -138,6 +138,21 @@ COND_RESP_OP = MappingProxyType(dict(
                             ie_gaba=0.0945, ie_gly=0.0735, eo_ampa=0.28, eo_nmda=0.0075)),
 ))
 
+# CONDUCTANCE operating points for the LOCOMOTOR rhythm generator and the SPINAL circuit.
+#
+# None means NOT ANCHORED, and the constructors raise rather than inheriting LIF-scaled
+# numbers. Anchoring these needs the same work the preBotC took (scripts/anchor_cond_resp.py)
+# with a locomotor-appropriate validity band: fictive locomotion in the isolated neonatal rat
+# cord runs far slower than in vivo stepping, so EUPNOEA_BAND's in vivo analogue would be the
+# wrong gate here for exactly the reason it was wrong for the respiratory cond substrate.
+#
+# The RECIPE is known and is in substrate.derive_weights(): conductances x the g_L ratio,
+# NMDA additionally x the Mg-relief ratio, drives derived from the cell's bursting window
+# with the interneuron bias bounded above by depolarisation block. What is NOT yet done is
+# the anchoring run and its verification across seeds.
+COND_LOCO_OP = None
+COND_SPINAL_OP = None
+
 # Synaptic GABA transient seen by the PHASIC receptor pool. This particular (peak,
 # clearance) pair is one of the 9/27 cells in which the Markov scheme reproduced every
 # anchored benzodiazepine observable from a single calibrated parameter; the passing cells

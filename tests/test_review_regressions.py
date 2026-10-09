@@ -447,3 +447,154 @@ def test_percent_of_control_never_divides_bare(script):
     import pathlib
     src = pathlib.Path(script).read_text()
     assert "1e-9" in src, f"{script}: no baseline-magnitude guard present"
+
+
+# ------------------------------------------------- E20 substrate factory default erased
+#                                                   the LIF cell's adaptation
+def test_make_pop_requires_g_adapt_and_none_keeps_the_class_default():
+    """E20. `substrate.make_pop` carried `g_adapt=0.0` as a DEFAULT. `resp.py` and `rg2.py`
+    had always set adaptation explicitly, so routing them through it was faithful.
+    `circuit.py` had not -- it built bare `Pop`s and set only `tref`, inheriting the
+    dataclass's 0.55 nS -- so the factory's default silently deleted spike-triggered
+    adaptation from every spinal population. The LIF path is supposed to be unchanged by
+    the conductance migration; two phenotype tests caught this and nothing else did.
+
+    The fix is structural, so the test is too: `g_adapt` must have NO default (every caller
+    states its intent) and `None` must mean "keep the cell class's own value" rather than
+    being spelled out as a second copy of 0.55.
+    """
+    import inspect
+    from circuitpharm import substrate as sub
+    from circuitpharm.cpg import Pop
+
+    sig = inspect.signature(sub.make_pop)
+    for name in ("g_adapt",):
+        p = sig.parameters[name]
+        assert p.default is inspect.Parameter.empty, (
+            f"make_pop.{name} has a default again; a caller that does not set it will "
+            "inherit the factory's idea of adaptation instead of the cell class's")
+
+    default = Pop(n=1, name="x")
+    kept = sub.make_pop("lif", 1, "y", g_adapt=None, tau_adapt=None)
+    assert kept.g_adapt == default.g_adapt, "g_adapt=None did not keep the Pop default"
+    assert kept.tau_adapt == default.tau_adapt, "tau_adapt=None did not keep the default"
+
+    explicit = sub.make_pop("lif", 1, "z", g_adapt=1.25, tau_adapt=280.0)
+    assert (explicit.g_adapt, explicit.tau_adapt) == (1.25, 280.0), (
+        "an explicit adaptation strength was not applied")
+
+
+def test_spinal_circuit_keeps_its_spike_triggered_adaptation():
+    """The behavioural half of E20, independent of make_pop's signature. Every LIF spinal
+    population must carry the adaptation it had before the migration; a zero here is what
+    broke the stretch reflex and the step cycle.
+    """
+    from circuitpharm.circuit import SpinalCircuit
+    from circuitpharm.cpg import Pop
+
+    expect = Pop(n=1, name="x").g_adapt
+    c = SpinalCircuit(seed=0)
+    assert expect > 0.0, "Pop's default adaptation is zero; this test no longer means that"
+    for nm, p in c.pops.items():
+        assert p.g_adapt == expect, (
+            f"spinal population {nm} has g_adapt={p.g_adapt} not {expect}; "
+            "spike-triggered adaptation was dropped from the LIF path")
+
+
+# ------------------------------------------------- E21 the manuscript quoted numbers no
+#                                                   commit of this repo produces
+def test_kinetic_calibration_target_lies_inside_its_own_accepted_range():
+    """E21, first half. The first manuscript draft calibrated to Po_max = 0.84 and reported
+    a complete set of numbers from it. `FIT_RANGES` declares po_max acceptable only on
+    [0.70, 0.80], so 0.84 would have been REJECTED by this module's own validation -- but
+    nothing checked the target against the range, so the two could disagree silently.
+
+    A target outside its own accepted range means the fit is asked to land somewhere the
+    module would then refuse, which is a contradiction regardless of which value is right.
+    """
+    from circuitpharm import gabaa_kinetics as gk
+    for key, (lo, hi) in gk.FIT_RANGES.items():
+        t = gk.FIT_TARGETS[key]
+        assert lo <= t <= hi, (
+            f"calibration target {key}={t} lies outside its accepted range [{lo}, {hi}]; "
+            "the fit would be asked to reach a value the module rejects")
+
+
+def test_manuscript_numbers_are_generated_not_transcribed():
+    """E21, second half. Every figure the manuscript quotes must come out of
+    `scripts/paper_numbers.py`, which recomputes it from the model. The draft's numbers
+    were internally consistent and matched no commit: Po_max 0.84 vs the repo's 0.75, a
+    3.0 mM / 1.0 ms synaptic transient vs 1.0 mM / 0.30 ms, and a cited commit hash that
+    exists in no ref. The qualitative conclusion survived; every quoted figure did not.
+
+    So the script must exist, must run, and must agree with the module it reads -- the last
+    part being the one that matters, since a generator that drifts from its own source is
+    no better than prose.
+    """
+    import pathlib
+    import subprocess
+    import sys
+
+    script = pathlib.Path("scripts/paper_numbers.py")
+    assert script.exists(), "the manuscript's numbers have no generator"
+
+    out = subprocess.run([sys.executable, str(script)], capture_output=True, text=True,
+                         timeout=600)
+    assert out.returncode == 0, f"paper_numbers.py failed:\n{out.stderr[-2000:]}"
+    txt = out.stdout
+
+    from circuitpharm import gabaa_kinetics as gk
+    s = gk.fit_scheme(verbose=False)
+
+    # The two asymptotes are computed twice by different routes inside the script (closed
+    # form, and the mechanism pushed to affinity=1e5). They must agree, or one is wrong.
+    dr = s.d / s.r
+    closed = 1.0 / (1.0 + (s.alpha / s.beta) * (1.0 + dr))
+    pushed = s.pam(affinity=1e5).po_tonic(gk.AMBIENT_UM)
+    assert abs(closed - pushed) < 1e-4, (
+        f"the three-state asymptote disagrees with the mechanism pushed to its limit: "
+        f"{closed:.6f} vs {pushed:.6f}")
+
+    # And the printed value must be the computed one, to the digits printed.
+    assert f"{closed:.6f}" in txt, (
+        f"paper_numbers.py does not print the asymptote it computes ({closed:.6f})")
+    assert f"{s.po_max():.4f}" in txt, "Po_max is not reported from the fitted scheme"
+
+    # The sections the manuscript depends on must all be present.
+    for section in ("KINETIC SCHEME", "COMPARTMENT DIVERGENCE", "SENSITIVITY",
+                    "FALSIFICATION INTERVALS", "SELECTIVITY INDEX"):
+        assert section in txt, f"paper_numbers.py no longer emits the {section} section"
+
+
+def test_falsification_intervals_are_set_from_reachable_gain_not_the_asymptote():
+    """E21, third half -- the defect that would have mattered most in a wet lab. The draft
+    pre-registered "R_PAM > 15x at 0.1 uM ambient GABA" as a falsification criterion. That
+    is an ASYMPTOTE reading (2881x at 0.1 uM); the gain a finite s_max ~ 2.5 PAM actually
+    reaches there is ~8.5x. A lab measuring 8x would have reported the model falsified when
+    the model predicts 8x.
+
+    The cause is structural: as ambient GABA falls, the asymptotic headroom grows without
+    limit while the reachable gain barely moves. This test pins that divergence, so anyone
+    writing a criterion against the headroom column trips it.
+    """
+    from circuitpharm import gabaa_kinetics as gk
+    s = gk.fit_scheme(verbose=False)
+    c = gk.calibrate_pam(s, target_shift=2.5, kind="affinity")
+    mod = s.pam(affinity=c)
+    dr = s.d / s.r
+    po_inf = 1.0 / (1.0 + (s.alpha / s.beta) * (1.0 + dr))
+
+    reach, head = {}, {}
+    for g in (0.1, 0.4):
+        b = s.po_tonic(g)
+        reach[g], head[g] = mod.po_tonic(g) / b, po_inf / b
+
+    # Headroom explodes as ambient falls; reachable gain does not. If these ever track each
+    # other, a criterion written against either one would be safe -- and the test is moot.
+    assert head[0.1] / head[0.4] > 10.0, (
+        "asymptotic headroom no longer diverges from reachable gain as ambient GABA falls; "
+        "re-derive the falsification intervals, this test's premise has changed")
+    assert reach[0.1] / reach[0.4] < 1.5, (
+        f"reachable gain at 0.1 uM is now {reach[0.1]/reach[0.4]:.2f}x its 0.4 uM value")
+    assert reach[0.1] < 0.01 * head[0.1], (
+        "a finite s_max=2.5 PAM should reach under 1% of the asymptote at 0.1 uM ambient")

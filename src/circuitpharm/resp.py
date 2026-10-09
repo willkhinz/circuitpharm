@@ -26,6 +26,7 @@ fraction), so a GluN2B-selective antagonist should barely touch this network whi
 producing a substantial forebrain effect. `glun2b_fraction` is the knob that encodes it.
 """
 import numpy as np
+from . import substrate as sub
 from .cpg import Pop, Syn, Drug, E_REV
 
 # Physiologically admissible respiratory frequency, Hz. Rat eupnoea is 1-2 Hz (60-120
@@ -61,39 +62,15 @@ class PreBotC:
         # produce a network that does not oscillate or oscillates for the wrong reason
         # (predicted as E14). So `substrate='cond'` REFUSES to run without an operating
         # point, rather than silently inheriting numbers tuned against a different cell.
-        if substrate == "cond":
-            from .config import COND_RESP_OP
-            if op is None:
-                op = COND_RESP_OP
-            if op is None:
-                raise ValueError(
-                    "substrate='cond' needs its own operating point. The LIF's RESP_OP is "
-                    "in pA and nS relative to a C=200 pF / g_L=10 nS cell; the Butera cell "
-                    "is C=21 pF / g_L=2.8 nS, so reusing it is an order-of-magnitude error "
-                    "that fails silently. Pass op={'drive':..., 'gaba_tonic':..., "
-                    "'w':{...}}, or run scripts/anchor_cond_resp.py to find and register "
-                    "one.")
-            # EVERY SCALED QUANTITY MUST COME FROM THE OPERATING POINT, not just `drive`.
-            #
-            # A partial operating point is the dangerous case: supplying `drive` and
-            # `ee_ampa` while `ie_gaba`, `ie_gly`, `eo_*` and `gaba_tonic` silently keep
-            # their LIF values gives a network that is internally inconsistent by ~an order
-            # of magnitude on the inhibitory arm -- which is precisely the arm the drug acts
-            # through. It would run, produce a rhythm, and be wrong about pharmacology.
-            # So the full set is required rather than defaulted.
-            missing = [k for k in REQUIRED_W if k not in (op.get("w") or {})]
-            if missing or any(k not in op for k in ("drive", "gaba_tonic", "drive_other")):
-                raise ValueError(
-                    f"conductance operating point is incomplete. missing weights: "
-                    f"{missing or 'none'}; missing scalars: "
-                    f"{[k for k in ('drive', 'gaba_tonic', 'drive_other') if k not in op]}."
-                    f" Every pA and nS quantity is relative to the cell, so a partial "
-                    f"operating point leaves part of the network LIF-scaled -- including "
-                    f"the inhibitory arm the drug acts through.")
-            drive = op["drive"]
-            gaba_tonic = op["gaba_tonic"]
-            self.drive_other = op["drive_other"]
-            w = dict(op["w"], **(w or {}))
+        from .config import COND_RESP_OP
+        _op = sub.resolve_op(substrate, op, COND_RESP_OP, required_w=REQUIRED_W,
+                             required_scalars=("drive", "drive_other", "gaba_tonic"),
+                             what="the respiratory rhythm generator")
+        if _op is not None:
+            drive = _op["drive"]
+            gaba_tonic = _op["gaba_tonic"]
+            self.drive_other = _op["drive_other"]
+            w = dict(_op["w"], **(w or {}))
         # DEFAULTS COME FROM config.RESP_OP, not from literals here. They used to be
         # drive=190, g_adapt=1.6, tau_adapt=450, ee_ampa=0.16, ee_nmda=0.09 -- an obsolete
         # untuned set with ~3x weaker recurrent excitation than the calibrated operating
@@ -166,28 +143,9 @@ class PreBotC:
         self.substrate = substrate
         self.pops = {}
         for nm, n, nap in (("Exc", n_exc, True), ("Inh", n_inh, False), ("Out", n_out, False)):
-            if substrate == "lif":
-                p = Pop(n=n, name=f"{nm}{seed}", nap=nap)
-                p.g_adapt = g_adapt if nm == "Exc" else 0.0
-                p.tau_adapt = tau_adapt
-                p.tref = 5.0
-            elif substrate == "cond":
-                from .neuron import BRS1999_MODEL1, CondPop
-                # ADAPTATION IS NOT CARRIED ACROSS, and this is the whole reason the pop
-                # construction had to be restructured rather than parameterised in place.
-                #
-                # The LIF assigned `g_adapt` AFTER construction, so pointing it at a
-                # conductance cell would have switched spike-triggered adaptation back on at
-                # its LIF-tuned strength (2.5 nS/spike) on top of a now-real I_NaP
-                # inactivation. Burst termination would be double-counted, and the symptom
-                # would be bursts ending slightly early -- i.e. a plausible duty cycle, which
-                # is this project's signature failure shape. Predicted as E18 before the cell
-                # was written.
-                p = CondPop(n=n, name=f"{nm}{seed}", params=cell or BRS1999_MODEL1,
-                            nap=nap, g_adapt=0.0)
-            else:
-                raise ValueError(
-                    f"substrate must be 'lif' or 'cond', got {substrate!r}")
+            p = sub.make_pop(substrate, n, f"{nm}{seed}", nap=nap,
+                             g_adapt=(g_adapt if nm == "Exc" else 0.0),
+                             tau_adapt=tau_adapt, tref=5.0, cell=cell)
             self.pops[nm] = p
         self.syn = {(nm, rec): Syn(p.n, rec, self.drug,
                                    sens=(self.gaba_sens_phasic if rec == "gabaa"
@@ -222,29 +180,15 @@ class PreBotC:
         # result", which reads as a reassuring robustness check and is in fact the bug.
         # Predicted as E15 before the cell was written. `raw=("nmda",)` makes CondPop apply
         # the block at its own V, every substep.
-        raw = ("nmda",) if self.substrate == "cond" else ()
+        raw = sub.raw_receptors(self.substrate)
         for nm, p in self.pops.items():
             g, E = {}, {}
             for rec in ("ampa", "nmda", "gabaa", "gly"):
                 s = self.syn[(nm, rec)]
                 g[rec] = s.g if rec in raw else s.conductance(p.V)
                 E[rec] = E_REV[rec]
-            # TONIC pool uses the TONIC scale, which differs from the phasic one under
-            # the kinetic scheme (see Drug.gaba_scale_tonic). Identical to the old
-            # behaviour whenever gaba_a_gain_tonic is None.
-            # CLAMPED AT ZERO. `eff` is negative whenever a NAM (gaba_scale_tonic < 1)
-            # meets a sensitivity above 1, and a negative tonic term can drive the TOTAL
-            # gabaa conductance negative. In Pop.step the current is g*(E - V), so a
-            # negative conductance inverts an inhibitory shunt into regenerative negative
-            # damping and the voltage diverges instead of failing visibly. Same class as
-            # the clamp in Drug.nmda_scale, which was reachable the same way.
-            #
-            # Latent, not live: no current path reaches it (PROFILES top out at sens 0.815
-            # and the kinetic scheme yields gains >= 1), but `gaba_sens_tonic` and
-            # `Drug(gaba_a_gain_tonic=...)` are both public.
-            eff = max(0.0, 1.0 + self.gaba_sens_tonic
-                      * (self.drug.gaba_scale_tonic() - 1.0))
-            g["gabaa"] = np.maximum(0.0, g["gabaa"] + self.gaba_tonic * eff)
+            g["gabaa"] = sub.tonic_gaba(self.gaba_tonic, self.gaba_sens_tonic,
+                                        self.drug.gaba_scale_tonic(), g["gabaa"])
             # `drive_other` was the literal 60.0, which is pA against the LIF cell -- a
             # third LIF-scaled quantity hiding in the step loop after `drive` and the weight
             # table had both been moved into the operating point. On the conductance cell
