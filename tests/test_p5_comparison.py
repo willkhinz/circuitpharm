@@ -56,6 +56,23 @@ def peak_from_b():
             seed=0, label="P5 test fixture, truth = Model B")
 
 
+@pytest.fixture(scope="module")
+def three_model_comparison(peak_from_b):
+    """ONE three-model comparison, shared by every test that only reads its strings.
+
+    Each of these used to run its own: three full comparisons at ~100 s apiece, 300 s of the
+    suite spent re-deriving the same object to grep different fields of it. The assertions
+    are unchanged -- they are about what the result SAYS, and the result is deterministic at
+    this seed, so recomputing it three times tested the same thing three times.
+
+    Tests that need a DIFFERENT comparison (a holdout, a forced disagreement, a different
+    model pair) still build their own; this is only for the ones reading the shared one.
+    """
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        return compare_models(ALL_THREE, [peak_from_b], n_folds=4, n_starts=3, cv_starts=2)
+
+
 # ======================================================== the three fixed defects
 def test_k_counts_identifiable_params_only(quiet, peak_from_b):
     """ANCHOR. `k` is estimated identifiable parameters plus estimated noise scales.
@@ -74,8 +91,11 @@ def test_k_counts_identifiable_params_only(quiet, peak_from_b):
     declared = {"operational": len(OperationalScalarModel().param_names),
                 "kinetic_jw95": len(KineticAllosteryModel().param_names),
                 "extended_desens": len(ExtendedDesensitizationModel().param_names)}
-    for name in ALL_THREE:
-        fit = fit_one(MODEL_SPECS[name], [peak_from_b], n_starts=3)
+    # FIT EACH MODEL ONCE. This used to fit all three and then re-fit B and C for the
+    # nesting comparison -- five fits where three answer every assertion, and the fits are
+    # deterministic at this seed so the extra two tested nothing twice.
+    fits = {n: fit_one(MODEL_SPECS[n], [peak_from_b], n_starts=2) for n in ALL_THREE}
+    for name, fit in fits.items():
         # one scale per dataset, profiled out of the likelihood but still estimated
         assert fit.n_sigma == 1
         assert fit.k == fit.n_free + 1
@@ -83,9 +103,7 @@ def test_k_counts_identifiable_params_only(quiet, peak_from_b):
             f"{name}: k = {fit.k} is not below the declared count {declared[name]}, so "
             f"the fix has been undone")
     # and Model C is charged exactly one more than Model B, which it nests
-    b = fit_one(MODEL_SPECS["kinetic_jw95"], [peak_from_b], n_starts=3)
-    c = fit_one(MODEL_SPECS["extended_desens"], [peak_from_b], n_starts=3)
-    assert c.k == b.k + 1
+    assert fits["extended_desens"].k == fits["kinetic_jw95"].k + 1
 
 
 def test_the_ranking_does_not_depend_on_an_assumed_sigma(quiet, peak_from_b):
@@ -107,9 +125,11 @@ def test_the_ranking_does_not_depend_on_an_assumed_sigma(quiet, peak_from_b):
     import dataclasses
 
     loud = dataclasses.replace(peak_from_b, sem=peak_from_b.sem * 100.0)
+    # n_starts=2: the assertions below are EQUALITY to 1e-12, so the number of starts is
+    # irrelevant to what is being tested -- the declared sem is not an input at all.
     for name in ("kinetic_jw95", "extended_desens"):
-        a = fit_one(MODEL_SPECS[name], [peak_from_b], n_starts=3)
-        b = fit_one(MODEL_SPECS[name], [loud], n_starts=3)
+        a = fit_one(MODEL_SPECS[name], [peak_from_b], n_starts=2)
+        b = fit_one(MODEL_SPECS[name], [loud], n_starts=2)
         assert a.log_likelihood == pytest.approx(b.log_likelihood, rel=1e-12), name
         assert a.aicc == pytest.approx(b.aicc, rel=1e-12), name
         for k in a.values:
@@ -127,7 +147,7 @@ def test_every_model_is_fitted_before_it_is_ranked(quiet, peak_from_b):
 
     for name in ALL_THREE:
         spec = MODEL_SPECS[name]
-        fit = fit_one(spec, [peak_from_b], n_starts=3)
+        fit = fit_one(spec, [peak_from_b], n_starts=2)
         centre = np.array([0.5 * (lo + hi) for lo, hi in spec.bounds])
         at_centre = make_log_likelihood(
             [peak_from_b], caller="test", n_params=spec.n_free
@@ -266,9 +286,10 @@ def test_datasets_spanning_two_observables_are_refused(quiet, peak_from_b):
         compare_models(["kinetic_jw95", "extended_desens"], [peak_from_b, eq])
 
 
-def test_a_cross_native_comparison_says_so(quiet, peak_from_b):
+@pytest.mark.slow
+def test_a_cross_native_comparison_says_so(three_model_comparison):
     """B and C are EQUILIBRIUM-native; a PEAK comparison must carry that caveat."""
-    res = compare_models(ALL_THREE, [peak_from_b], n_folds=4, n_starts=3, cv_starts=2)
+    res = three_model_comparison
     joined = " ".join(res.verdict.caveats)
     assert "native observable" in joined
     assert "EQUILIBRIUM-native" in joined
@@ -283,7 +304,9 @@ def test_the_holdout_cannot_be_trained_on(quiet, peak_from_b):
         compare_models(["kinetic_jw95", "extended_desens"], [held])
 
 
+@pytest.mark.slow
 def test_the_holdout_is_scored_once_and_reported_separately(quiet, peak_from_b):
+    """Marked slow: it runs a full comparison including cross-validation (~60 s)."""
     import dataclasses
 
     spec = MODEL_SPECS["kinetic_jw95"]
@@ -369,9 +392,9 @@ def test_nested_model_recovers_the_truth(quiet):
 
 
 @pytest.mark.slow
-def test_the_report_names_the_conventions_that_were_not_fitted(quiet, peak_from_b):
+def test_the_report_names_the_conventions_that_were_not_fitted(three_model_comparison):
     """Every absolute rate here is conditional on `FIT_CONVENTIONS`, and the result says so."""
-    res = compare_models(ALL_THREE, [peak_from_b], n_folds=4, n_starts=3, cv_starts=2)
+    res = three_model_comparison
     joined = " ".join(res.verdict.caveats)
     assert "FIT_CONVENTIONS" in joined
     assert "only the ratios" in joined

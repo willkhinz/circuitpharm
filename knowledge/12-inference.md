@@ -218,10 +218,15 @@ matrix exponential plus repeated doubling:
 
 This is why a PEAK likelihood evaluation costs under 2 ms instead of 240 ms, which is the
 difference between the Jahn MLE being a 20-minute job and a 50-second one, and between P5's
-per-model fits being feasible and not. It also cut the full test suite from 13m36s to
-6m24s. Both paths are kept and `test_exact_peak_agrees_with_the_ode_it_replaced` compares
-them, because a 300× speedup with no test is how every PEAK number in the project moves for
-a reason that is not physics.
+per-model fits being feasible and not. At the time it landed it also cut the full test suite
+from 13m36s to 6m24s — **and the suite is now 19m23s again** (464 passed, 19 skipped, at
+`-n 4` on ten cores), because P4–P6 added chains, recovery checks and interval calibration
+that cost more than the speedup saved. The 6m24s figure is recorded as what the change was
+worth, not as the current state.
+
+Both paths are kept and `test_exact_peak_agrees_with_the_ode_it_replaced` compares them,
+because a 300× speedup with no test is how every PEAK number in the project moves for a
+reason that is not physics.
 
 ---
 

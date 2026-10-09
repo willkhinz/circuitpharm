@@ -21,7 +21,7 @@
 
 ## 1. Architectural Overview & Modular Layout
 
-To move from an isolated 5-state Markov calculation to a rigorously tested, data-constrained, multi-model neuropharmacology platform without breaking existing tests (277 passing at the time of writing; 420 after P0-P7), the codebase is organized into clean modular subpackages under `src/circuitpharm/`:
+To move from an isolated 5-state Markov calculation to a rigorously tested, data-constrained, multi-model neuropharmacology platform without breaking existing tests (277 passing at the time of writing; 464 passing and 19 skipped after P0-P7), the codebase is organized into clean modular subpackages under `src/circuitpharm/`:
 
 ```
 src/circuitpharm/
