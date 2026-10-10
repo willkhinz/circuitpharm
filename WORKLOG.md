@@ -3553,3 +3553,96 @@ waste: I re-simulated three times to fix **analysis** bugs, which needed no new 
 steps at all. `scripts/decompose_burst_change.py` now caches traces in `.trace-cache/`, keyed on
 arm, substrate, seed, duration, warm-up, both operating points **and the sha256 of `resp.py`**,
 so a stale hit is impossible while analysis iteration costs seconds.
+
+## The R-hat platform split, and a static audit verified by execution
+
+### E23 — a convergence gate finer than its own platform reproducibility
+
+Found by running the slow subset locally on the commit CI had just called green. One failure:
+`test_posterior_recovers_known_parameters`, worst split-R̂ **1.01089** against
+`max_rhat = 1.01`. Missed by **0.0009**.
+
+Not flaky — 1.01089 twice, identical, on a clean tree. And CI genuinely ran it: the `full`
+job reported **499 passed, 0 skipped**. So this is a **platform split**: the chain is seeded
+and therefore deterministic per machine, but arm64/Accelerate and x86/OpenBLAS sum in
+different orders, and that propagates through the matrix exponentials and 24 walkers into the
+third decimal of R̂. **CI permanently green, a macOS checkout permanently red, identical code.**
+
+`converged` decides whether percentiles are reported as credible intervals or marked VOID, so
+the gate matters. But 1.01 is the Vehtari et al. recommendation, not an arbitrary number — so
+the chain was lengthened to meet it with margin rather than the threshold loosened to admit
+it. Measured:
+
+| n_steps / burn | worst split-R̂ | cost |
+|---|---|---|
+| 12000 / 4000 | **1.01089 FAIL** | 3.4 s |
+| 18000 / 6000 | 1.00521 | 5.2 s |
+| **24000 / 8000** | **1.00377** | 7.1 s |
+| 36000 / 12000 | 1.00240 | 10.7 s |
+| 48000 / 16000 | 1.00257 | 14.2 s — plateau |
+
+24000/8000 gives 0.0062 of margin, ~3× the shortfall it had to cover. Two test sites in
+`test_p6_design.py` **restated** the old default (`n_steps=12000, burn_in=4000`) instead of
+inheriting it, so they would have kept the marginal setting — the same duplication E12/E22 is
+about. They now inherit. A new guard pins the **margin** rather than the pass, so erosion
+fails while `converged` is still True.
+
+Cost: slow subset 5:52 → **6:51** (+17%), 63 passed. The `full` CI job's timeout went 60 → 90,
+which was overdue anyway: it completed in 57:15 on the first green run and the same job on the
+commit before was killed at exactly 60:00.
+
+### A static audit of the P0–P7 branch: 3 of 5 confirmed
+
+An audit arrived having executed nothing. Each claim was run before being believed.
+
+| # | Claim | Verdict |
+|---|---|---|
+| 1 | equilibrium API defaults crash | **CONFIRMED, live** |
+| 2 | abs-sum breaks the 100% share identity | **mechanism real, premise unreachable** |
+| 3 | paired-pulse drops a t=0 onset | **NOT a defect** |
+| 4 | `joint_excursion` absent on a lean install | **CONFIRMED, structural** |
+| 5 | Model A admits NAMs | **CONFIRMED, live** |
+
+**D1.** `fit_identifiable()`, `identifiability_report()`, `profile_likelihood()` and
+`equilibrium_chi2_identifiable()` all raise `ObservableMismatch` at their own signatures,
+because `dataset=None` defaults to `DOSE_RESPONSE_BENCHMARK`, which is tagged `PEAK`. The fix
+is not a better default — `MISSING_DATASETS` records that no measured equilibrium curve
+exists, so there is none. A required argument naming the two routes to a dataset is honest;
+a default that cannot run reports the absence as a type confusion.
+
+**D5.** `effective_ec50(0.5)` returned 50 µM against a 25 µM baseline — a silent negative
+allosteric modulator — while both kinetic models raise. Guarded, and the new test covers
+**all three** models, because the invariant is symmetry: a sweep that measures a NAM in model
+A and a rejection in B and C is comparing two different questions.
+
+**D4.** `joint_excursion` sat inside the try that calls the body-plant assays, so on a lean
+install the ImportError jumped past it. Moved out. The missing number was never the problem —
+the environment-dependent **schema** was.
+
+**D2 — mechanism real, premise not.** The code did divide by `abs(d_occ)+abs(d_dbl)+abs(d_gate)`.
+But probing 175 `(gaba_um, pam_factor)` combinations over 10⁻³–10⁵ µM found **no negative
+term**: for an affinity PAM the gating term is identically 0.0 and both occupancy terms are
+non-negative, so abs-sum equalled signed-sum and the shares did sum to 100%. Fixed anyway so
+the documented identity stops depending on an invariant enforced elsewhere — and labelled
+hardening, not a repair.
+
+**D3 — not a defect.** The suspected route was `pulse_train(start_ms=0.0)`, but its 0.1 ms
+rise leaves the first sample below the 5% threshold, so `above[0]` is False and both edges are
+found. Verified. Guarded anyway, because the failure mode for a hand-built waveform is a
+silent off-by-one rather than an exception.
+
+### Three of my own errors along the way
+
+1. My Defect-2 probe passed `conc_um=` where the signature says `gaba_um=`, so all 175 cases
+   raised `TypeError` and were **swallowed by my own bare `except Exception: continue`**. The
+   "0 negative cases" result was meaningless until I re-ran it recording errors instead of
+   discarding them. That is the exact failure this project keeps documenting.
+2. Changing D2's denominator to a signed total left the guard as `total > 1e-12`, which was
+   right for a sum of magnitudes and wrong for a signed one — a net-negative log gain would
+   have reported 0%/0%/0% for a real effect. Corrected to `abs(total)`.
+3. The E26 guard counted `"joint_excursion"` in `inspect.getsource` output, which includes
+   comments — and the note explaining the fix names it three times. It failed on its first
+   run for my bug, not the code's.
+
+Verification: 104 passed across the six test files covering the five touched modules; 3 new
+guards green; slow subset 63 passed.

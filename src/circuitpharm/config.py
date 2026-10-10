@@ -32,24 +32,10 @@ RESP_OP = MappingProxyType(dict(
 
 # CONDUCTANCE-SUBSTRATE RESPIRATORY OPERATING POINT (roadmap link 5).
 #
-# None means NOT YET ANCHORED, and `PreBotC(substrate="cond")` raises rather than falling
-# back to RESP_OP above. That refusal is the point: RESP_OP's `drive` is in pA and its
-# weights in nS, both relative to the LIF cell (C=200 pF, g_L=10 nS). The Butera cell is
-# C=21 pF, g_L=2.8 nS, so reusing those numbers is an order-of-magnitude error that produces
-# a running network rather than an exception -- predicted as E14.
-#
-# WHY THIS IS ANCHORED RATHER THAN INHERITED. Butera-Rinzel-Smith part II supplies network
-# coupling conductances for a population of these cells, which would have made these weights
-# published rather than ours. They are not retrievable: the journal full text returns HTTP
-# 403 and every accessible encoding (CellML, ModelDB 247647) is single-cell only. Inventing
-# them was not an option, so the weights here are OURS, anchored to a matched operating
-# point. The CELL is published; the COUPLING is not, and link 5 is partial for that reason.
-#
-# Matched operating point, not matched parameters: the same nS weight means different things
-# on the two cells, so comparing substrates at equal weights compares two differently-broken
-# networks. Each substrate is anchored independently to the SAME OBSERVABLE (control burst
-# frequency inside EUPNOEA_BAND, with a comparable duty cycle), and only then is the drug
-# applied and the fractional change from each substrate's own control compared.
+# (A duplicate copy of this header stood here, 20 lines long, still reading "None means NOT
+# YET ANCHORED" above a value that IS anchored -- stale documentation directly contradicting
+# the code beneath it, which is the defect class this file was created to prevent. Removed
+# 2026-10-09, roadmap P0-12. The surviving header below is the current one.)
 # CONDUCTANCE-SUBSTRATE RESPIRATORY OPERATING POINT (roadmap link 5).
 #
 # None means NOT ANCHORED, and `PreBotC(substrate="cond")` raises rather than falling back

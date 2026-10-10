@@ -1,6 +1,8 @@
 """Comprehensive bug checks and unit tests for next-generation GABA-A models and protocols."""
 from __future__ import annotations
 
+import warnings
+
 import numpy as np
 import pytest
 
@@ -27,8 +29,10 @@ from circuitpharm.fitting import (
     compute_kinetic_objective,
     compute_profile_likelihood,
     compute_fisher_information_matrix,
+    equilibrium_dose_response_chi2,
     run_ensemble_mcmc,
 )
+from circuitpharm.results import Tier, VoidQuantityError
 from circuitpharm.dynamic_range import evaluate_dynamic_range
 from circuitpharm.gabaa_kinetics import Scheme
 
@@ -169,15 +173,24 @@ def test_waveform_generators():
 
 
 def test_electrophys_metrics_extraction():
-    t = np.linspace(0.0, 50.0, 100)
+    # 400 samples, not 100: the biexponential decay fit (P0-4) needs at least 6 points
+    # inside the 90%->10% window, and a 1 ms clearance on a 50 ms span at 100 samples
+    # does not supply them. A coarse grid now yields an honest NaN rather than 15.0.
+    t = np.linspace(0.0, 50.0, 400)
     gaba = synaptic_transient(t, peak_um=1000.0, rise_ms=0.1, clear_ms=1.0)
     model = KineticAllosteryModel()
     res = model.simulate_waveform(t, gaba)
-    metrics = extract_electrophys_metrics(res, g_max_ns=2.0, driving_force_mv=40.0)
+    # ONE driving-force convention, from models.base (P0-11); there is no
+    # `driving_force_mv` argument any more.
+    metrics = extract_electrophys_metrics(res, g_max_ns=2.0, v_hold_mv=-60.0,
+                                          e_cl_mv=-75.0)
 
     assert metrics["peak_current_pA"] > 0.0
     assert metrics["charge_integral_fC"] > 0.0
-    assert metrics["decay_tau_ms"] > 0.0
+    assert metrics["driving_force_mv"] == pytest.approx(15.0)
+    assert metrics["charge_window_ms"] == pytest.approx(50.0)
+    # decay may legitimately not fit on a given grid; if it does, it must be positive
+    assert np.isnan(metrics["decay_tau_ms"]) or metrics["decay_tau_ms"] > 0.0
 
 
 # ==============================================================================
@@ -185,17 +198,25 @@ def test_electrophys_metrics_extraction():
 # ==============================================================================
 
 def test_mechanistic_decomposition_attribution():
+    """Mechanics. The identity and the mechanism findings live in test_decomposition.py.
+
+    The three factors are now occupancy / double-occupancy / gating and they satisfy
+    ln G = sum exactly; the old occupancy / gating / HEADROOM triple did not, because the
+    proximity-to-ceiling term is not a factor of the gain (roadmap §5.9).
+    """
     model = KineticAllosteryModel()
-    decomp = compare_phasic_tonic_mechanisms(model, tonic_gaba_um=0.40, phasic_gaba_um=1000.0, pam_factor=2.50)
+    decomp = compare_phasic_tonic_mechanisms(model, tonic_gaba_um=0.40,
+                                             phasic_gaba_um=1000.0, pam_factor=2.50)
 
     tonic = decomp["tonic"]
     phasic = decomp["phasic"]
 
-    # Shapley percentages must sum to 100%
-    assert abs(tonic.shapley_pct_occupancy + tonic.shapley_pct_gating + tonic.shapley_pct_headroom - 100.0) < 1e-3
-    assert abs(phasic.shapley_pct_occupancy + phasic.shapley_pct_gating + phasic.shapley_pct_headroom - 100.0) < 1e-3
+    for r in (tonic, phasic):
+        total = (r.log_share_pct_occupancy + r.log_share_pct_double_occupancy
+                 + r.log_share_pct_gating)
+        assert abs(total - 100.0) < 1e-3
+        assert abs(r.residual) < 1e-10 * max(abs(r.log_gain), 1.0)
 
-    # Tonic condition must exhibit higher total fold-gain than phasic
     assert tonic.total_fold_gain > phasic.total_fold_gain
     assert tonic.total_fold_gain > 2.0
     assert phasic.total_fold_gain < 1.5
@@ -206,25 +227,36 @@ def test_mechanistic_decomposition_attribution():
 # ==============================================================================
 
 def test_model_comparison_and_oed():
+    """Mechanics. Every CONCLUSION from this module is VOID until P5/P6.
+
+    Also note the explicit `observable=`: Model A is PEAK-native and Models B and C are
+    EQUILIBRIUM-native, so there is no default axis and omitting it now raises.
+    """
+    from circuitpharm.models.base import Observable
+
     m_a = OperationalScalarModel()
     m_b = KineticAllosteryModel()
     m_c = ExtendedDesensitizationModel()
 
-    # Generate synthetic observations with noise
     concs = np.array([0.1, 1.0, 10.0, 30.0, 100.0, 1000.0])
     y_true = m_b.dose_response(concs)
 
-    comp = evaluate_model_fit([m_a, m_b, m_c], concs, y_true, measurement_noise_std=0.02)
-    assert len(comp) == 3
-    # Akaike weights sum to 1.0
-    total_w = sum(c.akaike_weight for c in comp)
-    assert abs(total_w - 1.0) < 1e-4
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        comp = evaluate_model_fit([m_a, m_b, m_c], concs, y_true,
+                                  measurement_noise_std=0.02,
+                                  observable=Observable.EQUILIBRIUM)
+        assert len(comp) == 3
+        total_w = sum(c.akaike_weight.get(acknowledge_void=True) for c in comp)
+        assert abs(total_w - 1.0) < 1e-4
+        for c in comp:
+            assert c.aic.tier is Tier.VOID
 
-    # OED: discover discriminating protocol
-    protocol = find_discriminating_protocol([m_a, m_b, m_c], noise_sigma=0.02)
-    assert protocol.discrimination_score > 0.0
+        protocol = find_discriminating_protocol([m_a, m_b, m_c], noise_sigma=0.02,
+                                                observable=Observable.EQUILIBRIUM)
+    assert protocol.discrimination_score.get(acknowledge_void=True) > 0.0
     assert len(protocol.predicted_responses) == 3
-    assert len(protocol.falsification_boundaries) == 3
+    assert len(protocol.falsification_boundaries.get(acknowledge_void=True)) == 3
 
 
 # ==============================================================================
@@ -232,25 +264,35 @@ def test_model_comparison_and_oed():
 # ==============================================================================
 
 def test_fitting_objective_and_identifiability():
+    """Mechanics only. The SCIENCE of this layer is pinned in tests/test_provisional.py.
+
+    This test used to assert `cost >= 0.0` and `np.isfinite(cost)` on a chi-squared of
+    9290, which is why nothing noticed (roadmap C9). The value assertions now live in
+    test_provisional.py; what remains here is that the shapes and types are right.
+    """
     model = KineticAllosteryModel()
     x0 = np.array([model.kon, model.koff, model.beta, model.alpha, model.d, model.r])
 
-    # Objective evaluates finite positive chi2
-    cost = compute_kinetic_objective(x0)
-    assert np.isfinite(cost)
-    assert cost >= 0.0
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        # deprecated alias still works; the real name says what it constrains
+        cost = compute_kinetic_objective(x0)
+        assert cost == pytest.approx(equilibrium_dose_response_chi2(x0))
 
-    # Profile likelihood on kon
-    prof = compute_profile_likelihood("kon", model, scan_factors=(0.8, 1.0, 1.2))
-    assert prof.param_name == "kon"
-    assert len(prof.profile_costs) == 3
-    assert prof.ci_95_bounds[0] <= prof.ci_95_bounds[1]
+        prof = compute_profile_likelihood("kon", model, scan_factors=(0.8, 1.0, 1.2))
+        assert prof.param_name == "kon"
+        assert len(prof.profile_costs) == 3
+        # the CI is a VOID Quantity now, not a tuple -- reading it must raise
+        with pytest.raises(VoidQuantityError):
+            prof.ci_95_bounds.value
+        lo, hi = prof.ci_95_bounds.get(acknowledge_void=True)
+        assert lo <= hi
 
-    # Fisher Information Matrix
-    fim, cond = compute_fisher_information_matrix(model)
-    assert fim.shape == (6, 6)
-    assert np.isfinite(cond)
-    assert cond > 0.0
+        # the old FIM name is deprecated; it returns the Hessian and a VOID condition number
+        fim, cond = compute_fisher_information_matrix(model)
+        assert fim.shape == (6, 6)
+        assert cond.tier is Tier.VOID
+        assert np.isfinite(cond.get(acknowledge_void=True))
 
 
 def test_lightweight_ensemble_mcmc():

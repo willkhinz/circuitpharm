@@ -99,7 +99,8 @@ class Drug:
         Imported lazily: scipy is needed only on this path, so the circuits stay importable
         without it.
         """
-        from .gabaa_kinetics import fit_scheme, derive, calibrate_pam
+        from .gabaa_kinetics import (calibrate_pam, derive, fit_scheme,
+                                     require_reachable)
         # THIRD COPY of the synaptic pulse, as an inline literal. It happened to match
         # config.SYNAPTIC_PULSE, so it was harmless until gabaa_kinetics' own defaults
         # disagreed with both; see the long note there.
@@ -109,6 +110,11 @@ class Drug:
         if affinity is None:
             affinity = calibrate_pam(s, ec50_shift, "affinity",
                                      pulse=pulse, ambient_um=ambient_um)
+            # THE GUARD THAT WAS ONLY IN evaluation.pool_gains. An unreachable shift makes
+            # calibrate_pam return NaN by design; unchecked it became koff=NaN and then a
+            # raw LAPACK "SVD did not converge" from deep inside steady_state. Recurring
+            # error E12: a fix applied everywhere but one module (roadmap P0-8).
+            affinity = require_reachable(affinity, ec50_shift, ambient_um, "affinity")
         d = derive(s, affinity=affinity, ambient_um=ambient_um, pulse=pulse)
         return cls(gaba_a_gain=d["phasic_gain"],
                    gaba_a_gain_tonic=d["tonic_gain"],

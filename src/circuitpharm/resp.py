@@ -29,12 +29,12 @@ import numpy as np
 from . import substrate as sub
 from .cpg import Pop, Syn, Drug, E_REV
 
-# Physiologically admissible respiratory frequency, Hz. Rat eupnoea is 1-2 Hz (60-120
-# breaths/min). The band is deliberately generous at both ends: a respiratory depressant
-# SLOWS breathing, so the lower bound only has to exclude near-apnoea, and the upper bound
-# only has to exclude spectral peaks that cannot be breathing at all. Used as a hard gate
-# on `alive` -- see E4 SECOND FORM in resp_metrics.
-EUPNOEA_BAND = (0.30, 2.50)
+# Physiologically admissible respiratory frequency, Hz. IMPORTED, not re-declared: this
+# module carried its own copy of (0.30, 2.50) alongside `config.EUPNOEA_BAND`, which is
+# the single-source rule config.py exists to enforce and the exact shape of the
+# SYNAPTIC_PULSE divergence -- two copies that agreed, hiding the question of which one
+# callers actually got (roadmap P0-12, forbidden pattern 5.3).
+from .config import EUPNOEA_BAND  # noqa: E402
 
 # Every weight the network needs, so a conductance operating point can be checked for
 # completeness rather than silently half-inherited from the LIF (see __init__).
@@ -267,8 +267,11 @@ def resp_metrics(t, out, exc, ctrl_mean=None, band=None):
     # which LOWERS the floor to 0.15 Hz for the in vivo band too -- changing the search
     # range on the substrate whose results must stay byte-identical, for no reason.
     fft_lo = 0.25 if band_lo >= 0.25 else 0.5 * band_lo
-    band = (fr > fft_lo) & (fr < 5.0)
-    freq = float(fr[band][np.argmax(F[band])]) if band.any() else 0.0
+    # `search` rather than `band`: the parameter `band` is the VALIDITY tuple and was
+    # being rebound to this boolean mask, so after this line the name meant two different
+    # things in one function (roadmap P0-12).
+    search = (fr > fft_lo) & (fr < 5.0)
+    freq = float(fr[search][np.argmax(F[search])]) if search.any() else 0.0
     thr = p5 + 0.5 * (p95 - p5)                         # midpoint of the ACTUAL range
     n = int((np.diff((sm > thr).astype(int)) == 1).sum())
     # physiological plausibility gate -- see E4 SECOND FORM in the docstring

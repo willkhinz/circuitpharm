@@ -279,30 +279,102 @@ FIT_TARGETS = dict(ec50_um=20.0, po_max=0.75, tau_ms=15.0)
 FIT_RANGES = dict(ec50_um=(10.0, 30.0), po_max=(0.70, 0.80), tau_ms=(10.0, 30.0))
 
 
-def fit_scheme(verbose=True, pulse=None) -> Scheme:
-    """Fit kon, koff, beta, alpha to the three macroscopic anchors.
+#: Channel closing rate, ms^-1, HELD FIXED so the fit is well-posed. See `fit_scheme`.
+#:
+#: 1/alpha is the MEAN OPEN TIME: 0.30 ms^-1 means 3.33 ms, which is inside the range
+#: reported for alpha1beta2gamma2 GABA-A single channels. It is carried over from
+#: `DEFAULT_RATES`, which this module's own docstring calls provisional and "of the order
+#: used in published synaptic GABA-A schemes".
+#:
+#: It is a CONVENTION (`provenance.Basis.CONVENTION`), not a measurement -- but it is a
+#: convention about a REAL, STANDARD, SINGLE-CHANNEL OBSERVABLE, which is the point:
+#: roadmap P1-2 can replace it with a digitised mean open time and the whole fit becomes
+#: data-determined, with no change to any call site.
+FIT_FIXED_ALPHA = 0.30
+
+
+def fit_scheme(verbose=True, pulse=None,
+               fixed_alpha: float | None = FIT_FIXED_ALPHA,
+               _x0_log10: list[float] | None = None) -> Scheme:
+    """Fit kon, koff and beta to the three macroscopic anchors, with alpha declared.
 
     d and r (desensitisation) are NOT fitted here -- they shape the response to prolonged
     agonist, which none of the three anchors constrains. Leaving them at provisional values
     and saying so is more honest than fitting them to data that cannot identify them.
+
+    WHY ALPHA IS FIXED: THE FOUR-PARAMETER FIT WAS NOT REPRODUCIBLE. Four parameters
+    against three anchors leaves a family of near-exact fits, and `least_squares` lands
+    wherever its trust-region steps and the linear-algebra backend's rounding take it.
+    Measured on this repository, every row reproducing EC50 = 20.0000 uM, P_o,max = 0.7500
+    and tau = 15.000 ms to the precision the manuscript quotes:
+
+        environment                      k_on        K_d       asymptotic headroom
+        manuscript's rate table        0.0146842   31.95 uM        210.7x
+        scipy 1.11.4 / numpy 1.26.4    0.0109865   29.44 uM        181.8x
+        scipy 1.14.1 / numpy 1.26.4    0.0088044   26.60 uM        151.1x
+        scipy 1.17.1 / numpy 2.4.6     0.0110210   29.48 uM        182.2x
+
+    A 40% spread in the headline number from the library version, and the manuscript's own
+    value reproduced by none of them. Pinning dependencies cannot fix that: the degeneracy
+    is in the problem, so the answer would still move with the BLAS vendor, the thread
+    count and the CPU.
+
+    A minimum-norm regularisation was tried first and rejected on measurement: it narrowed
+    the cross-version spread to ~0.8% but did NOT select the minimum-norm fit (its own
+    acceptance test failed), because the optimiser converges on the anchors before the weak
+    penalty explores the flat valley, and raising the weight far enough to bite started
+    pulling the anchors off (EC50 20.0111, tau 14.95 at weight 0.1).
+
+    Holding alpha instead makes the system SQUARE -- three unknowns, three anchors -- and
+    therefore well-posed rather than regularised. Verified: the fit reproduces all three
+    anchors to |residual| < 1e-9 and lands on the SAME parameters from a deliberately
+    distant starting guess, which a degenerate problem does not do.
+
+    The consequence travels with the numbers: the asymptotic headroom is 123.3x here,
+    against the manuscript's 210.7x. Neither is "more correct" given three anchors and four
+    unknowns -- that was the problem. This one is determined by the three anchors plus one
+    declared mean open time, so it is a property of the model and a stated convention
+    rather than of the machine.
+
+    Pass `fixed_alpha=None` to recover the old four-parameter behaviour, e.g. to reproduce
+    a historical number.
+
+    `_x0_log10` overrides the starting guess. It exists for
+    `tests/test_fit_determinism.py::test_the_square_fit_is_well_posed_not_merely_regularised`,
+    which starts an order of magnitude away in every parameter and asserts the fit lands in
+    the same place -- the property that distinguishes a well-posed system from a
+    regularised one. Not for production use.
     """
     from scipy.optimize import least_squares
 
     pulse = pulse or {}
+    keys = ("kon", "koff", "beta") if fixed_alpha is not None else (
+        "kon", "koff", "beta", "alpha")
+    x0 = (list(_x0_log10) if _x0_log10 is not None
+          else [np.log10(DEFAULT_RATES[k]) for k in keys])
+    if len(x0) != len(keys):
+        raise ValueError(
+            f"_x0_log10 has {len(x0)} entries but this fit has {len(keys)} free "
+            f"parameters {keys}")
+    lo = [-4, -2, -2] + ([] if fixed_alpha is not None else [-2.5])
+    hi = [-1, 1.2, 1.2] + ([] if fixed_alpha is not None else [1.0])
 
     def resid(x):
-        s = Scheme(kon=10 ** x[0], koff=10 ** x[1], beta=10 ** x[2], alpha=10 ** x[3])
+        s = Scheme(kon=10 ** x[0], koff=10 ** x[1], beta=10 ** x[2],
+                   alpha=(fixed_alpha if fixed_alpha is not None else 10 ** x[3]))
         m = s.ipsc_metrics(**pulse)
         tau = m["tau"] if np.isfinite(m["tau"]) else 1e3
         return [np.log(s.ec50_um() / FIT_TARGETS["ec50_um"]),
                 (s.po_max() - FIT_TARGETS["po_max"]) / 0.05,
                 np.log(tau / FIT_TARGETS["tau_ms"])]
 
-    x0 = [np.log10(DEFAULT_RATES[k]) for k in ("kon", "koff", "beta", "alpha")]
-    out = least_squares(resid, x0, bounds=([-4, -2, -2, -2.5], [-1, 1.2, 1.2, 1.0]),
-                        xtol=1e-10, ftol=1e-10)
-    s = Scheme(kon=10 ** out.x[0], koff=10 ** out.x[1],
-               beta=10 ** out.x[2], alpha=10 ** out.x[3])
+    # xtol/ftol 1e-12: the square system converges quickly, so this costs little, and it
+    # removes the last of the tolerance-dependence. (Each residual evaluation runs ~30 ODE
+    # solves, because `ec50_um` sweeps a 30-point concentration grid, so the tolerance is
+    # not free -- 1e-14 roughly tripled the runtime for no change in the answer.)
+    out = least_squares(resid, x0, bounds=(lo, hi), xtol=1e-12, ftol=1e-12)
+    s = Scheme(kon=10 ** out.x[0], koff=10 ** out.x[1], beta=10 ** out.x[2],
+               alpha=(fixed_alpha if fixed_alpha is not None else 10 ** out.x[3]))
     if verbose:
         m = s.ipsc_metrics(**pulse)
         print("FIT to macroscopic anchors")
@@ -317,6 +389,11 @@ def fit_scheme(verbose=True, pulse=None) -> Scheme:
         print(f"\n  rates (ms^-1; kon in uM^-1 ms^-1): kon={s.kon:.5f} koff={s.koff:.4f} "
               f"beta={s.beta:.4f} alpha={s.alpha:.4f}")
         print(f"  d={s.d} r={s.r}  (NOT fitted -- unconstrained by these anchors)")
+        if fixed_alpha is not None:
+            print(f"  alpha={s.alpha} HELD FIXED (mean open time {1/s.alpha:.2f} ms), so "
+                  f"3 unknowns against 3 anchors.\n  A CONVENTION, not a measurement -- "
+                  f"see FIT_FIXED_ALPHA. Without it the fit is not reproducible across "
+                  f"SciPy versions.")
     return s
 
 
@@ -395,6 +472,37 @@ def calibrate_pam(scheme: Scheme, target_shift: float = 2.5,
     if f(lo) > 0:
         return float("nan")
     return float(brentq(f, lo, hi, xtol=1e-6))
+
+
+def require_reachable(multiplier: float, target_shift: float, ambient_um: float,
+                      kind: str = "affinity") -> float:
+    """Raise a readable error when `calibrate_pam` could not reach `target_shift`.
+
+    ONE GUARD, TWO CALL SITES. `evaluation.Compound.pool_gains` had this check and
+    `cpg.Drug.from_kinetics` did not, so the second public entry into the same machinery
+    passed NaN straight through to `derive`, where it became koff=NaN and surfaced as
+
+        ** On entry to DLASCL parameter number 4 had an illegal value
+        LinAlgError: SVD did not converge in Linear Least Squares
+
+    -- a LAPACK complaint from `steady_state`'s lstsq, far from the cause. That is
+    recurring error E12 (a fix applied everywhere but one module), so the check is extracted
+    here rather than copied (roadmap P0-8).
+
+    Returns the multiplier unchanged when it is finite, so callers can write
+    `aff = require_reachable(calibrate_pam(...), s_max, ambient)`.
+    """
+    if np.isfinite(multiplier):
+        return float(multiplier)
+    raise ValueError(
+        f"an EC50 left-shift of {target_shift}x is not reachable by a {kind}-type "
+        f"mechanism in this scheme at ambient {ambient_um} uM. Both mechanisms saturate: a "
+        f"modulator can only move the receptor up its own dose-response curve. Classical "
+        f"benzodiazepine-site ligands sit around 2-3x, and a target at or below 1.0 is a "
+        f"neutral ligand or a NAM, which `calibrate_pam` treats as out of domain by design "
+        f"(it searches multipliers >= 1). Lower the target, or -- if this compound is a "
+        f"direct orthosteric agonist rather than a modulator -- model it as a standing "
+        f"conductance (see scripts/predict_muscimol.py).")
 
 
 if __name__ == "__main__":

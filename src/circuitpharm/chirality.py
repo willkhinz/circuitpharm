@@ -61,8 +61,6 @@ def stereo_report(name, smi):
     si = Chem.FindPotentialStereo(m)
     n_at = sum(1 for e in si if str(e.type) == "Atom_Tetrahedral")
     n_bd = sum(1 for e in si if str(e.type) == "Bond_Double")
-    iso = len(tuple(Chem.EnumerateStereoisomers.EnumerateStereoisomers(m))) \
-        if hasattr(Chem, "EnumerateStereoisomers") else None
     tag = "ACHIRAL — no stereocentres" if n_at == 0 else f"{n_at} tetrahedral stereocentre(s)"
     return (f"{name:<42} {rdMolDescriptors.CalcMolFormula(m):<17}"
             f"MW {Descriptors.MolWt(m):7.2f}  {tag}"

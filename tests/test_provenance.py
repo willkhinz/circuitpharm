@@ -100,20 +100,93 @@ def test_the_provenance_gap_is_what_the_audit_recorded():
     The `sourced` count is unchanged at 6 because `EXTRASYN[a5]` never carried a source KEY --
     it was FROM_QUALITATIVE with an empty key, which is itself worth noting: a basis label can
     assert more confidence than any recorded citation supports.
+
+    UPDATED 2026-10-09 (roadmap P0-5/P0-6/P0-13), and the gap widened again, from 28
+    parameters to 43. Nothing was demoted this time; 15 numbers that were ALREADY
+    load-bearing were brought under the audit for the first time:
+
+      * MODEL_PARAMS (14). The three competing receptor models in `models/` carry
+        dataclass defaults that both entry points to the three-tiered headroom hierarchy
+        used to default to. `KineticAllosteryModel`'s are a chimera of two different fits
+        -- beta/alpha from the manuscript's config-pulse fit, kon/koff from the superseded
+        1000 uM / 0.30 ms fit -- giving K_d = 29.62 uM, a value in no fit, no commit and no
+        document. Two of Model A's defaults are the project's own FIT TARGETS (po_max 0.75,
+        tau_deact 15.0 ms) rather than anything fitted, so they are recorded FITTED and are
+        circular if used as anchors.
+      * DATASETS (3, of which one is sourced). `fitting/data.py` gained the project's
+        FIRST quantitatively sourced kinetic dataset: Jahn et al. 1997's
+        alpha1beta2gamma2L peak concentration-response, EC50 11.6 +/- 0.9 uM with a Hill
+        slope of 2.2 +/- 0.4, generated from those published parameters rather than
+        digitised from the figure (kind="parametric"). The other two are synthetic. The
+        deactivation
+        trace carried a citation to Haas & Macdonald 1999, which this project's own
+        claim-support audit records as measuring 76.1 ms for that quantity against the
+        trace's dominant 15 ms component.
+
+    One of the 14 is `gabaa_kinetics.FIT_FIXED_ALPHA`, the first CONVENTION-rated entry in
+    the audit: the channel closing rate held fixed so the kinetic fit is well-posed. It is
+    deliberately NOT in RANKING_INPUT_TABLES -- it is a kinetic fit convention, not an
+    input to the selectivity ranking, and putting it there would have moved the figure the
+    manuscript quotes.
+
+    So the sourced FRACTION fell from 21% to 13% without a single citation being lost: the
+    denominator grew because the audit's coverage grew. That is the honest direction, and
+    it is the reason this pin names the composition rather than only the total.
     """
+    from circuitpharm.provenance import RANKING_INPUT_TABLES
+
+    # TWO SCOPES, both pinned. The ranking's inputs are what the manuscript quotes and
+    # what the project's one VALIDATED result rests on; the full audit additionally covers
+    # the receptor-model defaults and the benchmark datasets, which feed the
+    # receptor-kinetic results instead. Conflating them would let either drift behind the
+    # other.
+    rank = audit(RANKING_INPUT_TABLES)
+    assert (rank["sourced"], rank["total"]) == (6, 28), (
+        f"the ranking-input scope is now {rank['sourced']} of {rank['total']}, not 6 of "
+        f"28. knowledge/08-manuscript.md quotes this figure, so a change here needs the "
+        f"manuscript updated too.")
+
     a = audit()
-    assert a["total"] == 28, f"parameter count changed to {a['total']}; re-run the audit"
-    assert a["sourced"] == 6, (
-        f"{a['sourced']} parameters now name a source, not 6. If this went UP, update this "
+    # 45 -> 57 when P6-1 registered the twelve WAVEFORM shape parameters. They belong in the
+    # audit for a reason that is not bookkeeping: a CHARGE quantity is a property of the
+    # agonist time course as much as of the receptor, so a spillover amplitude nobody
+    # sourced propagates into every charge ratio downstream of it -- and before this it
+    # appeared in no parameter table at all. None of the twelve is QUANTITATIVE and three
+    # are outright GUESSes.
+    assert a["total"] == 57, f"parameter count changed to {a['total']}; re-run the audit"
+    assert a["sourced"] == 7, (
+        f"{a['sourced']} parameters now name a source, not 7. If this went UP, update this "
         f"pin and knowledge/06-source-provenance.md. If it went DOWN, something lost its "
         f"citation.")
-    assert a["by_basis"][Basis.UNSOURCED.value] == 19, (
-        f"{a['by_basis'][Basis.UNSOURCED.value]} UNSOURCED, not 19. Widening this gap is a "
-        f"legitimate finding -- it means a claim-support read demoted something -- but it must "
-        f"be recorded in knowledge/06-source-provenance.md and in this docstring, not just "
-        f"absorbed by the pin.")
-    assert a["by_basis"][Basis.FROM_QUALITATIVE.value] == 7
-    assert a["by_basis"][Basis.GUESS.value] == 1
+    assert a["by_basis"].get(Basis.QUANTITATIVE.value, 0) == 1, (
+        "exactly 1 QUANTITATIVE entry is expected: fitting/data.py's Jahn 1997 "
+        "concentration-response, the first parameter in this project read as a number from "
+        "a named source. If this goes up, that is a real advance -- record it in "
+        "knowledge/06-source-provenance.md.")
+    assert a["by_basis"][Basis.UNSOURCED.value] == 31, (
+        f"{a['by_basis'][Basis.UNSOURCED.value]} UNSOURCED, not 31. Widening this gap is a "
+        f"legitimate finding -- it means a claim-support read demoted something, or the "
+        f"audit's coverage grew -- but it must be recorded in "
+        f"knowledge/06-source-provenance.md and in this docstring, not just absorbed by "
+        f"the pin.")
+    assert a["by_basis"][Basis.FROM_QUALITATIVE.value] == 12
+    assert a["by_basis"][Basis.GUESS.value] == 5, (
+        "5 GUESS entries: EXTRASYN['eps'] (labelled a guess in subtypes.py itself), "
+        "ExtendedDesensitizationModel.pam_desens_factor (neither the 0.1 coefficient nor "
+        "the linear form has a source), and three waveform shape parameters -- "
+        "`weight_fast`, `spillover_peak_um` and `tau_spillover_ms`. The last two are the "
+        "ones to worry about: they set how much agonist an extrasynaptic receptor actually "
+        "sees, which IS the mechanism of the tonic arm, and neither has any source.")
+    assert a["by_basis"][Basis.FITTED.value] == 3, (
+        "3 FITTED: the GAIN_RATIO prior, plus Model A's po_max and tau_deact_ms, which are "
+        "the project's own fit targets rather than independent measurements.")
+    assert a["by_basis"][Basis.CONVENTION.value] == 5, (
+        "5 CONVENTIONs: gabaa_kinetics.FIT_FIXED_ALPHA, plus four waveform/protocol "
+        "choices (synaptic rise time, the pulse-train frequencies, and the 300 ms "
+        "application and 600-sample grid that define the PEAK observable). A convention is "
+        "a legitimate basis -- a declared choice rather than an unsourced guess -- but "
+        "each must stay countable: FIT_FIXED_ALPHA determines every derived kinetic "
+        "number, and the 300 ms application IS the definition of this project's PEAK.")
 
 
 def test_the_most_consequential_number_is_flagged_unsourced():

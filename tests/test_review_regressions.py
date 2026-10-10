@@ -86,6 +86,7 @@ def test_booleans_print_as_booleans_not_as_1_and_0():
 
 
 # ============================================ 5. NMDA arm of the subjective index
+@pytest.mark.slow
 def test_nmda_arm_is_reported_and_the_total_is_void():
     """Moving evaluation out of the old simulator dropped the NMDA subjective term, so any
     compound with an NMDA component was silently under-reported -- and the two-arm design
@@ -102,6 +103,7 @@ def test_nmda_arm_is_reported_and_the_total_is_void():
     assert rs.quantity("subjective_index_total").tier is Tier.VOID
 
 
+@pytest.mark.slow
 def test_no_nmda_arm_means_no_nmda_quantities():
     from circuitpharm.evaluation import evaluate
     rs = evaluate(Compound.from_profile("alogabat", occupancy=0.35), n_seed=1,
@@ -130,6 +132,7 @@ def test_unreachable_intrinsic_efficacy_raises_instead_of_producing_nan():
         Compound("impossible", a5=1.0, s_max=500.0).pool_gains()
 
 
+@pytest.mark.slow
 def test_plausible_intrinsic_efficacy_still_works():
     g = Compound("ok", a5=1.0, s_max=2.5, occupancy=0.5).pool_gains()
     assert all(math.isfinite(g[k]) for k in ("tonic", "phasic", "tau"))
@@ -216,6 +219,7 @@ def test_direct_agonist_raises_with_actionable_guidance():
 
 @pytest.mark.parametrize("key", ["alogabat", "neurosteroid", "imepitoin", "tpa023",
                                  "hz_166", "mp_iii_022", "ideal_a5", "zolpidem"])
+@pytest.mark.slow
 def test_every_modulator_profile_evaluates_at_its_own_ceiling(key):
     """All non-agonist profiles must work with their real s_max. The neurosteroid arm
     (ceiling 6.0) needs the gating fallback, since an affinity-only mechanism cannot
@@ -520,6 +524,7 @@ def test_kinetic_calibration_target_lies_inside_its_own_accepted_range():
             "the fit would be asked to reach a value the module rejects")
 
 
+@pytest.mark.slow
 def test_manuscript_numbers_are_generated_not_transcribed():
     """E21, second half. Every figure the manuscript quotes must come out of
     `scripts/paper_numbers.py`, which recomputes it from the model. The draft's numbers
@@ -617,6 +622,11 @@ def test_the_synaptic_pulse_has_exactly_one_definition():
         (3000, 1.00)  kon 0.0147  koff 0.4692  tonic headroom 210.7x  phasic gain 1.062x
         (1000, 0.30)  kon 0.0112  koff 0.3331  tonic headroom 184.6x  phasic gain 1.319x
 
+    (Both rows are from the four-parameter fit, which roadmap P0-7 showed is not
+    reproducible across SciPy versions; the pulse divergence they document is real and
+    independent of that. The square fit now in use gives kon 0.0075785, koff 0.180415 and
+    tonic headroom 123.3x on the config pulse.)
+
     A manuscript draft quoting the first set was audited, declared unreproducible, and
     "corrected" to the second -- on the strength of `git log -S"SYNAPTIC_PEAK_UM = 3000"`
     returning nothing, which it does because that symbol never held the value. The absence of
@@ -643,27 +653,58 @@ def test_the_synaptic_pulse_has_exactly_one_definition():
     #    everything else must import. The numbers are searched for as literals because that
     #    is the form the third copy took.
     peak, clear = SYNAPTIC_PULSE["peak_um"], SYNAPTIC_PULSE["clear_ms"]
-    pat = re.compile(r"peak_um\s*=\s*([0-9.]+)")
+
+    # RECURSIVE, and VALUE-AWARE. Both halves were learned after this test was written.
+    #
+    # `glob("*.py")` covered only the top-level package, which was every module there was at
+    # the time. The fitting/, protocols/ and models/ subpackages arrived afterwards, and
+    # neither this test nor tests/test_config_single_source.py (which scans scripts/) reached
+    # them -- so the one constant this test exists to protect had an unguarded home.
+    #
+    # The match is on the VALUE, not on the keyword. A bare `peak_um=` scan flags two
+    # legitimate uses: `protocols/waveforms.py` passes peak_um=1.0 as a NORMALISED amplitude
+    # for shape mixing, and `fitting/data.py` carries 3000.0 as a concentration grid point in
+    # a dose-response array. Neither is a copy of the pulse. Only a literal equal to the
+    # configured value is a second definition, so only that is an offence.
+    pat = re.compile(r"(peak_um|clear_ms)\s*=\s*([0-9]+\.?[0-9]*)")
+    want = {"peak_um": float(peak), "clear_ms": float(clear)}
     offenders = []
-    for f in sorted(pathlib.Path("src/circuitpharm").glob("*.py")):
+    for f in sorted(pathlib.Path("src/circuitpharm").rglob("*.py")):
         if f.name == "config.py":
             continue
         for m in pat.finditer(f.read_text()):
-            # a keyword argument forwarding a variable is fine; a literal is not
-            if m.group(1).rstrip(".").isdigit() or "." in m.group(1):
-                offenders.append(f"{f.name}: peak_um={m.group(1)}")
+            key, lit = m.group(1), m.group(2)
+            try:
+                val = float(lit)
+            except ValueError:
+                continue                      # forwarding a variable; fine
+            if val == want[key]:
+                offenders.append(f"{f.relative_to('src/circuitpharm')}: {key}={lit}")
     assert not offenders, (
         "the synaptic pulse is hard-coded outside config.py again: "
         f"{offenders}. Import config.SYNAPTIC_PULSE instead; this constant has had three "
         "definitions before and the two that agreed hid the one that did not.")
 
-    # 3. and the fit that every consumer gets must be the config one
+    # 3. and the fit that every consumer gets must be the config one.
+    #
+    # UPDATED 2026-10-09 (roadmap P0-7). This asserted Kd = 31.95 +/- 0.05 -- a 0.16%
+    # tolerance on a quantity that was not reproducible at all. The four-parameter fit gave
+    # 26.60 / 29.44 / 29.48 uM under scipy 1.14.1 / 1.11.4 / 1.17.1, every one reproducing
+    # all three anchors exactly, against the 31.95 recorded here from one machine. The test
+    # was right to exist; its number was an artefact.
+    #
+    # `fit_scheme` now holds alpha at FIT_FIXED_ALPHA, making the system square (three
+    # unknowns, three anchors) and well-posed, so Kd is a determined 23.806 uM --
+    # identical to 6 significant figures across all three of those environments. The
+    # tolerance stays tight BECAUSE it is now reproducible; that is the point of the change.
     s = gk.fit_scheme(verbose=False)
-    assert abs(s.koff / s.kon - 31.95) < 0.05, (
-        f"the default fit gives Kd = {s.koff / s.kon:.2f} uM; the config pulse gives 31.95. "
-        "A default-pulse caller is fitting a different scheme from the pipeline.")
+    assert abs(s.koff / s.kon - 23.806) < 0.01, (
+        f"the default fit gives Kd = {s.koff / s.kon:.3f} uM; the config pulse with alpha "
+        f"held at gabaa_kinetics.FIT_FIXED_ALPHA gives 23.806. A default-pulse caller is "
+        f"fitting a different scheme from the pipeline.")
 
 
+@pytest.mark.slow
 def test_the_two_calibration_paths_now_agree():
     """The behavioural half of E22: a Drug built through the circuit path must report the
     tonic gain the kinetic module derives directly. This is the comparison that finally
@@ -681,3 +722,98 @@ def test_the_two_calibration_paths_now_agree():
     assert abs(direct - via_drug) < 0.01 * direct, (
         f"the kinetic module derives a tonic gain of {direct:.4f} and the circuit path "
         f"reports {via_drug:.4f}. One quantity, two values -- which is E22 exactly.")
+
+
+# ------------------------------------------------- E24-E26: a static audit of the P0-P7
+#                                                   branch, verified by execution first
+def test_equilibrium_entry_points_have_no_runnable_default():
+    """E24. Four public EQUILIBRIUM functions declared `dataset=None` and defaulted to
+    `DOSE_RESPONSE_BENCHMARK`, which is tagged `Observable.PEAK` -- so calling any of them at
+    its own signature raised `ObservableMismatch` from inside the objective. They were
+    uncallable as declared.
+
+    The fix is not a better default: `fitting.data.MISSING_DATASETS` records that no measured
+    equilibrium concentration-response exists in this project, so there IS no default. A
+    required argument that names the two ways to get a dataset is honest; a default that
+    cannot run reports the absence as a type confusion.
+    """
+    import pytest as _pytest
+
+    from circuitpharm.fitting import identifiability as idf
+
+    for name, args in (("fit_identifiable", ()), ("identifiability_report", ()),
+                       ("profile_likelihood", ("log10_kd",)),
+                       ("equilibrium_chi2_identifiable", ([1.4, 0.6, 1.4],))):
+        fn = getattr(idf, name, None)
+        if fn is None:
+            continue
+        with _pytest.raises(ValueError) as e:
+            fn(*args)
+        msg = str(e.value)
+        assert "EQUILIBRIUM" in msg and "equilibrium_crc_from_model" in msg, (
+            f"{name} refuses without a dataset but does not say how to get one: {msg[:160]}")
+
+
+def test_every_model_rejects_negative_allosteric_modulation():
+    """E25. `OperationalScalarModel.effective_ec50` clamped with `max(shift, 1e-6)` instead of
+    guarding, so `effective_ec50(0.5)` returned 2x the EC50 -- a silent NAM -- while the two
+    kinetic models raise on the same input. Measured before the fix: 25 -> 50 uM.
+
+    The invariant is SYMMETRY, which is why this test covers all three rather than the one
+    that was wrong. Model comparison is what this layer exists for, and a sweep that
+    silently measures a NAM in model A and a rejection in B and C is comparing two different
+    questions.
+    """
+    import pytest as _pytest
+
+    from circuitpharm.models.kinetic_jw95 import KineticAllosteryModel
+    from circuitpharm.models.operational import OperationalScalarModel
+    try:
+        from circuitpharm.models.extended_desens import ExtendedDesensitizationModel
+    except ImportError:                      # pragma: no cover
+        ExtendedDesensitizationModel = None
+
+    with _pytest.raises(ValueError):
+        OperationalScalarModel().effective_ec50(0.5)
+    with _pytest.raises(ValueError):
+        KineticAllosteryModel().apply_pam(0.5)
+    if ExtendedDesensitizationModel is not None:
+        with _pytest.raises(ValueError):
+            ExtendedDesensitizationModel().apply_pam(0.5)
+
+    # and a genuine PAM must still work on all of them
+    assert OperationalScalarModel().effective_ec50(2.5) > 0.0
+
+
+def test_the_result_schema_does_not_depend_on_the_environment():
+    """E26. `joint_excursion` -- a permanently VOID quantity recording a metric with the wrong
+    sign -- was added inside the try block that calls the body-plant assays. On a lean
+    install the ImportError jumped past it, so `rs.quantity("joint_excursion")` raised
+    KeyError without mujoco and returned a VOID quantity with it.
+
+    The missing number is not the problem; the environment-dependent SCHEMA is. A caller
+    cannot write `rs.quantity("joint_excursion").tier is Tier.VOID` and have it mean the same
+    thing on two machines, and the VOID tier exists so an invalid metric is visible rather
+    than absent.
+
+    Checked statically, because the condition is "mujoco absent" and this test must give the
+    same answer whether or not it is installed.
+    """
+    import inspect
+
+    from circuitpharm import evaluation as ev
+
+    # COMMENTS STRIPPED FIRST. `inspect.getsource` returns the comments too, and the note
+    # explaining this very fix names `joint_excursion` three times -- so a naive count of the
+    # raw source counts prose. My own bug, caught by this test on its first run.
+    src = inspect.getsource(ev.evaluate)
+    code = "\n".join(ln for ln in src.splitlines() if not ln.lstrip().startswith("#"))
+
+    assert code.count('"joint_excursion"') == 1, (
+        f"{code.count(chr(34) + 'joint_excursion' + chr(34))} code sites now add it; there "
+        "must be exactly one, and it must be unconditional")
+    at = code.index('"joint_excursion"')
+    handler = code.index("except (ImportError")
+    assert at > handler, (
+        "joint_excursion is added before the ImportError handler, i.e. inside the try. On a "
+        "lean install it will be skipped and the result schema becomes environment-dependent.")

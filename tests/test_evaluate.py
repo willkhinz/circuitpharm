@@ -52,6 +52,7 @@ def test_gains_saturate_at_full_occupancy():
     assert g["tonic"] == pytest.approx(g["tonic_at_full"], rel=1e-9)
 
 
+@pytest.mark.slow
 def test_higher_intrinsic_efficacy_gives_a_higher_ceiling():
     """`s_max` is a LIGAND property and is what actually sets overdose protection."""
     lo = Compound("lo", a5=1.0, s_max=2.0, occupancy=1.0).pool_gains()["tonic"]
@@ -196,6 +197,7 @@ def test_control_cache_can_be_cleared():
     assert not _CTRL_CACHE
 
 
+@pytest.mark.slow
 def test_evaluate_degrades_gracefully_without_the_body_plant():
     """A lean install must still get the respiratory and receptor-level results.
 

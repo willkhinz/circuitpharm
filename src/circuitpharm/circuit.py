@@ -80,8 +80,19 @@ class SpinalCircuit:
         # different populations with different drives, so one op cannot serve both, and the
         # RG gets its own via rg_kw/COND_LOCO_OP.
         from .config import COND_SPINAL_OP
+        # EVERY WEIGHT IS REQUIRED, not defaulted. `required_w=()` meant a conductance
+        # operating point could supply the four drives and leave the entire nS weight table
+        # at its LIF-tuned class values -- RG->PF 2.2 nS, InPF->PF 3.5 nS -- on a cell whose
+        # input conductance is 2.8 nS against the LIF's 10 nS. That is exactly the "partial
+        # operating point is the dangerous case, not the missing one" failure
+        # `substrate.resolve_op` exists to refuse: it runs, it produces a rhythm, and it is
+        # wrong about pharmacology. `resp.py` requires all 8 of its weights and `rg2.py` all
+        # 4 of its; this module required none (roadmap P0-9). Latent only because
+        # COND_SPINAL_OP is None -- `op=` is public and anchoring this circuit is the
+        # documented next step.
         _op = sub.resolve_op(substrate, op, COND_SPINAL_OP,
-                             required_w=(), required_scalars=(
+                             required_w=tuple(SpinalCircuit.W),
+                             required_scalars=(
                                  "drive_pf", "drive_mn", "drive_in", "gaba_tonic"),
                              what="the spinal circuit")
         if _op is not None:

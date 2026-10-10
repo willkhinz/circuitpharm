@@ -10,20 +10,31 @@ from dataclasses import dataclass, replace
 import numpy as np
 from scipy.integrate import solve_ivp
 
-from .base import ReceptorModel, WaveformResult
+from .base import (OPEN_STATE_INDEX, PEAK_APPLICATION_MS, DecayFit, Observable,
+                   ReceptorModel, WaveformResult, fit_biexponential_decay,
+                   peak_open_probability_constant, resolve_initial_state)
 
 
 STATES_6 = ("R", "AR", "A2R", "A2O", "A2D_fast", "A2D_slow")
 OPEN_IDX_6 = 3  # "A2O"
+assert STATES_6[OPEN_STATE_INDEX] == "A2O", "open-state index desynchronised from base"
 
 
 @dataclass(frozen=True)
 class ExtendedDesensitizationModel(ReceptorModel):
-    """6-state Markov scheme with dual-pathway desensitisation and state-dependent PAM actions."""
-    kon: float = 0.012          # uM^-1 ms^-1
-    koff: float = 0.35          # ms^-1
-    beta: float = 0.60          # ms^-1 (channel opening)
-    alpha: float = 0.10         # ms^-1 (channel closing)
+    """6-state Markov scheme with dual-pathway desensitisation and state-dependent PAM actions.
+
+    EVERY DEFAULT BELOW IS PROVISIONAL AND IS NOT A CALIBRATION. They are round numbers
+    with no recorded origin and reproduce neither anchor: measured EC50 5.18 uM
+    (EQUILIBRIUM) against the 20 uM anchor, P_o,max 0.8571 against 0.750. Obtain
+    parameters from `circuitpharm.parameters.get(...)`; these exist for unit-testing the
+    algebra, and the mismatch is pinned by a test so it cannot be mistaken for a fit
+    (roadmap P0-13).
+    """
+    kon: float = 0.012          # uM^-1 ms^-1  PROVISIONAL - see class docstring
+    koff: float = 0.35          # ms^-1        PROVISIONAL
+    beta: float = 0.60          # ms^-1 (channel opening)  PROVISIONAL
+    alpha: float = 0.10         # ms^-1 (channel closing)  PROVISIONAL
     d_fast: float = 0.080       # ms^-1 (rapid desensitisation entry)
     r_fast: float = 0.0050      # ms^-1 (rapid resensitisation)
     d_slow: float = 0.0080      # ms^-1 (slow deep desensitisation entry)
@@ -34,6 +45,11 @@ class ExtendedDesensitizationModel(ReceptorModel):
     @property
     def name(self) -> str:
         return "ExtendedDesensitization_DualD"
+
+    @property
+    def native_observable(self) -> Observable:
+        """`dose_response` is the stationary distribution, both sinks included."""
+        return Observable.EQUILIBRIUM
 
     @property
     def param_names(self) -> tuple[str, ...]:
@@ -91,16 +107,41 @@ class ExtendedDesensitizationModel(ReceptorModel):
 
     def apply_pam(self, pam_factor: float = 1.0) -> "ExtendedDesensitizationModel":
         """Apply state-dependent modulation.
-        
-        pam_factor acts as affinity enhancer on koff, while pam_desens_factor
-        can modulate desensitisation trapping.
+
+        `pam_factor` acts as an affinity enhancer on koff (an EQUILIBRIUM EC50 fold-shift,
+        as in Model B), while `pam_desens_factor` scales how much that shift also slows
+        entry into the fast desensitised state.
+
+        POSITIVE MODULATION ONLY, and the desensitisation denominator is GUARDED. Both
+        matter. `pam_desens_factor` is in `param_names`, so a fitter or sampler can move
+        it: with the old expression `d_fast / (1 + 0.1*(pf-1)*f)` a value of f = 20 at
+        pf = 0.5 drives the denominator to exactly zero (infinite rate), and larger f with
+        pf < 1 drives it negative -- an unphysical negative rate constant that propagates
+        silently. The same class of defect as the clamps already in
+        `cpg.Drug.nmda_scale` and `substrate.tonic_gaba`, which are the precedent for
+        guarding it here rather than documenting it (roadmap P0-12).
         """
-        pf = max(float(pam_factor), 1e-6)
+        pf = float(pam_factor)
+        if not np.isfinite(pf):
+            raise ValueError(f"pam_factor must be finite, got {pf!r}")
+        if pf < 1.0:
+            raise ValueError(
+                f"pam_factor={pf!r} is below 1.0, i.e. negative allosteric modulation, "
+                f"which this scheme's callers are not written for. Pass >= 1.0.")
+        denom = 1.0 + 0.1 * (pf - 1.0) * self.pam_desens_factor
+        if denom <= 1e-9:
+            raise ValueError(
+                f"pam_desens_factor={self.pam_desens_factor!r} with pam_factor={pf!r} "
+                f"gives a desensitisation scaling denominator of {denom!r}, which would "
+                f"make d_fast infinite or negative. A negative rate constant is not a "
+                f"parameter choice; bound pam_desens_factor so "
+                f"1 + 0.1*(pam_factor-1)*pam_desens_factor stays positive.")
         return replace(
             self,
             koff=self.koff / pf,
-            # Dual-pathway state dependence: PAM slightly stabilizes open state over fast desensitisation
-            d_fast=self.d_fast / (1.0 + 0.1 * (pf - 1.0) * self.pam_desens_factor),
+            # Dual-pathway state dependence: the PAM stabilises the open state relative to
+            # fast desensitisation.
+            d_fast=self.d_fast / denom,
         )
 
     def state_distribution(self, gaba_um: float, pam_factor: float = 1.0) -> np.ndarray:
@@ -129,7 +170,37 @@ class ExtendedDesensitizationModel(ReceptorModel):
         dist = self.state_distribution(gaba_um, pam_factor)
         return float(dist[OPEN_IDX_6])
 
+    def q_matrix(self, gaba_um: float, pam_factor: float = 1.0) -> np.ndarray:
+        """Row-generator transition matrix Q: dP/dt = P Q.
+
+        The same generator `simulate_waveform`'s `rhs` writes out term by term. It is
+        written twice because the ODE path evaluates a time-varying concentration and
+        building a 6x6 per step would cost more than the eight multiplications it saves,
+        and `tests/test_p4_likelihood.py` asserts the two agree at several concentrations
+        so the duplication cannot drift -- which is the only acceptable form of it.
+        """
+        mod = self.apply_pam(pam_factor=pam_factor)
+        g = max(float(gaba_um), 0.0)
+        kon, koff = mod.kon, mod.koff
+        beta, alpha = mod.beta, mod.alpha
+        df, rf = mod.d_fast, mod.r_fast
+        ds, rs = mod.d_slow, mod.r_slow
+
+        return np.array([
+            [-2.0 * kon * g, 2.0 * kon * g, 0.0, 0.0, 0.0, 0.0],
+            [koff, -(koff + kon * g), kon * g, 0.0, 0.0, 0.0],
+            [0.0, 2.0 * koff, -(2.0 * koff + beta + df + ds), beta, df, ds],
+            [0.0, 0.0, alpha, -alpha, 0.0, 0.0],
+            [0.0, 0.0, rf, 0.0, -rf, 0.0],
+            [0.0, 0.0, rs, 0.0, 0.0, -rs],
+        ], dtype=float)
+
     def dose_response(self, concs_um: np.ndarray, pam_factor: float = 1.0) -> np.ndarray:
+        """EQUILIBRIUM open probability, both desensitisation sinks included.
+
+        Not the peak-current CRC that published data reports -- see Model B's note and
+        roadmap §2.3. Use `peak_dose_response` for PEAK data.
+        """
         concs = np.asarray(concs_um, dtype=float)
         mod = self.apply_pam(pam_factor=pam_factor)
         x = np.maximum(concs, 0.0) / mod.kd_um
@@ -138,6 +209,19 @@ class ExtendedDesensitizationModel(ReceptorModel):
         ds = mod.desens_slow_ratio
         denom = 1.0 + 2.0 * x + (x ** 2) * (1.0 + e + df + ds)
         return (e * (x ** 2)) / denom
+
+    def peak_dose_response(self, concs_um: np.ndarray, pam_factor: float = 1.0,
+                           application_ms: float = PEAK_APPLICATION_MS) -> np.ndarray:
+        """PEAK open probability during a square application. See the protocol docstring."""
+        # Solved exactly with one matrix exponential per concentration rather than an ODE
+        # solve: at constant agonist the generator is constant. Agrees with the previous
+        # solve_ivp implementation to 1.8e-7 and is ~300x faster -- see
+        # `base.peak_open_probability_constant` for the measurement and for why `expm`
+        # rather than an eigendecomposition.
+        return peak_open_probability_constant(
+            self.q_matrix, self.state_distribution(0.0), concs_um,
+            pam_factor=pam_factor, application_ms=application_ms,
+            open_index=OPEN_IDX_6)
 
     def simulate_waveform(
         self,
@@ -151,14 +235,19 @@ class ExtendedDesensitizationModel(ReceptorModel):
         gaba_arr = np.asarray(gaba_t, dtype=float)
 
         if len(t_arr) < 2:
-            dist = self.state_distribution(float(gaba_arr[0]), pam_factor) if len(gaba_arr) > 0 else np.array([1.0, 0, 0, 0, 0, 0])
+            dist = (self.state_distribution(float(gaba_arr[0]), pam_factor)
+                    if len(gaba_arr) > 0 else np.array([1.0, 0, 0, 0, 0, 0]))
             p0 = float(dist[OPEN_IDX_6])
-            return WaveformResult(t_arr, gaba_arr, np.full_like(t_arr, p0), p0, 0.0, 0.0, p0, dist[None, :])
+            # decay is UNDEFINED on a single sample -> NaN, never a nominal tau (P0-4)
+            return WaveformResult(
+                t=t_arr, gaba=gaba_arr, p_open=np.full_like(t_arr, p0), peak_p_open=p0,
+                charge_integral=0.0, decay_tau_ms=float("nan"), steady_state_tail=p0,
+                states=dist[None, :], decay=DecayFit.failed())
 
-        if initial_state is not None and len(initial_state) == 6:
-            p_init = np.asarray(initial_state, dtype=float)
-        else:
-            p_init = self.state_distribution(float(gaba_arr[0]), pam_factor)
+        # P0-1: scalar honoured, vector validated, anything else raises. `len()` on a
+        # float used to crash here before the comparison was even reached.
+        p_init = resolve_initial_state(
+            initial_state, 6, self.state_distribution(float(gaba_arr[0]), pam_factor))
 
         mod = self.apply_pam(pam_factor=pam_factor)
         kon = mod.kon
@@ -196,10 +285,26 @@ class ExtendedDesensitizationModel(ReceptorModel):
             atol=1e-7,
         )
 
-        states = sol.y.T if sol.success else np.tile(p_init, (len(t_arr), 1))
+        # P0-3: a failed integration RAISES rather than being replaced by a tiled
+        # constant trace, which looked like a settled experiment that never ran.
+        if not sol.success:
+            raise RuntimeError(
+                f"Radau failed to integrate the 6-state scheme over "
+                f"[{t_arr[0]:.4g}, {t_arr[-1]:.4g}] ms: {sol.message}. The slowest "
+                f"timescale here is 1/r_slow = {1.0 / self.r_slow:.0f} ms against a cleft "
+                f"transient of ~1 ms, so this is a stiffer problem than the 5-state "
+                f"scheme; densify `t` rather than loosening rtol.")
+
+        states = sol.y.T
+        row_sums = states.sum(axis=1)
+        worst = float(np.max(np.abs(row_sums - 1.0))) if row_sums.size else 0.0
+        if worst > 1e-3:
+            raise RuntimeError(
+                f"state probabilities drifted off the simplex by {worst:.3e} "
+                f"(max |sum - 1|) while integrating the 6-state scheme. Renormalising "
+                f"would hide an integration failure behind a plausible trace.")
         states = np.clip(states, 0.0, 1.0)
-        row_sums = states.sum(axis=1, keepdims=True)
-        states = np.divide(states, np.maximum(row_sums, 1e-12))
+        states = states / np.maximum(states.sum(axis=1, keepdims=True), 1e-12)
 
         p_open = states[:, OPEN_IDX_6]
         peak_p = float(np.max(p_open))
@@ -207,17 +312,8 @@ class ExtendedDesensitizationModel(ReceptorModel):
         _trapz = getattr(np, "trapezoid", None) or getattr(np, "trapz", None)
         charge = float(_trapz(p_open, t_arr))
 
-        peak_idx = int(np.argmax(p_open))
-        if peak_idx < len(t_arr) - 2:
-            t_tail = t_arr[peak_idx:] - t_arr[peak_idx]
-            p_tail = p_open[peak_idx:] - p_open[-1]
-            if np.max(p_tail) > 1e-4:
-                half_mask = p_tail <= 0.5 * p_tail[0]
-                decay_tau = float(t_tail[half_mask][0] / np.log(2)) if np.any(half_mask) else 15.0
-            else:
-                decay_tau = 15.0
-        else:
-            decay_tau = 15.0
+        # P0-4: real biexponential fit, NaN on failure -- never 15.0, the tau fit target.
+        decay = fit_biexponential_decay(t_arr, p_open)
 
         return WaveformResult(
             t=t_arr,
@@ -225,7 +321,8 @@ class ExtendedDesensitizationModel(ReceptorModel):
             p_open=p_open,
             peak_p_open=peak_p,
             charge_integral=charge,
-            decay_tau_ms=decay_tau,
+            decay_tau_ms=decay.tau_weighted_ms,
             steady_state_tail=float(p_open[-1]),
             states=states,
+            decay=decay,
         )
