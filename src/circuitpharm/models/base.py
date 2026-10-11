@@ -324,6 +324,76 @@ def peak_open_probability_constant(
     return out.reshape(concs.shape)
 
 
+# A published Hill slope is usually fitted over PART of a curve, and for a curve that is
+# not itself a Hill curve the part you choose changes the answer. Jahn et al. 1997 report
+# "a Hill-type slope of 2.2 +/- 0.4 over 1-10 uM" against an EC50 of 11.6 uM, so their
+# window is 0.086-0.862 x EC50: the rising phase, entirely below EC50. Expressed relative
+# to EC50 so it can be applied to a curve with a different EC50, which is the only way to
+# ask "what would this scheme give if measured the way they measured".
+JAHN1997_SLOPE_WINDOW_REL = (1.0 / 11.6, 10.0 / 11.6)
+
+
+def hill_slope(concs_um, response, *, window_rel=None, band=(0.02, 0.98),
+               n_points: int = 25) -> float:
+    """Logit-space slope of a response curve, measured over a STATED range.
+
+    THE RANGE IS PART OF THE MEASUREMENT. A Hill curve is a straight line in logit-log
+    space, so for one of those every range gives the same slope and the distinction below
+    is invisible. A receptor scheme's curve is NOT a Hill curve -- this one bends, because
+    its limiting slope at low agonist is the number of binding sites (2) while its slope
+    through EC50 is flattened by the approach to the plateau -- so for a scheme the two
+    measurements differ by about 0.4, which is as large as the published uncertainty they
+    were being compared against.
+
+    Getting this wrong is how this project came to record a "structural conflict" between
+    the published slope and the assumed plateau that was partly an artefact of comparing
+    a rising-phase Hill fit (theirs) against a whole-curve regression (ours). See
+    `knowledge/12-inference.md` Section 2.
+
+    `window_rel` is (lo, hi) in MULTIPLES OF THE CURVE'S OWN EC50 -- use it to reproduce a
+    paper's restricted fit, e.g. `JAHN1997_SLOPE_WINDOW_REL`. `band` is the fraction-of-max
+    range for a whole-curve regression, used when `window_rel` is None.
+
+    `response` need not be normalised; it is divided by its own maximum here. It must be
+    rising and single-valued in the region used, which a peak or equilibrium
+    concentration-response is.
+    """
+    c = np.asarray(concs_um, dtype=float)
+    y = np.asarray(response, dtype=float)
+    if c.shape != y.shape or c.ndim != 1:
+        raise ValueError(f"concs_um and response must be matching 1D arrays, "
+                         f"got {c.shape} and {y.shape}")
+    mx = float(y.max())
+    if not np.isfinite(mx) or mx <= 0:
+        raise ValueError(f"response has no positive finite maximum (max = {mx!r})")
+    yn = y / mx
+
+    if window_rel is not None:
+        lo_rel, hi_rel = (float(v) for v in window_rel)
+        if not 0 < lo_rel < hi_rel:
+            raise ValueError(f"window_rel must satisfy 0 < lo < hi, got {window_rel!r}")
+        ec50 = float(np.interp(0.5, yn, c))
+        grid = np.logspace(np.log10(lo_rel * ec50), np.log10(hi_rel * ec50), n_points)
+        use_c = grid
+        use_y = np.interp(grid, c, yn)
+    else:
+        lo_b, hi_b = (float(v) for v in band)
+        sel = (yn > lo_b) & (yn < hi_b)
+        if int(sel.sum()) < 3:
+            raise ValueError(
+                f"only {int(sel.sum())} points fall inside the band {band}; a slope needs "
+                f"at least 3. Widen the band or pass a denser concentration grid.")
+        use_c, use_y = c[sel], yn[sel]
+
+    if np.any(use_y <= 0) or np.any(use_y >= 1):
+        raise ValueError(
+            "the logit is undefined at a normalised response of 0 or 1; the window reaches "
+            "the top or bottom of the curve.")
+    design = np.vstack([np.log10(use_c), np.ones(use_c.size)]).T
+    coef, *_ = np.linalg.lstsq(design, np.log(use_y / (1.0 - use_y)), rcond=None)
+    return float(coef[0] / np.log(10.0))
+
+
 def fit_biexponential_decay(t_ms, y, *, hi_frac: float = 1.00,
                             lo_frac: float = 0.01) -> DecayFit:
     """Fit A*exp(-t/tau_f) + B*exp(-t/tau_s) to a decaying tail.

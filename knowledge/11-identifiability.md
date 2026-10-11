@@ -138,8 +138,11 @@ by raising the plateau, and the optimiser did it the same way as above: `D → 1
 PEAK-against-EQUILIBRIUM was caught here and **PEAK-against-normalised-PEAK was not**.
 `fitting.data.Normalisation` now makes a dataset declare its scale and the likelihood
 normalises the prediction to match. See `knowledge/12-inference.md` §1.2, and §2 there for
-the structural conflict this exposed between the published Hill slope and the assumed
-plateau.
+the apparent conflict this exposed between the published Hill slope and the assumed
+plateau — **since WITHDRAWN**: the published slope is a local one over 1–10 µM and was
+being compared against a whole-curve regression. §2 there also records a THIRD mismatch
+class found while correcting it: the PEAK observable is protocol-dependent, moving its
+EC₅₀ sevenfold with the application duration.
 
 ---
 

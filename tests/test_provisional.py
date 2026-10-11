@@ -439,33 +439,58 @@ def test_the_jahn_source_resolves_in_the_knowledge_base():
     assert "CLAIM_SUPPORT_DOES_NOT_SUPPORT for MEAN OPEN TIME" in verification
 
 
-def test_the_scheme_cannot_reproduce_the_measured_hill_slope():
-    """ANCHOR, and the first falsifiable mismatch against a sourced measurement.
+def test_the_published_slope_is_a_local_one_and_the_scheme_matches_it():
+    """ANCHOR, and the correction of this project's first claimed falsification.
 
-    Jahn et al. report a Hill-type slope of 2.2 +/- 0.4 and read it as evidence for at
-    least three binding sites. The 5-state scheme has TWO, and its peak curve comes out at
-    1.294 -- below even the lower error bound of 1.8. This is structural: no choice of
-    rates makes a two-site scheme that steep, so it cannot be fitted away, and P5's model
-    comparison is where it gets adjudicated.
+    THE WITHDRAWN CLAIM: "the scheme's peak curve comes out at 1.294, below even the lower
+    error bound of 1.8; this is structural, no choice of rates makes a two-site scheme that
+    steep". The second half is false and the first was the wrong comparison.
 
-    Tolerance: asserted as an inequality against the measured lower bound rather than as a
-    value, because the point is the direction and the size of the gap, not the third digit.
+    Jahn et al. say, verbatim: "The slope between 0.001 and 0.01 mM GABA was 2.2 +/- 0.4,
+    indicating at least three binding sites for GABA." That is a LOCAL slope over 1-10 uM
+    against their EC50 of 11.6 uM. The 1.294 was a regression over the 10-90% band of the
+    WHOLE curve. For a Hill curve the two are identical, which is why this went unnoticed
+    for so long; for a receptor scheme they differ by ~0.4, because its logit curve bends
+    between a low-agonist limiting slope equal to the binding-site count and a flatter
+    slope through EC50.
+
+    Measured the same way the source measured it, the three-anchor scheme gives 1.59
+    against 2.2 +/- 0.4 -- a gap of 1.5 sigma, which is agreement. Two readings of "the
+    same way" are possible and both are reported, because the scheme's PEAK EC50 (19.9 uM)
+    is not Jahn's (11.6 uM): over the same RELATIVE part of the curve (0.086-0.862 x its
+    own EC50, which is what `hill_slope(window_rel=...)` does) it gives 1.59, and at the
+    same ABSOLUTE concentrations 1-10 uM it gives 1.71. Either way the gap is inside
+    2 sigma, where the whole-curve comparison put it outside. Corroborated from two
+    directions -- published WHOLE-CURVE Hill fits for a1b2g2 peak currents sit at 1.3-1.6,
+    which is where this scheme's whole-curve slope sits; and cryo-EM of the synaptic
+    a1b2g2 receptor shows TWO GABA sites, not the three the slope was read as indicating.
+
+    So the slope is not a falsification of the scheme, and it never was. What it IS, is a
+    worked example of the project's own recurring failure: `fitting/data.py` recorded
+    "(slope over 1-10 uM)" in the same comment block as the comparison, and the comparison
+    was made anyway. The window was written down and not acted on.
     """
     from circuitpharm.config import SYNAPTIC_PULSE
     from circuitpharm.gabaa_kinetics import fit_scheme
+    from circuitpharm.models.base import JAHN1997_SLOPE_WINDOW_REL, hill_slope
 
     s = fit_scheme(verbose=False, pulse=dict(SYNAPTIC_PULSE))
     c = np.logspace(-1, 4, 60)
     y = np.array([s.po_peak(x) for x in c])
-    f = y / y.max()
-    m = (f > 0.1) & (f < 0.9)
-    slope = float(np.polyfit(np.log10(c[m]), np.log10(f[m] / (1 - f[m])), 1)[0])
 
-    assert slope == pytest.approx(1.294, rel=0.05)
-    assert slope < 2.2 - 0.4, (
-        f"the scheme's peak Hill slope is {slope:.3f}; Jahn et al. measured 2.2 +/- 0.4. "
-        f"If this ever rises above 1.8 the structural argument in fitting/data.py needs "
-        f"re-examining.")
+    whole = hill_slope(c, y, band=(0.1, 0.9))
+    rising = hill_slope(c, y, window_rel=JAHN1997_SLOPE_WINDOW_REL)
+
+    assert whole == pytest.approx(1.294, rel=0.05)
+    assert rising == pytest.approx(1.59, abs=0.10)   # 1.71 at absolute 1-10 uM
+    assert rising > whole + 0.25, (
+        f"the local ({rising:.3f}) and whole-curve ({whole:.3f}) measurements have "
+        f"converged; the correction in knowledge/12-inference.md Section 2 rests on them "
+        f"differing and would need re-examining")
+    assert abs(2.2 - rising) / 0.4 < 2.0, (
+        f"measured as the source measured it, the scheme is {abs(2.2-rising)/0.4:.2f} "
+        f"sigma from the published slope. The withdrawn claim was that this exceeds the "
+        f"published error bar; if it does again, re-open the question.")
 
 
 def test_the_missing_datasets_are_named_not_forgotten():

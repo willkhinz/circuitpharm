@@ -148,8 +148,10 @@ def get(model: str, which: Which = "fitted") -> tuple[dict, Quantity]:
         promote_by="digitise a concentration-response and fit the Hill parameters to it",
         caveats=("two of these are the project's own fit targets, so using them as "
                  "independent anchors is circular",
-                 "the one sourced Hill slope for this preparation is 2.2 +/- 0.4 "
-                 "(Jahn 1997) against the 1.4 declared here"))
+                 "the one sourced slope for this preparation, 2.2 +/- 0.4 (Jahn 1997), "
+                 "is a LOCAL slope over 1-10 uM and is NOT comparable to this whole-curve "
+                 "nH of 1.4; published whole-curve fits for a1b2g2 are 1.3-1.6, so 1.4 is "
+                 "in range. See knowledge/12-inference.md section 2"))
 
 
 def _nominal(model: str) -> dict:

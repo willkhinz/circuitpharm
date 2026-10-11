@@ -310,24 +310,60 @@ DEACTIVATION_BENCHMARK = DeactivationDataset(
 #      CONVENTION. Getting the mean open time needs the full text, which this environment
 #      cannot reach (pubmed, PMC and EuropePMC are all egress-blocked).
 #
-# THE HILL SLOPE IS A STRUCTURAL PROBLEM FOR THE 5-STATE SCHEME, and it is the most
-# interesting thing this source brings. Measured on the current fit, over the 10-90% band:
+# THE HILL SLOPE IS NOT WHAT THIS PROJECT FIRST TOOK IT FOR, and getting that wrong
+# produced a "structural conflict" that has now been withdrawn. The abstract says, verbatim:
 #
-#     observable                 EC50       Hill slope
-#     scheme, PEAK              19.946 uM     1.294
-#     scheme, EQUILIBRIUM        5.222 uM     1.654
-#     Jahn 1997, peak current   11.6   uM     2.2 +/- 0.4   (slope over 1-10 uM)
+#     "The slope between 0.001 and 0.01 mM GABA was 2.2 +/- 0.4, indicating at least
+#      three binding sites for GABA."
 #
-# The scheme's peak curve is markedly SHALLOWER than the measurement (1.29 against 2.2) as
-# well as sitting at twice the concentration -- and the slope gap is structural, not a
-# fitting failure: the scheme has two equivalent binding sites, and Jahn et al. read their
-# slope of 2.2 as evidence for at least three. Fitting to this dataset therefore cannot
-# succeed by moving rates; it needs a different state diagram.
+# So 2.2 is a LOCAL slope over 1-10 uM -- the rising phase, 0.086-0.862 x their EC50 of
+# 11.6 uM -- and NOT the Hill coefficient of a fit to the whole curve. The distinction is
+# invisible for a Hill curve, which is a straight line in logit space and so has the same
+# slope everywhere, and it is large for a receptor scheme, whose logit curve BENDS between
+# a low-agonist limiting slope equal to the number of binding sites and a flatter slope
+# through EC50. Measured on the current fit:
 #
-# That is exactly what P5's model comparison exists to adjudicate, and it is the first
-# falsifiable mismatch in this project between the kinetic scheme and a sourced
-# measurement. It must NOT be fitted away, and the EC50 must not be quietly substituted
-# for the 20 uM target either (see point 1 above).
+#     measurement                                      EC50        slope    gap to 2.2
+#     scheme, PEAK, whole-curve regression            19.946 uM     1.294     2.3 sigma
+#     scheme, PEAK, rising phase, same RELATIVE part  19.946 uM     1.594     1.5 sigma
+#     scheme, PEAK, rising phase, same ABSOLUTE 1-10  19.946 uM     1.711     1.2 sigma
+#     scheme, EQUILIBRIUM, whole-curve                 5.222 uM     1.654
+#     Jahn 1997, peak current, over 1-10 uM           11.6   uM     2.2 +/- 0.4
+#
+# Two readings of "the same way" are possible because the scheme's peak EC50 is not Jahn's
+# -- the same relative part of the curve, or the same absolute concentrations -- and both
+# are given rather than the flattering one. Either way the gap is INSIDE the published
+# error bar where the whole-curve comparison put it outside. Three independent checks say
+# the same thing:
+#
+#   * published WHOLE-CURVE Hill fits for a1b2g2 peak currents sit at 1.3-1.6 (e.g.
+#     1.5 +/- 0.09, EC50 36 +/- 6 uM, HEK293) -- which is where this scheme sits, not
+#     where 2.2 is;
+#   * a two-site scheme's limiting log-log slope at low agonist is exactly 2, and its
+#     steepest rising-phase fit is ~2.0, within 0.5 sigma of the published 2.2 -- so the
+#     slope does NOT establish "at least three binding sites", and cryo-EM of the synaptic
+#     a1b2g2 receptor shows TWO GABA sites (Nature 2018);
+#   * O. P. Hamill published a comment on exactly this inference in the same NeuroReport
+#     issue ("How many transmitter binding steps are involved in opening fast
+#     receptor-gated channels?", PMID 9480006), which is not read here but is the right
+#     place to look next.
+#
+# See `knowledge/12-inference.md` Section 2 and `models.base.hill_slope`, which takes the
+# measurement window as an argument so this comparison cannot be made loosely again.
+#
+# WHAT THAT COSTS THIS DATASET, and it is not small. The nine points below are a GLOBAL
+# Hill curve with nH = 2.2 spanning 0.3-3000 uM: four decades of curve shape extrapolated
+# from a slope the paper measured over one decade. The source constrains the curve in three
+# places -- the slope over 1-10 uM, the EC50, and saturation by 3 mM -- and says nothing
+# about its shape between 10 uM and 3 mM. Fitting a model to the extrapolated region is
+# fitting to an assumption, and that is what drove `log10_D` onto its bound and the plateau
+# to 0.99 in `knowledge/12-inference.md` Section 2.1. The `sem` below now says so: inside
+# the measured window it propagates the published parameter errors, and OUTSIDE it widens
+# to the spread over every slope consistent with the published whole-curve fits for this
+# receptor. The dataset stays usable -- it is still the only sourced concentration-response
+# here -- and it no longer asserts precision the abstract does not carry.
+#
+# The EC50 must still not be quietly substituted for the 20 uM target (see point 1 above).
 # ---------------------------------------------------------------------------------------
 _JAHN_EC50_UM = 11.6
 _JAHN_EC50_SEM = 0.9
@@ -342,19 +378,37 @@ _JAHN_X = (_JAHN_CONCS / _JAHN_EC50_UM) ** _JAHN_HILL
 # logit-space regression (asserted in tests/test_provisional.py).
 _JAHN_RESP = _JAHN_X / (1.0 + _JAHN_X)
 
-# Propagated 1-sigma spread from the published parameter errors, by evaluating the Hill
-# curve at EC50 +/- SEM and nH +/- SEM and taking the half-range. NOT a measured SEM per
-# point -- the paper's per-point errors are in the figure, which was not digitised -- so it
-# is an uncertainty on the CURVE, and it is floored at 0.01 so no point claims more
-# precision than a normalised macroscopic current can carry.
+# Propagated 1-sigma spread from the published parameter errors INSIDE the window the
+# slope was measured over, and the spread over admissible curve shapes OUTSIDE it. NOT a
+# measured SEM per point -- the paper's per-point errors are in the figure, which was not
+# digitised -- so it is an uncertainty on the CURVE, floored at 0.01 so no point claims
+# more precision than a normalised macroscopic current can carry.
+#
+# The two regimes exist because the source constrains the two regions differently. Over
+# 1-10 uM it reports a slope and an error, so the curve there is known to +/- that error.
+# Everywhere else the abstract gives only the EC50 and saturation by 3 mM, so the honest
+# spread is over every slope consistent with published whole-curve Hill fits for this
+# receptor (1.3-1.6) through the steepest the local measurement allows (2.6). A fit then
+# draws its shape information from the decade that was actually measured.
+_JAHN_SLOPE_WINDOW_UM = (1.0, 10.0)      # "between 0.001 and 0.01 mM GABA", verbatim
+_JAHN_OUTSIDE_HILL_RANGE = (1.3, 2.6)    # published whole-curve fits .. local upper bound
+
+
 def _jahn_spread() -> np.ndarray:
-    lo_hi = []
-    for ec50 in (_JAHN_EC50_UM - _JAHN_EC50_SEM, _JAHN_EC50_UM + _JAHN_EC50_SEM):
-        for nh in (_JAHN_HILL - _JAHN_HILL_SEM, _JAHN_HILL + _JAHN_HILL_SEM):
-            x = (_JAHN_CONCS / ec50) ** nh
-            lo_hi.append(x / (1.0 + x))
-    stack = np.vstack(lo_hi)
-    return np.maximum((stack.max(axis=0) - stack.min(axis=0)) / 2.0, 0.01)
+    def half_range(hills) -> np.ndarray:
+        lo_hi = []
+        for ec50 in (_JAHN_EC50_UM - _JAHN_EC50_SEM, _JAHN_EC50_UM + _JAHN_EC50_SEM):
+            for nh in hills:
+                x = (_JAHN_CONCS / ec50) ** nh
+                lo_hi.append(x / (1.0 + x))
+        stack = np.vstack(lo_hi)
+        return (stack.max(axis=0) - stack.min(axis=0)) / 2.0
+
+    inside = half_range((_JAHN_HILL - _JAHN_HILL_SEM, _JAHN_HILL + _JAHN_HILL_SEM))
+    outside = half_range(_JAHN_OUTSIDE_HILL_RANGE)
+    lo, hi = _JAHN_SLOPE_WINDOW_UM
+    measured = (_JAHN_CONCS >= lo) & (_JAHN_CONCS <= hi)
+    return np.maximum(np.where(measured, inside, outside), 0.01)
 
 
 JAHN1997_PEAK_CRC = DoseResponseDataset(
@@ -399,24 +453,59 @@ JAHN1997_PEAK_CRC = DoseResponseDataset(
 #: perfectly and measures a neighbouring quantity (knowledge/06-source-provenance.md).
 #: Attaching one of those numbers to a citation I have not read against the claim is
 #: exactly forbidden pattern 5.5, so the gap is recorded instead of filled.
+# WHY THESE ARE STILL MISSING, re-checked 2026-10-11 and the answer has CHANGED SHAPE.
+# It is no longer "the papers cannot be found". Every document named below was located and
+# is OPEN ACCESS; what blocks them is this environment's egress policy. Verified directly:
+# pmc.ncbi.nlm.nih.gov, europepmc.org, rupress.org and discovery.ucl.ac.uk all return
+# "CONNECT tunnel failed, response 403" through the agent proxy, and WebFetch fails DNS
+# resolution for every host. Web SEARCH works, which is how the abstracts below were read.
+#
+# So this is an infrastructure gap, not a literature gap, and it is closed by allowing
+# those hosts rather than by more searching. Each entry names the exact document and what
+# it is expected to contain, so whoever has a working fetch path can finish in one pass.
+#
+# GRADING, because the distinction is the whole point of this project:
+#   [VERIFIED] read here, verbatim, via web search of the abstract.
+#   [LEAD]     reported by a literature-search agent from a search-result excerpt and NOT
+#              independently confirmed here. A lead is a place to look, NOT a number to use.
 MISSING_DATASETS = {
     "deactivation_peak_pulse": (
         "A macroscopic deactivation time course for alpha1beta2gamma2 after a brief "
         "saturating GABA pulse, with the pulse duration, concentration, temperature and n "
         "stated. This is the dataset that makes an absolute rate (k_off) identifiable at "
-        "all; without it the fit determines only ratios. BLOCKED: full texts unreachable "
-        "from this environment."),
+        "all; without it the fit determines only ratios. "
+        "TARGET: Dixon, Sah, Lynch & Keramidas 2014, J Biol Chem 289(8):5399-5411 "
+        "(PMID 24425869, PMC3937617, open access), reported [LEAD] to give a weighted "
+        "deactivation tau of 5.9 +/- 0.5 ms (n = 10) for alpha1beta2gamma2L. NOT CONFIRMED "
+        "here -- a targeted search for that value returned the citation but not the number, "
+        "so it is a lead and nothing has been entered on it. The pulse duration, "
+        "concentration, temperature and the individual components behind that weighted tau "
+        "are all in the full text. SECOND TARGET: Dixon et al. 2015, Br J Pharmacol "
+        "(PMC4507157, open access), which fits two exponentials to the same preparation. "
+        "BLOCKED: egress policy, not availability."),
     "single_channel_mean_open_time": (
         "Mean open time for alpha1beta2gamma2L. Would replace "
         "gabaa_kinetics.FIT_FIXED_ALPHA -- currently a CONVENTION -- with a measurement "
         "and make the whole kinetic fit data-determined. Jahn et al. 1997 is the right "
-        "paper and the right preparation, but its abstract reports BURST duration "
-        "(10.3 +/- 3.0 ms), which is a different quantity. BLOCKED: needs the full text."),
+        "preparation, but [VERIFIED] its abstract reports BURST duration (10.3 +/- 3.0 ms), "
+        "which is a different quantity, and NeuroReport 1997 has no PMC copy -- it may not "
+        "contain a mean open time at all, which is worth establishing before chasing it. "
+        "BETTER TARGETS, both open access and both containing explicit open-time "
+        "decompositions: Keramidas & Harrison 2008, J Gen Physiol 131(2):163-181 "
+        "(PMC2213567) and 2010, J Gen Physiol 135(1):59-75 (PMC2806416), for "
+        "alpha1beta2gamma2S -- note the SHORT gamma2 splice variant, which is not this "
+        "project's receptor and must be recorded as a substitution if used. A third, "
+        "Li et al. 2008, Br J Pharmacol (PMC2241790), gives per-patch open-time components "
+        "for alpha1beta2gamma2L at 50 uM GABA (sub-saturating, ~EC40). BLOCKED: egress."),
     "holdout": (
         "Any observable not used in fitting -- paired-pulse recovery at a stated interval, "
         "a desensitisation onset time course, or a PAM concentration-response at a "
         "different ambient GABA. P5's cross-validation and P6's falsification bound both "
-        "consume it, so until one exists neither can be scored out-of-sample."),
+        "consume it, so until one exists neither can be scored out-of-sample. "
+        "TARGET: Barberis et al. 2007, Eur J Neurosci 26(7) (PMC1950087, open access), "
+        "outside-out patches from HEK293 at 10 mM GABA with 3 s pulses -- desensitisation "
+        "onset for alpha1beta2gamma2, which is both a holdout and the kinetic observable "
+        "P6 identified as the place the two schemes actually differ. BLOCKED: egress."),
 }
 
 

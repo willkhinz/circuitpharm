@@ -271,10 +271,15 @@ DATASET_PROV = {
         "QUANTITATIVE on that basis, with kind='parametric' and the fit tainted as for a "
         "synthetic trace. The full text could not be read (pubmed/PMC/EuropePMC are "
         "egress-blocked here), so the figure was never digitised. "
-        "TWO DISCREPANCIES IT SURFACES, neither resolved: FIT_TARGETS['ec50_um'] is 20.0 uM "
-        "against this 11.6; and the scheme's peak Hill slope is 1.294 against this 2.2, "
-        "which is structural -- two binding sites against the at-least-three the authors "
-        "infer -- so it cannot be fitted away.")),
+        "ONE DISCREPANCY IT SURFACES, unresolved: FIT_TARGETS['ec50_um'] is 20.0 uM "
+        "against this 11.6. A SECOND, the scheme's 1.294 peak Hill slope against this 2.2, "
+        "was recorded here as structural and is WITHDRAWN: the 2.2 is the slope 'between "
+        "0.001 and 0.01 mM GABA', a LOCAL measurement on the rising phase, and 1.294 was a "
+        "whole-curve regression. Measured alike the scheme gives 1.59-1.71, inside the "
+        "published error bar; published whole-curve fits for this receptor are 1.3-1.6. "
+        "The authors' inference of at-least-three binding sites does not follow either -- "
+        "a two-site scheme reaches ~2.0 on that window and cryo-EM shows two sites. "
+        "See knowledge/12-inference.md section 2.")),
     "deactivation_charge": Record(Basis.UNSOURCED, "", (
         "SYNTHETIC. 0.70*exp(-t/15) + 0.30*exp(-t/70). It previously carried "
         "citation='Haas & Macdonald 1999 / Jones & Westbrook 1995'; "

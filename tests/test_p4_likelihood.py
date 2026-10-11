@@ -273,37 +273,55 @@ def test_mle_reports_a_spread_rather_than_picking_a_winner(quiet):
 
 
 @pytest.mark.slow
-def test_mle_reproduces_the_training_peak_ec50(quiet):
-    """ANCHOR. Fitted to the Jahn PEAK curve, Model B must reproduce its EC50 and slope.
+def test_mle_reproduces_what_the_source_actually_measured(quiet):
+    """ANCHOR. Fitted to the Jahn PEAK curve, Model B reproduces the two MEASURED
+    quantities -- and the things it does to achieve the third are the reconstruction's
+    artefact, not a result.
 
-    The dataset is a parametric reconstruction from Jahn 1997's published
-    EC50 = 11.6 +/- 0.9 uM and nH = 2.2 +/- 0.4, so those are the targets and their stated
-    errors are the tolerances (2 sigma on EC50, since the reconstruction adds its own
-    error). Measured: EC50 11.663 uM and nH 2.030.
+    WHAT THE SOURCE MEASURES is an EC50 of 11.6 +/- 0.9 uM and a slope of 2.2 +/- 0.4
+    "between 0.001 and 0.01 mM GABA" -- a LOCAL slope over 1-10 uM. It does not measure a
+    whole-curve Hill coefficient, so this test no longer asks for one. The earlier version
+    did, and in passing it was certifying an artefact: see below.
 
-    THE CONVENTIONS MATTER AND ARE THE TRUTH'S OWN HERE. `koff`, `alpha` and `r` are held
-    at `CONV`, so this fit determines three ratios and not six rates; the EC50 it
-    reproduces is a property of the ratios, which is why the check is meaningful despite
-    that.
+    Measured here: EC50 11.629 uM, rising-phase slope 2.007 -- both inside the published
+    errors, and the rising-phase slope is the like-for-like comparison.
 
-    `log10_D` lands ON its lower bound and the result says so. That is not a failure of the
-    fit -- a normalised curve carries no information about absolute open probability, and
-    desensitisation enters the normalised PEAK shape weakly -- but it does mean D is not
-    estimated here, and `test_the_slope_and_the_plateau_cannot_both_hold` is what that
-    turns into.
+    THE ARTEFACT, asserted so it stays visible rather than being read as a finding. The
+    nine points of this dataset are a GLOBAL Hill curve with nH = 2.2 spanning four
+    decades, reconstructed from a slope measured over one (see `fitting/data.py`). A curve
+    that steep that far out can only be matched by a scheme that has deleted
+    desensitisation, so the fit puts `log10_D` on its lower bound and the absolute plateau
+    at 0.995 against this project's 0.750 anchor. That is a property of the
+    RECONSTRUCTION, not of the receptor and not of the scheme -- which is why
+    `knowledge/12-inference.md` Section 2's "structural conflict" was withdrawn.
+
+    THE CONVENTIONS ARE THE TRUTH'S OWN HERE. `koff`, `alpha` and `r` are held at `CONV`,
+    so this fit determines three ratios and not six rates.
     """
+    from circuitpharm.models.base import JAHN1997_SLOPE_WINDOW_REL, hill_slope
+
     r = fit_mle(factory, [JAHN1997_PEAK_CRC], n_starts=8, seed=0,
                 bounds=[IDENTIFIABLE_BOUNDS[k] for k in EQUILIBRIUM_IDENTIFIABLE])
     fitted = factory(r.params)
-    ec50, n_h = _peak_ec50_and_slope(fitted)
+    concs = np.logspace(-2.0, 4.5, 300)
+    y = np.asarray(fitted.peak_dose_response(concs), dtype=float)
+    ec50 = float(np.interp(0.5, y / y.max(), concs))
+
+    # the two MEASURED quantities, each compared the way it was measured
     assert ec50 == pytest.approx(11.6, abs=1.8), (
         f"fitted PEAK EC50 {ec50:.3f} uM against Jahn's 11.6 +/- 0.9")
-    assert n_h == pytest.approx(2.2, abs=0.4), (
-        f"fitted PEAK Hill slope {n_h:.3f} against Jahn's 2.2 +/- 0.4")
+    rising = hill_slope(concs, y, window_rel=JAHN1997_SLOPE_WINDOW_REL)
+    assert rising == pytest.approx(2.2, abs=0.4), (
+        f"fitted rising-phase slope {rising:.3f} against Jahn's 2.2 +/- 0.4 over 1-10 uM")
+
+    # and the price of matching a four-decade reconstruction of a one-decade measurement
     assert r.at_bound["log10_D"][0], (
-        "log10_D used to sit on its lower bound here; if it no longer does, the "
-        "normalised PEAK curve has started to constrain desensitisation and "
-        "knowledge/11-identifiability.md needs rewriting")
+        "log10_D used to sit on its lower bound here. If it no longer does, the "
+        "reconstruction in fitting/data.py has stopped forcing desensitisation out and "
+        "the artefact described in this docstring needs re-examining")
+    assert float(y.max()) > 0.95, (
+        f"the fit's absolute plateau is {y.max():.4f}; it used to be driven to ~0.995 by "
+        f"the global-Hill reconstruction, which is the artefact this test documents")
     assert "ON a bound" in r.note
 
 
@@ -340,65 +358,158 @@ def test_a_dataset_that_claims_normalisation_must_actually_be_normalised():
         dataclasses.replace(DOSE_RESPONSE_BENCHMARK, normalisation="percent")
 
 
-def test_the_slope_and_the_plateau_cannot_both_hold():
-    """ANCHOR, and a structural result about the scheme rather than about a fit.
+def test_the_slope_and_the_plateau_are_compatible_once_measured_the_same_way():
+    """ANCHOR, and the CORRECTION of a result this project previously recorded.
 
-    Jahn 1997 reports a peak Hill slope of 2.2 +/- 0.4 for alpha1beta2gamma2L. The project
-    anchors the absolute peak open probability at 0.750. THIS SCHEME CANNOT DO BOTH.
-    Scanned over E in [0.1, 1000] and D in [1e-3, 1000] -- 33 x 31 points, four and six
-    decades -- at a fixed K_d:
+    THE OLD CLAIM, now withdrawn: "the measured slope and the assumed plateau cannot both
+    hold -- they are more than two sigma apart at every parameter set satisfying the
+    other". That was an artefact of the measurement, not a property of the scheme.
 
-      * the steepest PEAK curve with an absolute peak P_o,max inside [0.73, 0.77] has
-        nH = 1.33 (at E = 3.16, D = 1e-3);
-      * every parameter set reaching nH >= 1.8 has an absolute peak P_o,max >= 0.99;
-      * nH up to 2.46 IS reachable, but only with P_o,max near 1.
+    Jahn et al. report "a Hill-type slope of 2.2 +/- 0.4 OVER 1-10 uM" against an EC50 of
+    11.6 uM -- a fit to the RISING PHASE, 0.086-0.862 x EC50, entirely below EC50. The old
+    sweep instead regressed over the 2-98% band of the WHOLE curve. For a Hill curve those
+    two agree exactly, which is why the distinction went unnoticed; for THIS scheme they do
+    not, because its logit curve bends between a low-agonist limiting slope of 2 (the
+    number of binding sites) and a flatter slope through EC50.
 
-    So the measured slope and the assumed plateau are more than two sigma apart at every
-    parameter set that satisfies the other. One of them is wrong, or the scheme is: a single
-    open state reached only from the doubly-liganded closed state cannot be both that steep
-    and that leaky. Note which side is sourced -- the slope is published, the 0.750 is one
-    of the project's own fit TARGETS (`parameters._NOMINAL_DEFECT`) -- and that the
-    equilibrium algebra does NOT settle it, because the equilibrium curve's shape depends
-    only on F = 1 + E + D while its plateau is E/F, so those two ARE independent there and
-    the conflict is specific to the PEAK observable.
+    The window was recorded in `fitting/data.py` beside the comparison all along. It was
+    written down and not acted on, which is the more useful half of this lesson.
 
-    This is the test that would notice if the scheme, the peak protocol or the slope
-    measurement changed. The grid is coarsened to 11 x 9 to keep it under a second; the
-    conclusion is an order-of-magnitude statement and does not need the fine grid.
+    Measured the way the source measured it, at the assumed plateau:
+
+      * steepest rising-phase slope with P_o,max in [0.73, 0.77] is 1.69 on a 33 x 31
+        grid, against 1.33 for the whole-curve regression on the same grid;
+      * the gap to the published 2.2 +/- 0.4 falls from 2.2 sigma to 1.3 sigma, which is
+        ordinary agreement, not a contradiction;
+      * slope >= 1.8 at the plateau needs P_o,max >= ~0.91, not >= 0.99.
+
+    So the scheme and the measurement are compatible, and nothing needs to be explained
+    away. What survives is softer and still worth having: this scheme is a little flatter
+    on the rising phase than the central published value, so a genuinely steeper curve
+    would still be evidence against it -- see the companion assertion on the two-site
+    maximum, which is what the slope CAN rule on.
+
+    Grid coarsened to 11 x 9 as before, which costs some of the maximum: the fine grid's
+    best point (E = 3.16) is not on the coarse one, so the figures below are 1.58 rather
+    than 1.69 and 1.55 sigma rather than 1.28. The conclusion is unchanged, and the
+    assertions are written against what the coarse grid actually produces rather than
+    against the headline numbers, so this test cannot pass by quoting the docstring.
     """
+    from circuitpharm.models.base import JAHN1997_SLOPE_WINDOW_REL, hill_slope
+
     koff, alpha, r_rate = 0.180415, 0.30, 0.002
     concs = np.logspace(-2.0, 4.5, 300)
 
-    def slope_and_max(e_val, d_val):
+    def measured(e_val, d_val):
         m = KineticAllosteryModel(kon=koff / 50.0, koff=koff, beta=alpha * e_val,
                                   alpha=alpha, d=r_rate * d_val, r=r_rate)
         y = np.asarray(m.peak_dose_response(concs), dtype=float)
-        mx = float(y.max())
-        yn = y / mx
-        sel = (yn > 0.02) & (yn < 0.98)
-        a = np.vstack([np.log10(concs[sel]), np.ones(int(sel.sum()))]).T
-        b = np.log(yn[sel] / (1.0 - yn[sel]))
-        coef, *_ = np.linalg.lstsq(a, b, rcond=None)
-        return float(coef[0] / np.log(10.0)), mx
+        return (hill_slope(concs, y),                                   # whole curve
+                hill_slope(concs, y, window_rel=JAHN1997_SLOPE_WINDOW_REL),  # as Jahn did
+                float(y.max()))
 
-    steepest_at_plateau = 0.0
+    steepest_whole = steepest_rising = 0.0
     lowest_plateau_when_steep = 1.0
     for log_e in np.linspace(-1.0, 3.0, 11):
         for log_d in np.linspace(-3.0, 3.0, 9):
-            n_h, p_max = slope_and_max(10.0 ** log_e, 10.0 ** log_d)
+            whole, rising, p_max = measured(10.0 ** log_e, 10.0 ** log_d)
             if 0.73 <= p_max <= 0.77:
-                steepest_at_plateau = max(steepest_at_plateau, n_h)
-            if n_h >= 1.8:
+                steepest_whole = max(steepest_whole, whole)
+                steepest_rising = max(steepest_rising, rising)
+            if rising >= 1.8:
                 lowest_plateau_when_steep = min(lowest_plateau_when_steep, p_max)
 
-    assert steepest_at_plateau < 1.5, (
-        f"a PEAK Hill slope of {steepest_at_plateau:.3f} is now reachable at P_o,max 0.75; "
-        f"the recorded structural limit is ~1.33 and the conflict in "
-        f"knowledge/11-identifiability.md would need rewriting")
-    assert lowest_plateau_when_steep > 0.95, (
-        f"nH >= 1.8 is now reachable at P_o,max {lowest_plateau_when_steep:.4f}")
-    assert steepest_at_plateau + 0.4 < 2.2, (
-        "the published slope 2.2 - 1 sigma must still be out of reach at the plateau")
+    # the two measurements of the SAME curves differ by about 0.35 -- this is the finding
+    assert steepest_rising > steepest_whole + 0.25, (
+        f"rising-phase {steepest_rising:.3f} vs whole-curve {steepest_whole:.3f}: the two "
+        f"measurements have converged, so the correction recorded in "
+        f"knowledge/12-inference.md Section 2 no longer has a cause and needs re-examining")
+
+    # and measured consistently, the published value is NOT out of reach
+    gap_sigma = (2.2 - steepest_rising) / 0.4
+    assert gap_sigma < 2.0, (
+        f"the published slope is {gap_sigma:.2f} sigma above the steepest rising-phase "
+        f"slope at the plateau; the withdrawn claim was that this exceeds 2 sigma")
+    assert steepest_rising == pytest.approx(1.58, abs=0.08)   # 1.69 on the fine grid
+
+    # slope >= 1.8 no longer demands a plateau of 0.99
+    assert lowest_plateau_when_steep < 0.95, (
+        f"slope >= 1.8 still needs P_o,max {lowest_plateau_when_steep:.4f}")
+
+
+def test_two_binding_sites_can_produce_the_published_slope():
+    """What the slope CAN rule on, which is not what Jahn et al. used it for.
+
+    Jahn et al. read 2.2 +/- 0.4 as evidence for at least THREE binding sites. It is not:
+    a two-site scheme has a limiting log-log slope of exactly 2 at low agonist, and a Hill
+    fit over the rising phase samples that limit. Scanned over E and D, the steepest
+    rising-phase slope this TWO-site scheme can produce is ~2.0 -- within half a sigma of
+    the published value.
+
+    So the published slope does not discriminate two sites from three, and the inference
+    drawn from it in the source does not follow. This is a statement about the measurement,
+    not a correction to the receptor: three sites may well be right for other reasons.
+    """
+    from circuitpharm.models.base import JAHN1997_SLOPE_WINDOW_REL, hill_slope
+
+    koff, alpha, r_rate = 0.180415, 0.30, 0.002
+    concs = np.logspace(-2.0, 4.5, 300)
+    best = 0.0
+    for log_e in np.linspace(-1.0, 3.0, 11):
+        for log_d in np.linspace(-3.0, 3.0, 9):
+            m = KineticAllosteryModel(kon=koff / 50.0, koff=koff, beta=alpha * 10.0 ** log_e,
+                                      alpha=alpha, d=r_rate * 10.0 ** log_d, r=r_rate)
+            y = np.asarray(m.peak_dose_response(concs), dtype=float)
+            best = max(best, hill_slope(concs, y, window_rel=JAHN1997_SLOPE_WINDOW_REL))
+
+    assert best == pytest.approx(2.0, abs=0.15)
+    assert (2.2 - best) / 0.4 < 1.0, (
+        f"a two-site scheme reaches a rising-phase slope of {best:.3f}; if this ever falls "
+        f"far below the published 2.2 - 1 sigma, the slope WOULD discriminate site count "
+        f"and knowledge/12-inference.md Section 2 needs rewriting the other way")
+
+
+def test_the_peak_observable_is_protocol_dependent():
+    """PEAK is not one observable unless the application duration is stated.
+
+    The peak of a DESENSITISING response depends on how long the agonist is applied: at low
+    agonist the response is still rising when a short application ends, so the measured
+    peak and the concentration at which it half-saturates both move. Measured on this
+    scheme at the plateau-respecting parameters, varying only the application length:
+
+        2 ms   -> EC50 ~300 uM      1000 ms -> EC50 ~39 uM
+
+    a SEVENFOLD shift from the protocol alone, with the rising-phase slope moving 1.69-1.79
+    over the same range. `PEAK_APPLICATION_MS` is 300 ms here; Jahn et al. used ultra-fast
+    exchange and the abstract does not state the application length, so their EC50 of
+    11.6 uM and this scheme's are not strictly comparable either.
+
+    This is the third observable-mismatch class in the project, after PEAK-vs-EQUILIBRIUM
+    (P1) and absolute-vs-normalised (P4): same tag, same units, different protocol. It is
+    pinned because a future change to PEAK_APPLICATION_MS would silently move every peak
+    EC50 the project reports.
+    """
+    from circuitpharm.models.base import JAHN1997_SLOPE_WINDOW_REL, hill_slope
+
+    koff, alpha, r_rate = 0.180415, 0.30, 0.002
+    m = KineticAllosteryModel(kon=koff / 50.0, koff=koff, beta=alpha * 3.16, alpha=alpha,
+                              d=r_rate * 1e-3, r=r_rate)
+    concs = np.logspace(-2.0, 4.0, 140)
+
+    def ec50_for(ms):
+        y = np.asarray(m.peak_dose_response(concs, application_ms=ms), dtype=float)
+        return float(np.interp(0.5, y / y.max(), concs)), hill_slope(
+            concs, y, window_rel=JAHN1997_SLOPE_WINDOW_REL)
+
+    ec50_short, slope_short = ec50_for(2.0)
+    ec50_long, slope_long = ec50_for(1000.0)
+
+    assert ec50_short / ec50_long > 5.0, (
+        f"peak EC50 moved only {ec50_short / ec50_long:.1f}x between a 2 ms and a 1000 ms "
+        f"application ({ec50_short:.1f} -> {ec50_long:.1f} uM); the protocol dependence "
+        f"this test exists to pin has gone")
+    assert slope_short == pytest.approx(1.77, abs=0.10)
+    assert slope_long == pytest.approx(1.69, abs=0.10)
 
 
 def _peak_ec50_and_slope(model) -> tuple[float, float]:

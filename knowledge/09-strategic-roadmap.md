@@ -1286,14 +1286,23 @@ write-up in `knowledge/12-inference.md`.
    a normalised dataset constrains the SHAPE of a curve and carries no information about
    absolute open probability, so no absolute number may be quoted from a fit to one.
 
-2. **THE PUBLISHED HILL SLOPE AND THE ASSUMED PLATEAU ARE INCOMPATIBLE IN THIS SCHEME.**
-   Over `E ∈ [0.1, 1000]` × `D ∈ [1e-3, 1000]`: the steepest PEAK curve with absolute peak
-   `P_o,max ∈ [0.73, 0.77]` has `nH = 1.33`, and every parameter set reaching `nH ≥ 1.8`
-   has `P_o,max ≥ 0.99`. Jahn 1997 measures `nH = 2.2 ± 0.4`; this project assumes
-   `P_o,max = 0.750`. They cannot both hold. **This is P5's and P6's most promising
-   target** — it is a structural statement about the scheme, independent of any fit, and
-   the sourced side is the slope while the 0.750 is one of the project's own fit targets
-   (P0-13). Do not resolve it by fitting harder.
+2. **~~THE PUBLISHED HILL SLOPE AND THE ASSUMED PLATEAU ARE INCOMPATIBLE IN THIS SCHEME.~~
+   WITHDRAWN — it was an artefact of the measurement.** The sweep compared Jahn 1997's
+   `nH = 2.2 ± 0.4`, which the abstract states is the slope "between 0.001 and 0.01 mM
+   GABA", against a regression over the WHOLE curve. A Hill curve has the same slope
+   everywhere so the distinction is invisible there; a receptor scheme's logit curve bends,
+   and for this one the two measurements differ by ~0.4. Measured as the source measured
+   it, the steepest rising-phase slope at `P_o,max ∈ [0.73, 0.77]` is **1.689**, and the
+   gap to the published value falls from 2.18 σ to **1.28 σ**. Corroborated three ways:
+   published whole-curve fits for α1β2γ2 peak currents are 1.3–1.6 (where this scheme is);
+   a two-site scheme reaches a rising-phase slope of ~2.0, so the slope does not establish
+   three binding sites, and cryo-EM shows two; and Hamill commented on that very inference
+   in the same issue (PMID 9480006). **What replaced it as a finding**: the PEAK observable
+   is protocol-dependent, its EC₅₀ moving sevenfold with the application duration — a third
+   mismatch class. The process lesson is the sharper one: `fitting/data.py` recorded
+   "(slope over 1-10 uM)" in the same comment block as the comparison and the comparison
+   was made anyway, so the window is now an argument to `models.base.hill_slope` rather
+   than a remark beside it. See `knowledge/12-inference.md` §2.
 
 3. **THE SAMPLER HAD A DEFECT THAT ONLY OVER-DISPERSED STARTS EXPOSE.** The stretch move
    cannot propose a contraction below `1/a`, so at the canonical `a = 2` a walker across a
