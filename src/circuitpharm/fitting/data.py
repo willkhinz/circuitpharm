@@ -453,59 +453,120 @@ JAHN1997_PEAK_CRC = DoseResponseDataset(
 #: perfectly and measures a neighbouring quantity (knowledge/06-source-provenance.md).
 #: Attaching one of those numbers to a citation I have not read against the claim is
 #: exactly forbidden pattern 5.5, so the gap is recorded instead of filled.
-# WHY THESE ARE STILL MISSING, re-checked 2026-10-11 and the answer has CHANGED SHAPE.
-# It is no longer "the papers cannot be found". Every document named below was located and
-# is OPEN ACCESS; what blocks them is this environment's egress policy. Verified directly:
-# pmc.ncbi.nlm.nih.gov, europepmc.org, rupress.org and discovery.ucl.ac.uk all return
-# "CONNECT tunnel failed, response 403" through the agent proxy, and WebFetch fails DNS
-# resolution for every host. Web SEARCH works, which is how the abstracts below were read.
+# WHY THESE ARE STILL MISSING, re-checked 2026-10-10 and the answer has CHANGED AGAIN.
 #
-# So this is an infrastructure gap, not a literature gap, and it is closed by allowing
-# those hosts rather than by more searching. Each entry names the exact document and what
-# it is expected to contain, so whoever has a working fetch path can finish in one pass.
+# 2026-10-11 (cloud): every document below was located and is OPEN ACCESS; what blocked
+# them was an egress policy. pmc.ncbi.nlm.nih.gov, europepmc.org, rupress.org and
+# discovery.ucl.ac.uk all returned "CONNECT tunnel failed, response 403", and WebFetch
+# failed DNS for every host. Only abstracts could be read, via web search.
+#
+# 2026-10-10 (local): pmc.ncbi.nlm.nih.gov IS reachable and serves full text. All SEVEN
+# open-access targets were read in full. europepmc.org, rupress.org and discovery.ucl.ac.uk
+# still return 403 (confirmed with a browser user agent, so it is a real block, not UA
+# sniffing) -- but every target had a PMC copy, so that no longer matters.
+#
+# THE GAPS ARE THEREFORE NO LONGER "UNREAD". They are now characterised, and two of the
+# three turn out to be harder than "find the number", because the number is not unique:
+#
+#   * DEACTIVATION is protocol-dependent, measured. Barberis 2007 reports the SAME receptor
+#     in the SAME study at 52.5 ms (2 ms pulse) and 364 ms (3 s pulse) -- 6.9x from pulse
+#     duration alone. Dixon 2014's 5.9 ms differs from Barberis's 2 ms-pulse 52.5 ms by
+#     8.9x at nearly the same pulse duration, because Dixon fitted TWO exponentials where
+#     Barberis fitted THREE and Barberis's 221 ms component carries 44.3 of its 52.5 ms.
+#   * MEAN OPEN TIME is definition-dependent, spanning 1.42-7.25 ms across sources, and no
+#     source states one for alpha1beta2gamma2L at all.
+#
+# This is the same failure class as PEAK-vs-EQUILIBRIUM (P1), absolute-vs-normalised (P4)
+# and PEAK's application dependence (P6): same tag, same units, different protocol. It is
+# recorded rather than averaged away. scripts/literature_gamma2.py holds every reading with
+# its conditions and PRINTS the derived quantities; knowledge/14-literature.md is the
+# reading. Nothing below has been entered as a dataset yet -- see each entry for why.
 #
 # GRADING, because the distinction is the whole point of this project:
-#   [VERIFIED] read here, verbatim, via web search of the abstract.
-#   [LEAD]     reported by a literature-search agent from a search-result excerpt and NOT
-#              independently confirmed here. A lead is a place to look, NOT a number to use.
+#   [VERIFIED]   read here in the FULL TEXT at the stated URL, with conditions attached.
+#   [ABSTRACT]   read here, but only the PubMed abstract exists / was reachable.
+#   [LEAD]       reported by a literature-search agent and NOT independently confirmed.
+#   [UNREAD]     located, content not obtained.
+#
+# TWO CITATION ERRORS IN THE PREVIOUS VERSION OF THIS BLOCK, corrected below: Dixon 2014 is
+# J Biol Chem 289(9), not 289(8); Barberis 2007 is Eur J Neurosci 25(9):2726-2740, not
+# 26(7). Both were carried from agent-supplied metadata.
 MISSING_DATASETS = {
     "deactivation_peak_pulse": (
         "A macroscopic deactivation time course for alpha1beta2gamma2 after a brief "
-        "saturating GABA pulse, with the pulse duration, concentration, temperature and n "
-        "stated. This is the dataset that makes an absolute rate (k_off) identifiable at "
-        "all; without it the fit determines only ratios. "
-        "TARGET: Dixon, Sah, Lynch & Keramidas 2014, J Biol Chem 289(8):5399-5411 "
-        "(PMID 24425869, PMC3937617, open access), reported [LEAD] to give a weighted "
-        "deactivation tau of 5.9 +/- 0.5 ms (n = 10) for alpha1beta2gamma2L. NOT CONFIRMED "
-        "here -- a targeted search for that value returned the citation but not the number, "
-        "so it is a lead and nothing has been entered on it. The pulse duration, "
-        "concentration, temperature and the individual components behind that weighted tau "
-        "are all in the full text. SECOND TARGET: Dixon et al. 2015, Br J Pharmacol "
-        "(PMC4507157, open access), which fits two exponentials to the same preparation. "
-        "BLOCKED: egress policy, not availability."),
+        "saturating GABA pulse. This is the dataset that makes an absolute rate (k_off) "
+        "identifiable at all; without it the fit determines only ratios. "
+        "STATUS: the numbers now exist and the gap has changed character -- what is "
+        "missing is a TIME COURSE, and what was found is weighted scalars plus one full "
+        "component set. "
+        "[VERIFIED] Dixon, Sah, Lynch & Keramidas 2014, J Biol Chem 289(9):5399-5411 "
+        "(PMID 24425869, PMC3937617): weighted deactivation tau = 5.9 +/- 0.5 ms (n = 10) "
+        "for human alpha1beta2gamma2L, HEK293 outside-out, room temperature (no value "
+        "given), <=1 ms application of 3 mM GABA, -70 mV. The previously [LEAD] value is "
+        "CONFIRMED VERBATIM. Error statistic is NOT declared by the paper. The individual "
+        "components behind that weighted tau are NOT in the full text -- the only 'two "
+        "exponential' fit mentioned is of the SIMULATED current. "
+        "[VERIFIED] Barberis et al. 2007 (PMC1950087) gives a FULLY SPECIFIED triple "
+        "exponential for rat alpha1beta2gamma2S: tau = 2.8 +/- 0.3, 33.4 +/- 4.6, 221.35 "
+        "+/- 14.9 ms with areas 0.57 +/- 0.04, 0.23 +/- 0.02, 0.20 +/- 0.03 (SEM, n = 6), "
+        "2 ms pulse of 10 mM GABA, 22-24 C, tau_w = 52.5 +/- 2.9 ms. Recomputing "
+        "sum(A_i tau_i) gives 53.55 ms, 0.36 SEM from the published tau_w -- so this is "
+        "the ONE observable found that can be reconstructed from parameters the source "
+        "itself fitted, with no extrapolation. It is gamma2S, and it disagrees with Dixon "
+        "by 8.9x for the reasons in the header. "
+        "NOT ENTERED because using either requires deciding WHICH quantity the project's "
+        "deactivation observable is: pulse duration, component count and fit window must "
+        "all be declared first, exactly as PEAK_APPLICATION_MS had to be."),
     "single_channel_mean_open_time": (
         "Mean open time for alpha1beta2gamma2L. Would replace "
-        "gabaa_kinetics.FIT_FIXED_ALPHA -- currently a CONVENTION -- with a measurement "
-        "and make the whole kinetic fit data-determined. Jahn et al. 1997 is the right "
-        "preparation, but [VERIFIED] its abstract reports BURST duration (10.3 +/- 3.0 ms), "
-        "which is a different quantity, and NeuroReport 1997 has no PMC copy -- it may not "
-        "contain a mean open time at all, which is worth establishing before chasing it. "
-        "BETTER TARGETS, both open access and both containing explicit open-time "
-        "decompositions: Keramidas & Harrison 2008, J Gen Physiol 131(2):163-181 "
-        "(PMC2213567) and 2010, J Gen Physiol 135(1):59-75 (PMC2806416), for "
-        "alpha1beta2gamma2S -- note the SHORT gamma2 splice variant, which is not this "
-        "project's receptor and must be recorded as a substitution if used. A third, "
-        "Li et al. 2008, Br J Pharmacol (PMC2241790), gives per-patch open-time components "
-        "for alpha1beta2gamma2L at 50 uM GABA (sub-saturating, ~EC40). BLOCKED: egress."),
+        "gabaa_kinetics.FIT_FIXED_ALPHA -- currently a CONVENTION -- with a measurement. "
+        "STATUS: NO SOURCE STATES ONE FOR gamma2L. Four readings exist, spanning 5.1x, and "
+        "the spread is DEFINITION rather than disagreement. "
+        "[ABSTRACT] Jahn et al. 1997, NeuroReport 8(16):3443-3446 (PMID 9427304, no PMC "
+        "copy, paywalled): the abstract contains NO mean open time, only BURST duration "
+        "10.3 +/- 3.0 ms. Whether the full text states one REMAINS UNKNOWN -- this is as "
+        "far as the abstract can settle it. "
+        "[VERIFIED, DERIVED] Keramidas & Harrison 2008 (PMC2213567), rat "
+        "alpha1beta2gamma2S, 10 mM GABA, HEK293 excised outside-out at 21 +/- 1 C: Table "
+        "III gives tau_O = 0.49/2.58/5.17 ms with areas 0.26/0.49/0.25 (M-mode, n = 10) "
+        "and 0.59/4.22/13.2 ms with areas 0.18/0.41/0.41 (H-mode, n = 5). Area-weighted "
+        "means 2.68 and 7.25 ms are COMPUTED, not stated. Error statistic NOT declared. "
+        "[VERIFIED, DERIVED] Li et al. 2008 (PMC2241790), rat alpha1beta2gamma2L -- the "
+        "right splice variant -- 50 uM GABA (SUB-SATURATING), HEK293 CELL-ATTACHED, room "
+        "temperature: Table 1 gives OT = 0.28 +/- 0.05 / 3.0 +/- 0.7 / 7.3 +/- 3.2 ms "
+        "(s.d., n = 4) with fractions 0.22/0.65/0.13; area-weighted mean 2.96 ms, COMPUTED. "
+        "NOTE the control rows are reproduced from Li et al. 2007b (J Physiol 584:789-800), "
+        "so cite THAT for these open times. "
+        "[VERIFIED] Barberis et al. 2007 (PMC1950087) is the only source to STATE a mean "
+        "open time for alpha1beta2gamma2: 1.42 +/- 0.05 ms (SEM, n = 6) -- but over a 4 s "
+        "window AFTER a 2 ms pulse, so NON-STATIONARY, mixing early high-occupancy "
+        "openings with late brief singly-bound ones. Its steady-state intraburst "
+        "distribution is in Figure 6C and could not be read. "
+        "NOT ENTERED because 'mean open time' is not one quantity: 1.42 "
+        "(non-stationary), 2.68 (intraburst M-mode), 2.96 (intracluster, sub-saturating), "
+        "7.25 (intraburst H-mode). FIT_FIXED_ALPHA needs a stated choice among these, and "
+        "the two intraburst/intracluster readings nearest the project's regime agree at "
+        "2.68 and 2.96 ms across BOTH splice variants, which is the useful fact."),
     "holdout": (
-        "Any observable not used in fitting -- paired-pulse recovery at a stated interval, "
-        "a desensitisation onset time course, or a PAM concentration-response at a "
-        "different ambient GABA. P5's cross-validation and P6's falsification bound both "
-        "consume it, so until one exists neither can be scored out-of-sample. "
-        "TARGET: Barberis et al. 2007, Eur J Neurosci 26(7) (PMC1950087, open access), "
-        "outside-out patches from HEK293 at 10 mM GABA with 3 s pulses -- desensitisation "
-        "onset for alpha1beta2gamma2, which is both a holdout and the kinetic observable "
-        "P6 identified as the place the two schemes actually differ. BLOCKED: egress."),
+        "Any observable not used in fitting. P5's cross-validation and P6's falsification "
+        "bound both consume it, so until one exists neither can be scored out-of-sample. "
+        "STATUS: the target was read and is PARTLY unusable, with one usable alternative "
+        "inside the same paper. "
+        "[VERIFIED] Barberis et al. 2007, Eur J Neurosci 25(9):2726-2740 (PMID 17561840, "
+        "PMC1950087), rat alpha1beta2gamma2S, HEK293 outside-out pooled with small lifted "
+        "whole cells, 22-24 C, ultrafast exchange (60-100 us), 3 s pulses of 10 mM GABA. "
+        "Desensitisation onset: tau_1 = 2.9 +/- 0.1 ms, A_1 = 0.56 +/- 0.025, steady-state "
+        "weight 0.076 +/- 0.013, and steady-state:peak measured at 200 ms = 0.21 +/- 0.02. "
+        "BUT tau_2 and tau_3 are reported ONLY in Figure 4C, so the onset time course "
+        "CANNOT be reconstructed -- and the source is INTERNALLY INCONSISTENT about n for "
+        "this measurement: the text says n = 7, the Figure 4 caption says three patches "
+        "for alpha1beta2gamma2. That ambiguity is recorded, not resolved. "
+        "[VERIFIED] BETTER HOLDOUT, same paper, fully stated as a scalar: paired-pulse "
+        "recovery at a 100 ms gap = 0.33 +/- 0.03 (Table 1; Fig. 5 caption gives n = 8). "
+        "This is a stated interval with a stated value and needs no reconstruction, which "
+        "makes it the cheapest honest holdout available. "
+        "NOT ENTERED pending the protocol-declaration decision above, since a paired-pulse "
+        "observable must declare its pulse duration (2 ms here) and gap."),
 }
 
 
