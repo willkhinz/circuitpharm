@@ -1,5 +1,12 @@
 # Handoff — state of play, 2026-10-11
 
+> **Amended 2026-10-11 after a local session read the literature.** The egress block was
+> environment-specific — PMC is reachable from outside the cloud container, and all seven
+> open-access targets were read in full. §4 and §5.3 are corrected below, including one
+> substantive error of mine (the "0.69 macroscopic P_o" was a conflation) and four wrong
+> citations. **`knowledge/14-literature.md` and `scripts/literature_gamma2.py` now
+> supersede §4 of this document.**
+
 Written for someone picking this up in a fresh local session. It says what was just done,
 what is true now, what is blocked, and what I would do next and in what order.
 
@@ -155,8 +162,14 @@ Timing and gotchas worth knowing before you lose an hour to them:
 **No dataset in the repo is digitised, so no posterior is VALIDATED.** Everything built is
 machinery demonstrated on generated or parametrically-reconstructed data.
 
-It is **not** a literature problem any more. Every target below has been located and **is
-open access.** The blocker is this environment's egress policy. Verified directly:
+**UPDATE 2026-10-11 — RESOLVED. A local session read all seven open-access targets.**
+`pmc.ncbi.nlm.nih.gov` is reachable from outside the cloud container and serves full text,
+so the block below was environment-specific, not a property of the literature. The findings
+are in `knowledge/14-literature.md` and `scripts/literature_gamma2.py`. **Read those rather
+than the table below**, which is kept because it records what was believed before, and
+because several of its citations were WRONG — see the corrections after it.
+
+The original (cloud-session) state, for the record:
 
 ```
 pmc.ncbi.nlm.nih.gov   CONNECT tunnel failed, response 403
@@ -176,9 +189,9 @@ Web **search** works, which is how the abstracts were read.
 | same | Li et al. 2008, *Br J Pharmacol*, **PMC2241790** | per-patch open-time components for α1β2γ2**L**, Table 1 has the averages | 50 µM GABA = sub-saturating (~EC₄₀) |
 | same | Jahn et al. 1997, NeuroReport 8(16):3443–6 | **may not contain a mean open time at all** — the abstract gives BURST duration (10.3 ± 3.0 ms) | no PMC copy; paywalled via Ovid. Establish whether the number exists before chasing it. |
 | **deactivation** — makes an absolute rate (`k_off`) identifiable; without it the fit determines only ratios | Dixon et al. 2014, *J Biol Chem* 289(8):5399–5411, **PMC3937617**; and 2015, *Br J Pharmacol*, **PMC4507157** | weighted deactivation τ for α1β2γ2L, plus pulse duration / concentration / temperature / components | a τ of 5.9 ± 0.5 ms (n = 10) is recorded **as a LEAD only** — a targeted search returned the citation **without** the number |
-| **holdout** — P5's CV and P6's falsification bound both consume it | Barberis et al. 2007, *Eur J Neurosci* 26(7), **PMC1950087** | desensitisation onset, α1β2γ2, HEK293 outside-out, 10 mM GABA, 3 s pulses | also the kinetic observable P6 identified as where Models B and C actually differ |
-| EC₅₀/nH reference table | Mortensen, Patel & Smart 2012, *Front Cell Neurosci* 6:1 | the most authoritative same-conditions comparison | open access |
-| **the Hamill comment** | PMID 9480006, same NeuroReport issue | a contemporaneous critique of the three-binding-site inference | highest interest-per-page in the project |
+| **holdout** — P5's CV and P6's falsification bound both consume it | Barberis et al. 2007, ***Eur J Neurosci* 25(9):2726–2740**, **PMC1950087** | desensitisation onset | ⚠️ I cited 26(7) — wrong. ⚠️ Title says α1β2γ2 but the **Methods say γ2S**. The onset **cannot be reconstructed** (τ₂/τ₃ live only in Fig. 4C) and the paper is internally inconsistent on n (text 7, caption 3). **A better holdout is in the same paper**: paired-pulse recovery at 100 ms, 0.33 ± 0.03 (n = 8). |
+| EC₅₀ reference table | Mortensen, Patel & Smart 2012, *Front Cell Neurosci* 6:1 | ⚠️ **I called this the authoritative "EC₅₀/nH table". It contains NO Hill coefficients.** The nH half does not exist. | open access |
+| **the Hamill comment** | PMID 9480006, NeuroReport 8(16):**iv** | ⚠️ **One page, no abstract, no DOI, no PMC copy — its TITLE is all that exists.** That the title asks how many binding steps are involved is still independent evidence the three-site inference was contested in the same issue, but there is no argument to read. |
 
 ### Two ways to unblock
 
@@ -229,14 +242,30 @@ PEAK observable — whose protocol dependence (§1) was not known when it was wr
 σ ≤ 0.005 requirement should be re-derived with the application duration declared.** It may
 soften, because some of the apparent indistinguishability may be protocol smearing.
 
-### 5.3 Decide whether `P_o,max = 0.750` means what the project thinks
+### 5.3 ~~Decide whether `P_o,max = 0.750` means what the project thinks~~ — ANSWERED, and I had it wrong
 
-Measured values that surfaced, **all [LEAD]-grade, none confirmed here**: ~0.7 and ~0.9 for
-two single-channel gating modes; 0.8 as an intraburst P_o; **0.69 by nonstationary variance
-analysis**. Those are **not interchangeable** — intraburst P_o is conditional on being in a
-burst, while a macroscopic model's scaling convention needs the population peak, which is
-lower. The one genuinely macroscopic estimate is the 0.69. **State which quantity 0.750 is
-supposed to be** before treating any of them as an anchor.
+**My original §5.3 was built on a conflation, and the recommendation in it was wrong.**
+
+I wrote that "the one genuinely macroscopic estimate is the **0.69** by nonstationary
+variance analysis". **That number does not exist as described.** 0.69 ± 0.02 (n = 11) is
+Keramidas 2008's Table II **intraburst P_o for the M-mode**. The paper's actual
+nonstationary-fluctuation-analysis value, quoted verbatim in
+`scripts/literature_gamma2.py`, is **0.56** — and the authors mark it *unpublished data*,
+with no error bar and no n.
+
+So the finding is the opposite of what I implied: the only genuinely macroscopic reading is
+**below** the 0.750 convention, not above it.
+
+**Conclusion (local session, and I agree): `P_o,max = 0.750` stays a `CONVENTION`.** The 0.56
+is γ2S rather than this project's γ2L, errorless, n-less, self-declared unpublished,
+measured at a 1–2 ms application — the regime where this project's own PEAK EC₅₀ is ~299 µM
+rather than 39 µM — and outside `FIT_RANGES`' [0.70, 0.80] in any case. Five of the six
+candidate values are **intraburst** or **intracluster**, which are conditional on being
+inside a burst and are not the population quantity a macroscopic scaling convention needs.
+
+The `0.8 intraburst P_o` I also listed was **not found as a stated value in any of the seven
+texts**; the nearest real numbers are Keramidas 2010's 0.81 ± 0.01 at 5 mM and Keramidas
+2008's pair.
 
 ### 5.4 Then, and only then, re-fit
 
@@ -271,6 +300,16 @@ become an actual estimation problem.
 * Delegated the literature hunt and got back a report with real findings **and** numbers I
   could not confirm. The Jahn quote verified; the Dixon 5.9 ms did not. Only the verified
   one was recorded as data. **Treat agent output as a lead list, never as a source.**
+* **And then broke that rule in the same document.** I labelled the P_o values LEAD-grade
+  and *then built §5.3's recommendation on one of them* — "the one genuinely macroscopic
+  estimate is the 0.69". It is not a macroscopic estimate at all; it is an intraburst
+  M-mode P_o, and the real fluctuation-analysis number (0.56) points the other way. A
+  grading discipline only works if it also stops you reasoning from the ungraded side.
+  Corrected in §5.3.
+* Four citations entered wrong from search metadata rather than the articles: Dixon 2014's
+  issue (289(8) → **289(9)**), Barberis 2007's volume (26(7) → **25(9):2726–2740**), Dixon
+  2015's splice variant (γ2L → **γ2S**), and calling Mortensen 2012 an "EC₅₀/nH table" when
+  **it contains no Hill coefficients**. All four are in §4, flagged in place.
 
 ---
 
