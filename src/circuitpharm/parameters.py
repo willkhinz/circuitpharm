@@ -25,7 +25,8 @@ WHAT IS AVAILABLE, honestly:
   operational / "declared"  Model A's own stated Hill parameters. UNCALIBRATED, and note
                             that two of them (po_max 0.75, tau_deact 15 ms) ARE the
                             project's fit targets rather than anything fitted, so using
-                            them as anchors is circular.
+                            them as anchors is circular. The literature cannot replace
+                            po_max either -- see _NOMINAL_DEFECT["operational"].
 
   extended_desens           NOTHING. There is no fit for Model C, and its defaults have no
                             origin. `get()` raises rather than handing back round numbers
@@ -59,9 +60,21 @@ _NOMINAL_DEFECT = {
         "kon/koff from the superseded 1000 uM / 0.30 ms fit, giving K_d = 29.62 uM, a "
         "value in no fit, no commit and no document. Reproduces neither anchor: EC50 "
         "6.34 uM against 20, P_o,max 0.8382 against 0.750."),
+    # THE SINGLE HOME of the P_o,max verdict. It was briefly duplicated into a
+    # PO_MAX_PROVENANCE module constant beside a NOMINAL_DEFECT = 0.750 literal; both were
+    # removed. 0.750 has exactly one definition, gabaa_kinetics.FIT_TARGETS["po_max"], and
+    # a second literal copy would be E12/E22 re-forming (see dynamic_range.py's note).
     "operational": (
-        "declared round numbers; po_max 0.75 and tau_deact 15 ms are the project's own fit "
-        "TARGETS rather than fitted values, so they are circular if used as anchors."),
+        "declared round numbers; tau_deact 15 ms is the project's own fit TARGET rather "
+        "than a fitted value; po_max is FIT_TARGETS['po_max'], a convention that the "
+        "available measurements CANNOT REPLACE -- the quantity nearest to it is "
+        "conditional (5 of 6 literature readings are intraburst or intracluster) and the "
+        "one unconditional reading is 0.56 at an incomparable protocol: 1-2 ms "
+        "application, gamma2S not gamma2L, no error bar, no n, marked UNPUBLISHED DATA by "
+        "its own authors, and outside FIT_RANGES' [0.70, 0.80] in any case. So the "
+        "literature audit of 2026-10-10 did NOT license changing it, and recorded why. "
+        "See knowledge/14-literature.md section 5 and "
+        "`scripts/literature_gamma2.py --section po`."),
     "extended_desens": (
         "round numbers with no recorded origin (kon 0.012, koff 0.35, beta 0.60, "
         "alpha 0.10). Reproduces neither anchor: EC50 5.18 uM, P_o,max 0.8571."),
@@ -144,7 +157,9 @@ def get(model: str, which: Which = "fitted") -> tuple[dict, Quantity]:
         name="operational_declared_parameters", _value=rates, tier=Tier.UNCALIBRATED,
         provenance=("Model A's own declared Hill parameters. EC50 25 uM and nH 1.4 are "
                     "stated round numbers; po_max 0.75 and tau_deact 15 ms are the "
-                    "project's fit TARGETS."),
+                    "project's fit TARGETS. The 2026-10-10 literature audit found po_max "
+                    "unreplaceable from the literature rather than merely unmeasured; the "
+                    "reasoning is in _NOMINAL_DEFECT[\"operational\"], not repeated here."),
         promote_by="digitise a concentration-response and fit the Hill parameters to it",
         caveats=("two of these are the project's own fit targets, so using them as "
                  "independent anchors is circular",

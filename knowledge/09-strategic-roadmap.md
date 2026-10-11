@@ -924,6 +924,36 @@ prevent the defaults being mistaken for a calibration — it should be *amended*
 deleted, when P4 lands. Plus `pytest.raises(TypeError)` for each entry point called with
 no model.
 
+**P_o,max convention status (literature audit 2026-10-10).** The question whether
+`P_o,max = 0.750` can be replaced by a literature measurement is **resolved as unanswerable
+from the current literature**, rather than open pending a search. Five of six candidate
+readings in the corpus are conditional (intraburst or intracluster), and the only
+unconditional macroscopic reading is 0.56 (Keramidas 2008, nonstationary fluctuation
+analysis) — which is *below* the convention, not above it, and comes at an incomparable
+protocol: 1–2 ms application, γ2S rather than γ2L, no error bar, no n, marked **unpublished
+data** by its own authors, and outside `FIT_RANGES` [0.70, 0.80] in any case. The value
+therefore **stays 0.750**, defined once at `gabaa_kinetics.FIT_TARGETS["po_max"]`.
+See `knowledge/14-literature.md` §5 and `scripts/literature_gamma2.py --section po`.
+
+A first pass at this item asserted the value "stays 0.750 under `Basis.CONVENTION`". **That
+was false about the code** — `provenance.MODEL_PARAM_PROV[("operational", "po_max")]` records
+`Basis.FITTED`, and no test compared the two, so prose and code could have drifted exactly as
+E12/E22 did. The sentence now states what the code actually records, and
+`tests/test_literature.py::test_po_max_convention_matches_what_the_code_records` asserts it,
+so the claim cannot rot. The same pass also added a `NOMINAL_DEFECT = 0.750` literal and a
+duplicate `PO_MAX_CONVENTION = 0.750` to `parameters.py`, consumed by nothing but the test
+that asserted they existed; both are removed.
+
+**OPEN, and a judgement call rather than a measurement:** is `FITTED` the right basis? It
+means "set to make a different, anchored quantity come out right", but `po_max` **is** the
+anchor — `provenance.py` itself calls it "circular if used as an anchor" — and the audit now
+finds it a convention the literature cannot replace. `Basis.CONVENTION` ("a structural
+choice, not an empirical quantity") is arguably the more honest grade, with
+`FIT_FIXED_ALPHA` as the precedent for a value held fixed to keep a fit well-posed. **Not
+changed here**, because regrading a basis alters the project's provenance accounting and the
+counts `tests/test_provenance.py` defends, and that is a decision to take deliberately rather
+than as a side effect of a documentation fix.
+
 **P0 Definition of Done.** All thirteen closed; `pytest -q` shows **zero failures and no
 skips you introduced** — P0-5 and P0-6 keep every function callable, so nothing in this
 phase is allowed to `skip` a test as a way of closing an item; the five new anchor tests

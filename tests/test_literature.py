@@ -271,6 +271,58 @@ def test_gamma2L_po_readings_are_both_conditional():
     assert all("INTRABURST" in c["quantity"] or "CLUSTER" in c["quantity"] for c in g)
 
 
+def test_po_max_convention_matches_what_the_code_records():
+    """Phase 5: P_o,max stays 0.750 and the project records WHY the literature cannot
+    replace it.
+
+    THIS TEST REPLACES ONE THAT WAS NAMED FOR AN INVARIANT IT DID NOT CHECK, which is worth
+    recording. The first version was called
+    `test_nominal_defect_stays_convention_and_unreplaced` and asserted a float and a
+    substring against two module constants -- `parameters.NOMINAL_DEFECT` and
+    `parameters.PO_MAX_CONVENTION` -- that the same change had just added, that nothing in
+    the model consumed, and that were hard-coded 0.750 literals rather than derived from
+    `FIT_TARGETS`. So it would have passed unchanged if the real value had moved, and it
+    never checked the `Basis` its own name claimed. The roadmap meanwhile asserted
+    `Basis.CONVENTION` while the code recorded `Basis.FITTED`.
+
+    What is asserted instead: the value has ONE definition, the recorded basis is whatever
+    the code actually says, and the verdict's reasoning is present where a reader will find
+    it. The basis is pinned rather than demanded -- if it is deliberately regraded to
+    CONVENTION (see roadmap P0-13), this test and the roadmap must change together, which is
+    the point.
+    """
+    from circuitpharm import parameters
+    from circuitpharm.gabaa_kinetics import FIT_RANGES, FIT_TARGETS
+    from circuitpharm.provenance import Basis, MODEL_PARAM_PROV
+
+    # one definition, and it is the canonical one
+    assert FIT_TARGETS["po_max"] == 0.75
+    for dead in ("NOMINAL_DEFECT", "PO_MAX_CONVENTION", "PO_MAX_PROVENANCE"):
+        assert not hasattr(parameters, dead), (
+            f"parameters.{dead} is a second home for a value that already has one at "
+            "gabaa_kinetics.FIT_TARGETS['po_max'] -- that is E12/E22 re-forming")
+
+    # the convention was NOT replaced by the 0.56 reading
+    assert FIT_TARGETS["po_max"] != 0.56
+    lo, hi = FIT_RANGES["po_max"]
+    assert not (lo <= 0.56 <= hi), (
+        "0.56 is now inside FIT_RANGES, which removes one of the four stated reasons the "
+        "literature cannot replace the convention -- roadmap P0-13 needs revisiting")
+
+    # the recorded basis, pinned to what the code says rather than to what prose claims
+    rec = MODEL_PARAM_PROV[("operational", "po_max")]
+    assert rec.basis is Basis.FITTED, (
+        f"po_max's basis is now {rec.basis.value}. If that was deliberate, update roadmap "
+        "P0-13's 'OPEN' paragraph in the same commit -- it currently records FITTED and "
+        "argues CONVENTION may be more honest.")
+
+    # and the verdict's reasoning lives where a reader of the defaults will meet it
+    note = parameters._NOMINAL_DEFECT["operational"]
+    assert "CANNOT REPLACE" in note
+    assert "0.56" in note and "UNPUBLISHED DATA" in note
+    assert "14-literature" in note
+
+
 # ---------------------------------------------------------------------------------------
 # The negatives. These are findings, and they are the ones most likely to be quietly lost.
 # ---------------------------------------------------------------------------------------
