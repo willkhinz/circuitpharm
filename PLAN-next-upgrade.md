@@ -1,7 +1,12 @@
 # Plan for the next upgrade — written for delegated agents
 
 **Author:** Claude Opus 5, 2026-10-10, after reading the literature (commit `48da27c`).
-**Status: NOT STARTED. Awaiting the user's go-ahead.**
+
+> **PARTLY EXECUTED — §2–§5 SUPERSEDED BY `PLAN-phase2.md`.** Phase 5 is done, reviewed and
+> fixed (`3a8f962`). Phase 1 is implemented but uncommitted and carries two defects. The
+> §3 "ask the user about a third evidence grade" step is **withdrawn**: the grade already
+> exists as `fitting.data.DataKind`'s `"parametric"`. §0, §1 and §7 still stand; read
+> `PLAN-phase2.md` for the current steps.
 
 Read `HANDOFF.md`, then `knowledge/14-literature.md`, then this file. The literature pass
 **changed the right order of work**, so this plan supersedes `HANDOFF.md` §5 where they
