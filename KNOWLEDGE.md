@@ -15,6 +15,12 @@
    practical result (0.2% noise makes E and D span two decades), and the ladder of which
    measurement unlocks which rate. Read before fitting anything.
 4. `knowledge/02-reasoning-trail.md` — Rationale trail preventing re-deriving known dead ends.
+5. `knowledge/14-literature.md` — **THE LITERATURE, READ** (2026-10-10): the seven
+   open-access full texts behind `fitting.data.MISSING_DATASETS`, with every number's
+   conditions, n, temperature and splice variant. Read before treating any of the
+   three gaps as a missing number: two of them are missing *decisions*. Deactivation
+   and mean open time are both protocol-dependent, `P_o,max = 0.750` is being compared
+   against conditional quantities, and three citations were wrong.
 
 ---
 

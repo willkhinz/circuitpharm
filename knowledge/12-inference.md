@@ -50,58 +50,134 @@ information about. Absolute open probability has to come from somewhere else.
 
 ---
 
-## 2. The structural conflict: the slope and the plateau
+## 2. The slope and the plateau: a conflict that was an artefact of the measurement
 
-**This is the main result of P4, and it is not about a fit.**
+**This section previously recorded "the main result of P4" — that the published Hill slope
+and the assumed plateau cannot both hold. That claim is WITHDRAWN. It was an artefact of
+comparing two different measurements, and the correction is the more useful finding.**
 
-Jahn 1997 reports a peak Hill slope of **nH = 2.2 ± 0.4** for α1β2γ2L. This project anchors
-the absolute peak open probability at **P_o,max = 0.750**. Scanning `E ∈ [0.1, 1000]` and
-`D ∈ [1e-3, 1000]` — four and six decades, 33 × 31 points, at fixed `K_d`:
+### 2.0 What the source actually says
 
-| constraint imposed | best the scheme can do on the other |
-|---|---|
-| absolute peak `P_o,max ∈ [0.73, 0.77]` | **nH = 1.33** (at `E = 3.16`, `D = 1e-3`) |
-| `nH ≥ 1.8` | **`P_o,max ≥ 0.99`** (lowest found 0.9898, at `E = 100`, `D = 3.98`) |
-| neither | nH up to 2.46 is reachable, but only with `P_o,max` near 1 |
+Verbatim, from the Jahn et al. 1997 abstract:
 
-**The two cannot both hold.** The measured slope is more than two of its own standard
-deviations away from the steepest curve the scheme can produce at the assumed plateau. A
-single open state reached only from the doubly-liganded closed state cannot be both that
-steep and that leaky.
+> "The slope between 0.001 and 0.01 mM GABA was 2.2 ± 0.4, indicating at least three
+> binding sites for GABA."
 
-Two things this is not:
+So **2.2 is a LOCAL slope over 1–10 µM** — the rising phase, 0.086–0.862 × their EC₅₀ of
+11.6 µM. It is not the Hill coefficient of a fit to the whole curve. This project compared
+it against a regression over the 2–98% band of the *entire* curve.
 
-* **Not an artefact of the equilibrium algebra.** The equilibrium curve's shape depends
-  only on `F = 1 + E + D` while its plateau is `E/F`, so there those two *are* independent
-  and no conflict exists. The conflict is specific to the PEAK observable, where
-  desensitisation competes during the application.
-* **Not settled in favour of either side.** Note which is sourced: the slope is published;
-  the 0.750 is one of the project's own fit **targets** (`parameters._NOMINAL_DEFECT`,
-  roadmap P0-13), carried for years as if it were a measurement. The honest statement is
-  *the scheme cannot satisfy both*, and the next step is to find out which is wrong —
-  which is a P6 preregistration question, not something to resolve by fitting harder.
+For a Hill curve the distinction does not exist: a Hill curve is a straight line in logit
+space, so every window gives the same slope. That is exactly why the error survived review.
+For a receptor scheme the distinction is large, because its logit curve **bends** — the
+limiting log-log slope at low agonist is the number of binding sites (2 here, exactly), and
+the slope through EC₅₀ is flattened by the approach to the plateau.
 
-Pinned in `test_the_slope_and_the_plateau_cannot_both_hold`.
+### 2.1 The sweep, redone with the measurement matched
 
-### 2.1 What the fit to the Jahn curve gives
+Scanning `E ∈ [0.1, 1000]` × `D ∈ [1e-3, 1000]` at fixed `K_d`, 33 × 31 points:
+
+| | whole-curve (as compared before) | rising phase (as Jahn measured) |
+|---|---|---|
+| steepest slope with `P_o,max ∈ [0.73, 0.77]` | 1.328 | **1.689** |
+| lowest `P_o,max` at which slope ≥ 1.8 | 0.9898 | **0.9084** |
+| gap to the published 2.2 ± 0.4 | 2.18 σ | **1.28 σ** |
+
+**1.28 σ is ordinary agreement.** There is no contradiction to resolve, nothing to explain
+away, and no need for a different state diagram on this evidence.
+
+### 2.2 Three independent corroborations
+
+1. **Published whole-curve Hill fits for α1β2γ2 peak currents sit at 1.3–1.6** — e.g.
+   nH = 1.5 ± 0.09 with EC₅₀ = 36 ± 6 µM in HEK293. That is where this scheme's
+   whole-curve slope (1.294) sits. The scheme agrees with the literature on the
+   measurement the literature actually reports.
+2. **A two-site scheme reaches a rising-phase slope of ~2.0**, within 0.5 σ of the
+   published 2.2. So the slope does **not** establish "at least three binding sites", and
+   the source's own inference from it does not follow. Cryo-EM of the synaptic α1β2γ2
+   receptor shows **two** GABA sites.
+3. **O. P. Hamill published a comment on exactly this inference** in the same NeuroReport
+   issue — *"How many transmitter binding steps are involved in opening fast
+   receptor-gated channels?"*, PMID 9480006. Not read here (egress-blocked), and the
+   obvious next thing to read.
+
+### 2.3 A third observable-mismatch class, found on the way
+
+The PEAK of a desensitising response depends on **how long the agonist is applied**, and
+the project's `PEAK_APPLICATION_MS` fixes that at 300 ms without the datasets declaring
+theirs. Measured on this scheme, varying only the application length:
+
+| application | 2 ms | 5 ms | 20 ms | 100 ms | 1000 ms |
+|---|---|---|---|---|---|
+| peak EC₅₀ | 299 µM | 113 µM | 45.6 µM | 39.2 µM | 39.2 µM |
+| rising-phase slope | 1.77 | 1.79 | 1.76 | 1.69 | 1.69 |
+
+A **sevenfold** shift in EC₅₀ from the protocol alone. Jahn et al. used ultra-fast exchange
+and the abstract does not state the application length, so their 11.6 µM and this scheme's
+peak EC₅₀ are not strictly comparable either. This is the third mismatch class after
+PEAK-vs-EQUILIBRIUM (P1) and absolute-vs-normalised (P4): same tag, same units, different
+protocol. Pinned in `test_the_peak_observable_is_protocol_dependent`.
+
+### 2.4 What this costs the dataset, and what survives
+
+`JAHN1997_PEAK_CRC`'s nine points are a **global** Hill curve with nH = 2.2 spanning
+0.3–3000 µM: four decades of shape extrapolated from a slope measured over one. The source
+constrains the curve in three places — the slope over 1–10 µM, the EC₅₀, and saturation by
+3 mM — and says nothing about its shape in between. `sem` now widens outside the measured
+window to the spread over every slope consistent with published whole-curve fits, so a fit
+draws its shape information from the decade that was measured. The central values are
+unchanged, so §2.5's fit still lands on `D` at its bound — that is now recorded as the
+reconstruction's artefact rather than as a finding.
+
+What survives, and is worth keeping: this scheme is slightly **flatter on the rising phase**
+than the central published value, so a genuinely steeper curve would still count against it.
+The slope is evidence, just much weaker evidence than it was being read as.
+
+**Pinned in** `test_the_slope_and_the_plateau_are_compatible_once_measured_the_same_way`,
+`test_two_binding_sites_can_produce_the_published_slope`, and
+`test_the_published_slope_is_a_local_one_and_the_scheme_matches_it`.
+`models.base.hill_slope` takes the window as an argument so the comparison cannot be made
+loosely again.
+
+### 2.5 The lesson, which is about process rather than receptors
+
+**`fitting/data.py` recorded "(slope over 1-10 uM)" in the same comment block as the
+comparison, and the comparison was made anyway.** The qualifier was captured, written down,
+and not acted on. A note in prose does not constrain a computation; only a parameter does,
+which is why the window is now an argument to `hill_slope` rather than a remark beside it.
+
+---
+
+### 2.6 What the fit to the Jahn curve gives, and why `D` lands on its bound
 
 Fitted to the normalised Jahn PEAK curve with `k_off`, `α` and `r` held at declared
-conventions (`fit_mle`, 8 starts, 11 of 12 converging and the best five agreeing to
-1.2e-6 decades):
+conventions (`fit_one`, 8 starts):
 
 | | fitted to Jahn shape | three-anchor fit | Jahn 1997 | project anchor |
 |---|---|---|---|---|
 | `K_d` (µM) | 104.4 | 23.81 | — | — |
 | `E` | 163.9 | 3.925 | — | — |
 | `D` | **0.001, on its bound** | 25.0 | — | — |
-| PEAK EC₅₀ (µM) | 11.663 | 23.16 | 11.6 ± 0.9 | 20 |
-| PEAK nH | 2.030 | 1.314 | 2.2 ± 0.4 | — |
+| PEAK EC₅₀ (µM) | 11.649 | 23.16 | 11.6 ± 0.9 | 20 |
+| PEAK nH, **rising phase** | 1.997 | 1.594 | **2.2 ± 0.4** | — |
+| PEAK nH, whole curve | 2.026 | 1.294 | *not measured* | — |
 | absolute peak `P_o,max` | 0.9939 | 0.7483 | — | 0.750 |
 
-The fit reproduces both published numbers to well inside their errors — and pays for it
-with `D` on its lower bound and a plateau of 0.99. `MLEResult.at_bound` reports the pinning
-and `note` says in words that the value is the edge of the search space and not an estimate.
-That is the same conflict as §2, arrived at from the other direction.
+The fit reproduces the EC₅₀ and the rising-phase slope — the two quantities the source
+actually measures — and pays for it with `D` on its lower bound and a plateau of 0.99
+against the project's 0.750.
+
+**That price is the reconstruction's, not the receptor's.** The nine points are a global
+Hill curve with nH = 2.2 out to 3 mM (§2.4), and only a scheme that has deleted
+desensitisation can stay that steep that far out. Widening `sem` outside the measured
+window does not move this fit, because the *central values* carry the extrapolation, not
+their error bars — so the artefact is recorded rather than patched over. `MLEResult.at_bound`
+reports the pinning and `note` says in words that the value is the edge of the search space
+and not an estimate.
+
+Read with §2.1: at the plateau the scheme reaches a rising-phase slope of 1.689 on its own,
+1.3 σ from the published value. It does not need `D` at its bound to agree with what was
+measured; it needs `D` at its bound to agree with what was *extrapolated*.
 
 ---
 

@@ -924,6 +924,36 @@ prevent the defaults being mistaken for a calibration — it should be *amended*
 deleted, when P4 lands. Plus `pytest.raises(TypeError)` for each entry point called with
 no model.
 
+**P_o,max convention status (literature audit 2026-10-10).** The question whether
+`P_o,max = 0.750` can be replaced by a literature measurement is **resolved as unanswerable
+from the current literature**, rather than open pending a search. Five of six candidate
+readings in the corpus are conditional (intraburst or intracluster), and the only
+unconditional macroscopic reading is 0.56 (Keramidas 2008, nonstationary fluctuation
+analysis) — which is *below* the convention, not above it, and comes at an incomparable
+protocol: 1–2 ms application, γ2S rather than γ2L, no error bar, no n, marked **unpublished
+data** by its own authors, and outside `FIT_RANGES` [0.70, 0.80] in any case. The value
+therefore **stays 0.750**, defined once at `gabaa_kinetics.FIT_TARGETS["po_max"]`.
+See `knowledge/14-literature.md` §5 and `scripts/literature_gamma2.py --section po`.
+
+A first pass at this item asserted the value "stays 0.750 under `Basis.CONVENTION`". **That
+was false about the code** — `provenance.MODEL_PARAM_PROV[("operational", "po_max")]` records
+`Basis.FITTED`, and no test compared the two, so prose and code could have drifted exactly as
+E12/E22 did. The sentence now states what the code actually records, and
+`tests/test_literature.py::test_po_max_convention_matches_what_the_code_records` asserts it,
+so the claim cannot rot. The same pass also added a `NOMINAL_DEFECT = 0.750` literal and a
+duplicate `PO_MAX_CONVENTION = 0.750` to `parameters.py`, consumed by nothing but the test
+that asserted they existed; both are removed.
+
+**OPEN, and a judgement call rather than a measurement:** is `FITTED` the right basis? It
+means "set to make a different, anchored quantity come out right", but `po_max` **is** the
+anchor — `provenance.py` itself calls it "circular if used as an anchor" — and the audit now
+finds it a convention the literature cannot replace. `Basis.CONVENTION` ("a structural
+choice, not an empirical quantity") is arguably the more honest grade, with
+`FIT_FIXED_ALPHA` as the precedent for a value held fixed to keep a fit well-posed. **Not
+changed here**, because regrading a basis alters the project's provenance accounting and the
+counts `tests/test_provenance.py` defends, and that is a decision to take deliberately rather
+than as a side effect of a documentation fix.
+
 **P0 Definition of Done.** All thirteen closed; `pytest -q` shows **zero failures and no
 skips you introduced** — P0-5 and P0-6 keep every function callable, so nothing in this
 phase is allowed to `skip` a test as a way of closing an item; the five new anchor tests
@@ -1286,14 +1316,23 @@ write-up in `knowledge/12-inference.md`.
    a normalised dataset constrains the SHAPE of a curve and carries no information about
    absolute open probability, so no absolute number may be quoted from a fit to one.
 
-2. **THE PUBLISHED HILL SLOPE AND THE ASSUMED PLATEAU ARE INCOMPATIBLE IN THIS SCHEME.**
-   Over `E ∈ [0.1, 1000]` × `D ∈ [1e-3, 1000]`: the steepest PEAK curve with absolute peak
-   `P_o,max ∈ [0.73, 0.77]` has `nH = 1.33`, and every parameter set reaching `nH ≥ 1.8`
-   has `P_o,max ≥ 0.99`. Jahn 1997 measures `nH = 2.2 ± 0.4`; this project assumes
-   `P_o,max = 0.750`. They cannot both hold. **This is P5's and P6's most promising
-   target** — it is a structural statement about the scheme, independent of any fit, and
-   the sourced side is the slope while the 0.750 is one of the project's own fit targets
-   (P0-13). Do not resolve it by fitting harder.
+2. **~~THE PUBLISHED HILL SLOPE AND THE ASSUMED PLATEAU ARE INCOMPATIBLE IN THIS SCHEME.~~
+   WITHDRAWN — it was an artefact of the measurement.** The sweep compared Jahn 1997's
+   `nH = 2.2 ± 0.4`, which the abstract states is the slope "between 0.001 and 0.01 mM
+   GABA", against a regression over the WHOLE curve. A Hill curve has the same slope
+   everywhere so the distinction is invisible there; a receptor scheme's logit curve bends,
+   and for this one the two measurements differ by ~0.4. Measured as the source measured
+   it, the steepest rising-phase slope at `P_o,max ∈ [0.73, 0.77]` is **1.689**, and the
+   gap to the published value falls from 2.18 σ to **1.28 σ**. Corroborated three ways:
+   published whole-curve fits for α1β2γ2 peak currents are 1.3–1.6 (where this scheme is);
+   a two-site scheme reaches a rising-phase slope of ~2.0, so the slope does not establish
+   three binding sites, and cryo-EM shows two; and Hamill commented on that very inference
+   in the same issue (PMID 9480006). **What replaced it as a finding**: the PEAK observable
+   is protocol-dependent, its EC₅₀ moving sevenfold with the application duration — a third
+   mismatch class. The process lesson is the sharper one: `fitting/data.py` recorded
+   "(slope over 1-10 uM)" in the same comment block as the comparison and the comparison
+   was made anyway, so the window is now an argument to `models.base.hill_slope` rather
+   than a remark beside it. See `knowledge/12-inference.md` §2.
 
 3. **THE SAMPLER HAD A DEFECT THAT ONLY OVER-DISPERSED STARTS EXPOSE.** The stretch move
    cannot propose a contraction below `1/a`, so at the canonical `a = 2` a walker across a

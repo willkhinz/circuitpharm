@@ -49,12 +49,15 @@ Repository: https://github.com/willkhinz/circuitpharm — tag **`manuscript-v3`*
 >   `E` and `D` each span more than two decades, and more precision on the same observable
 >   will not fix it — two parameter sets a hundredfold apart give curves separated by less
 >   than the noise. A *different* observable, one with a timescale in it, is required.
-> * **The published Hill slope and the assumed plateau are incompatible in this scheme.** The
->   steepest peak curve this topology can produce with an absolute P_o,max near 0.750 has
->   n_H = 1.33; every parameter set reaching n_H ≥ 1.8 has P_o,max ≥ 0.99. Jahn et al. report
->   n_H = 2.2 ± 0.4. One of the two is wrong, or the scheme is — and note that the slope is
->   published while the 0.750 is this project's own fit target. See
->   `knowledge/12-inference.md` §2.
+> * **A published Hill slope appeared to contradict the assumed plateau, and did not.** The
+>   claim was that the steepest peak curve this topology can produce with absolute
+>   P_o,max near 0.750 has n_H = 1.33, against Jahn et al.'s n_H = 2.2 ± 0.4. But the
+>   published 2.2 is a *local* slope over 1–10 µM, measured on the rising phase, and 1.33
+>   was a regression over the whole curve. Matched, the scheme gives 1.69 and the gap falls
+>   to 1.3 σ — ordinary agreement. Published whole-curve Hill fits for this receptor sit at
+>   1.3–1.6, which is where the scheme sits. **The claim is withdrawn**; what replaced it is
+>   a third observable-mismatch class, the PEAK observable's sevenfold EC₅₀ dependence on
+>   application duration. See `knowledge/12-inference.md` §2.
 
 > **Reproducibility.** Every number is emitted by `scripts/paper_numbers.py` at the cited tag,
 > and the Monte Carlo by `scripts/ranking_robustness.py --draws 20000`. None was transcribed.
