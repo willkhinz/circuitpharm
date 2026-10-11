@@ -35,6 +35,19 @@ where = ["src"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+# The repository root on sys.path, so `from scripts.literature_gamma2 import ...` resolves.
+#
+# WITHOUT THIS THE SUITE PASSES LOCALLY AND FAILS IN CI, which is the worst failure mode a
+# test config has. `python -m pytest` prepends the current directory to sys.path and bare
+# `pytest` does not, so tests/test_literature.py collected fine for its author and for the
+# cloud session -- both of whom ran `python -m pytest` -- and died in CI, which runs bare
+# `pytest`, with "ModuleNotFoundError: No module named 'scripts'". `scripts/__init__.py`
+# already existed; being a package is not enough when the directory above it is unreachable.
+#
+# Fixed here rather than by rewriting the import, because the discrepancy is in how the
+# suite is invoked and would otherwise bite the next module that imports from scripts/.
+pythonpath = ["."]
 # the circuit tests integrate 14-30 s of network activity; they are slow by nature
 markers = ["slow: integrates a full circuit simulation (seconds to minutes)"]
 # Parallel by default. The suite is embarrassingly parallel (every test builds its own
