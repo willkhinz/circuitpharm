@@ -50,6 +50,82 @@ class LikelihoodResult:
     n_estimated: int
 
 
+#: Simulation grid for a predicted deactivation. The pulse is resolved densely because it is
+#: short (2 ms in the Barberis protocol) and sets the peak the decay is normalised by; the
+#: tail is log-spaced because the components it has to resolve span two decades. These are
+#: INTEGRATION settings, not data -- the prediction is interpolated onto the dataset's own
+#: grid, so changing them must not move the score. `tests/test_deactivation_likelihood.py`
+#: asserts that.
+_DEACT_N_PULSE = 400
+_DEACT_N_TAIL = 1600
+
+
+def predict_deactivation(model, ds, *, n_pulse=_DEACT_N_PULSE, n_tail=_DEACT_N_TAIL):
+    """Predicted deactivation decay for `ds`'s DECLARED protocol, normalised to its own peak.
+
+    WHY THIS EXISTS. Until now nothing in `src/` read a deactivation trace's `time_ms` or
+    `normalized_current` at all. `MISSING_DATASETS` describes the deactivation dataset as
+    "the dataset that makes an absolute rate (k_off) identifiable at all", and
+    `DEACTIVATION_BENCHMARK`'s own `origin` says it "exists so the kinetic-timescale half of
+    the likelihood can be exercised" -- but that half of the likelihood did not exist, so a
+    deactivation dataset was inert however good it was. `_predict` raised
+    `ObservableMismatch` for anything that was not PEAK or EQUILIBRIUM.
+
+    THE PROTOCOL COMES FROM THE DATASET, NEVER FROM A DEFAULT. `pulse_ms` and `conc_mm` are
+    required fields on a DEACTIVATION dataset precisely so this function cannot invent them:
+    Barberis 2007 measured the same receptor at 52.5 ms (2 ms pulse) and 364 ms (3 s pulse),
+    6.9x apart, so a default pulse length here would silently pick which measurement the
+    model is being compared against.
+
+    The decay is re-zeroed at the model's PEAK and divided by it, because that is what the
+    source's fit is: a triple exponential whose areas sum to 1 at the start of the decay.
+    """
+    # THE GUARD IS ON `q_matrix`, NOT ON `simulate_waveform`, and the difference matters.
+    # Every model here HAS a `simulate_waveform`: `OperationalScalarModel` inherits one that
+    # relaxes towards an instantaneous Hill target at an assumed time constant. So it would
+    # happily return a "deactivation" that is a property of that invented relaxation rate
+    # rather than of any binding or gating step -- scored against Barberis and relabelled on
+    # the way, which is exactly the mismatch the P1 contract exists to stop. A deactivation
+    # shape only means something for a model with states to move between, so the requirement
+    # is a Markov generator. (It is also what stops Model A's relaxation integrator being
+    # driven over this grid, where it is pathologically slow -- but slowness is the symptom,
+    # not the reason.)
+    if not hasattr(model, "q_matrix"):
+        raise ObservableMismatch(
+            f"{ds.citation_label!r} is DEACTIVATION data -- a decay SHAPE -- but "
+            f"{type(model).__name__} has no `q_matrix`, so it has no states to relax "
+            f"between. Its `simulate_waveform` relaxes towards a Hill target at an assumed "
+            f"time constant, so any decay it produces measures that assumption and not a "
+            f"rate. Compare it on PEAK, which every scheme here can produce, or drop the "
+            f"model that has no such quantity.")
+    pulse_ms = getattr(ds, "pulse_ms", None)
+    conc_mm = getattr(ds, "conc_mm", None)
+    window_ms = getattr(ds, "fit_window_ms", None)
+    if not (pulse_ms and conc_mm and window_ms):
+        raise ValueError(
+            f"{ds.citation_label!r} is DEACTIVATION data but does not declare "
+            f"pulse_ms={pulse_ms!r}, conc_mm={conc_mm!r}, fit_window_ms={window_ms!r}. "
+            f"All three are part of the observable, not metadata about it.")
+
+    t_sim = np.unique(np.concatenate([
+        np.linspace(0.0, float(pulse_ms), n_pulse),
+        float(pulse_ms) + np.geomspace(1e-4, float(window_ms), n_tail),
+    ]))
+    gaba_um = np.where(t_sim <= float(pulse_ms), float(conc_mm) * 1000.0, 0.0)
+    p_open = np.asarray(model.simulate_waveform(t_sim, gaba_um).p_open, dtype=float)
+
+    i_peak = int(np.argmax(p_open))
+    peak = float(p_open[i_peak])
+    if not (np.isfinite(peak) and peak > 0.0):
+        raise ValueError(
+            f"{ds.citation_label!r}: the model's peak open probability under its declared "
+            f"protocol is {peak!r}, so there is no decay to normalise. A zero peak is a "
+            f"failed prediction, not a very small one.")
+    t_decay = t_sim[i_peak:] - t_sim[i_peak]
+    y_decay = p_open[i_peak:] / peak
+    return np.interp(np.asarray(ds.time_ms, dtype=float), t_decay, y_decay)
+
+
 def _predict(model, ds):
     """Model prediction for one dataset, ON THAT DATASET'S OBSERVABLE AND SCALE."""
     obs = ds.observable
@@ -76,11 +152,17 @@ def _predict(model, ds):
                 f"under an equilibrium label. Compare on PEAK, which every scheme here can "
                 f"produce, or drop the model that has no such quantity.")
         pred = np.asarray(model.dose_response(ds.concs_um, pam_factor=1.0), float)
+    elif obs is Observable.DEACTIVATION:
+        # A time course, not a curve. Already normalised to its own peak by construction, so
+        # it returns here rather than falling through to the concentration-based
+        # normalisation below -- a deactivation dataset has no `concs_um` to index.
+        return predict_deactivation(model, ds)
     else:
         raise ObservableMismatch(
             f"{ds.citation_label!r} is tagged {obs.value}; this likelihood handles "
-            f"concentration-response datasets (PEAK or EQUILIBRIUM). A CHARGE dataset is a "
-            f"time course and needs a waveform and a window -- see protocols/waveforms.py.")
+            f"concentration-response datasets (PEAK or EQUILIBRIUM) and DEACTIVATION time "
+            f"courses. A CHARGE dataset is an integral over a window rather than a decay "
+            f"shape, and still needs its own door -- see protocols/waveforms.py.")
 
     if getattr(ds, "normalisation", "absolute") == "fraction_of_max":
         # The data is I/I_max, so the prediction must be P/P(c_max) -- divided at the SAME
@@ -103,6 +185,23 @@ def _predict(model, ds):
 
 
 def _observed(ds):
+    # A deactivation dataset carries a decay, not a response column. Dispatched on the
+    # declared observable rather than on which attribute happens to exist, so a dataset that
+    # grows a `mean_response` later cannot silently change which column is scored.
+    obs = getattr(ds, "observable", None)
+    if obs is Observable.DEACTIVATION:
+        return np.asarray(ds.normalized_current, dtype=float)
+    if not hasattr(ds, "mean_response"):
+        # Reached before `_predict` can explain itself, because the observed column is read
+        # first. Without this, a CHARGE dataset fails with
+        # "AttributeError: 'DeactivationDataset' object has no attribute 'mean_response'",
+        # which says nothing about the actual problem -- the observable has no door here.
+        raise ObservableMismatch(
+            f"{getattr(ds, 'citation_label', ds)!r} is tagged "
+            f"{getattr(obs, 'value', obs)!r} and carries no response column this likelihood "
+            f"can read. PEAK and EQUILIBRIUM datasets supply `mean_response`; DEACTIVATION "
+            f"supplies `normalized_current`. A CHARGE dataset is an integral over a window "
+            f"rather than either, and still needs its own door -- see protocols/waveforms.py.")
     return np.asarray(ds.mean_response, dtype=float)
 
 

@@ -11,6 +11,7 @@ from .data import (
     ALL,
     equilibrium_crc_from_model,
     peak_crc_from_model,
+    BARBERIS2007_DEACT,
     DEACTIVATION_BENCHMARK,
     DOSE_RESPONSE_BENCHMARK,
     HOLDOUT,
@@ -21,6 +22,9 @@ from .data import (
     Normalisation,
     DeactivationDataset,
     DoseResponseDataset,
+    MeanOpenTimeDataset,
+    MeanOpenTimeConditioning,
+    MEAN_OPEN_TIME_CONDITIONINGS,
     assert_real_data,
     holdout_guard,
 )
@@ -79,6 +83,7 @@ from .comparison import (
     fit_one,
     recovery_check,
     resolve_cv,
+    check_deactivation_protocols,
 )
 from .posterior import (
     AgreementResult,
@@ -93,6 +98,7 @@ from .posterior import (
 __all__ = [
     # data
     "ALL",
+    "BARBERIS2007_DEACT",
     "DOSE_RESPONSE_BENCHMARK",
     "DEACTIVATION_BENCHMARK",
     "TRAIN",
@@ -103,6 +109,9 @@ __all__ = [
     "Normalisation",
     "DoseResponseDataset",
     "DeactivationDataset",
+    "MeanOpenTimeDataset",
+    "MeanOpenTimeConditioning",
+    "MEAN_OPEN_TIME_CONDITIONINGS",
     "assert_real_data",
     "holdout_guard",
     "equilibrium_crc_from_model",
@@ -169,4 +178,5 @@ __all__ = [
     "compare_models",
     "comparison_report",
     "recovery_check",
+    "check_deactivation_protocols",
 ]

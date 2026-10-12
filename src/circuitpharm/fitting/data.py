@@ -32,7 +32,7 @@ have, and it may never be the basis of a claim about receptors (roadmap §5.4).
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Literal, Sequence
 
 import numpy as np
@@ -117,15 +117,27 @@ class DoseResponseDataset:
         return self.citation_label
 
 
+MeanOpenTimeConditioning = Literal[
+    "INTRABURST", "INTRACLUSTER", "NONSTATIONARY_WINDOW", "POPULATION"
+]
+MEAN_OPEN_TIME_CONDITIONINGS = (
+    "INTRABURST", "INTRACLUSTER", "NONSTATIONARY_WINDOW", "POPULATION"
+)
+
+
 @dataclass(frozen=True)
 class DeactivationDataset:
     """A macroscopic deactivation current trace, or a synthetic stand-in for one."""
 
     citation_label: str
-    pulse_duration_ms: float
-    gaba_conc_um: float
     time_ms: np.ndarray
     normalized_current: np.ndarray
+    pulse_ms: float | None = None
+    conc_mm: float | None = None
+    n_components: int | None = None
+    fit_window_ms: float | None = None
+    pulse_duration_ms: float | None = None
+    gaba_conc_um: float | None = None
     observable: Observable = Observable.CHARGE
     #: What the response column IS: an absolute open probability, or I/I_max. See
     #: `Normalisation` -- getting this wrong does not bias a fit, it breaks it.
@@ -137,6 +149,55 @@ class DeactivationDataset:
     source_key: str = ""
     figure: str = ""
     digitisation: str = ""
+    preparation: str = ""
+    n_cells: int | None = None
+    role: Literal["train", "holdout"] = "train"
+
+    def __post_init__(self):
+        if self.pulse_ms is not None and self.pulse_duration_ms is not None:
+            if abs(self.pulse_ms - self.pulse_duration_ms) > 1e-9:
+                raise ValueError(
+                    f"{self.citation_label!r}: contradictory pulse durations: "
+                    f"pulse_ms={self.pulse_ms} vs pulse_duration_ms={self.pulse_duration_ms}")
+        elif self.pulse_ms is None and self.pulse_duration_ms is not None:
+            object.__setattr__(self, "pulse_ms", self.pulse_duration_ms)
+        elif self.pulse_duration_ms is None and self.pulse_ms is not None:
+            object.__setattr__(self, "pulse_duration_ms", self.pulse_ms)
+
+        if self.conc_mm is not None and self.gaba_conc_um is not None:
+            if abs(self.conc_mm - self.gaba_conc_um / 1000.0) > 1e-9:
+                raise ValueError(
+                    f"{self.citation_label!r}: contradictory concentrations: "
+                    f"conc_mm={self.conc_mm} vs gaba_conc_um={self.gaba_conc_um}")
+        elif self.conc_mm is None and self.gaba_conc_um is not None:
+            object.__setattr__(self, "conc_mm", self.gaba_conc_um / 1000.0)
+        elif self.gaba_conc_um is None and self.conc_mm is not None:
+            object.__setattr__(self, "gaba_conc_um", self.conc_mm * 1000.0)
+        _validate_dataset(self)
+
+    @property
+    def key(self) -> str:
+        return self.citation_label
+
+
+@dataclass(frozen=True)
+class MeanOpenTimeDataset:
+    """A single-channel or macroscopic mean open time observation."""
+
+    citation_label: str
+    mean_open_time_ms: float
+    conditioning: MeanOpenTimeConditioning
+    conc_mm: float | None = None
+    sem_ms: float | None = None
+    observable: Observable = Observable.MEAN_OPEN_TIME
+    kind: DataKind = "digitised"
+    synthetic: bool = False
+    origin: str = ""
+    motivated_by: str = ""
+    source_key: str = ""
+    figure: str = ""
+    digitisation: str = ""
+    preparation: str = ""
     n_cells: int | None = None
     role: Literal["train", "holdout"] = "train"
 
@@ -153,21 +214,48 @@ def _validate_dataset(ds) -> None:
     if ds.kind not in ("digitised", "parametric", "synthetic"):
         raise ValueError(f"{ds.citation_label!r}: unknown kind {ds.kind!r}")
 
-    if ds.normalisation not in ("absolute", "fraction_of_max"):
-        raise ValueError(
-            f"{ds.citation_label!r}: unknown normalisation {ds.normalisation!r}; see "
-            f"`Normalisation`. It must be stated, because a model prediction is comparable "
-            f"to one of the two and not the other.")
-    peak_response = float(np.max(np.asarray(
-        getattr(ds, "mean_response", getattr(ds, "normalized_current", [0.0])),
-        dtype=float)))
-    if ds.normalisation == "fraction_of_max" and not (0.9 <= peak_response <= 1.0 + 1e-9):
-        raise ValueError(
-            f"{ds.citation_label!r} declares normalisation='fraction_of_max' but its "
-            f"largest response is {peak_response:.4g}. An I/I_max column reaches 1 at the "
-            f"concentration it was normalised by; if this one does not, either it is not "
-            f"normalised or the normalising point is missing from the dataset, and a fit "
-            f"would divide the prediction by the wrong concentration.")
+    if ds.observable is Observable.DEACTIVATION or isinstance(ds, DeactivationDataset):
+        missing = []
+        for fld in ("pulse_ms", "conc_mm", "n_components", "fit_window_ms"):
+            val = getattr(ds, fld, None)
+            if val is None or not (isinstance(val, (int, float)) and val > 0):
+                missing.append(fld)
+        if missing:
+            raise ValueError(
+                f"{ds.citation_label!r}: deactivation requires positive protocol declarations "
+                f"({', '.join(missing)} missing). Pulse duration, concentration in mM, "
+                f"component count and fit window in ms must all be explicitly declared; "
+                f"deactivation is protocol-dependent.")
+
+    if ds.observable is Observable.MEAN_OPEN_TIME or isinstance(ds, MeanOpenTimeDataset):
+        cond = getattr(ds, "conditioning", None)
+        if cond not in MEAN_OPEN_TIME_CONDITIONINGS:
+            raise ValueError(
+                f"{ds.citation_label!r}: mean open time requires `conditioning` in "
+                f"{MEAN_OPEN_TIME_CONDITIONINGS}; got {cond!r}. Definitions differ up to "
+                f"5x across definitions.")
+        conc = getattr(ds, "conc_mm", None)
+        if conc is None or not (isinstance(conc, (int, float)) and conc > 0):
+            raise ValueError(
+                f"{ds.citation_label!r}: mean open time requires positive concentration in mM "
+                f"(`conc_mm`); got {conc!r}.")
+
+    if hasattr(ds, "normalisation"):
+        if ds.normalisation not in ("absolute", "fraction_of_max"):
+            raise ValueError(
+                f"{ds.citation_label!r}: unknown normalisation {ds.normalisation!r}; see "
+                f"`Normalisation`. It must be stated, because a model prediction is comparable "
+                f"to one of the two and not the other.")
+        peak_response = float(np.max(np.asarray(
+            getattr(ds, "mean_response", getattr(ds, "normalized_current", [0.0])),
+            dtype=float)))
+        if ds.normalisation == "fraction_of_max" and not (0.9 <= peak_response <= 1.0 + 1e-9):
+            raise ValueError(
+                f"{ds.citation_label!r} declares normalisation='fraction_of_max' but its "
+                f"largest response is {peak_response:.4g}. An I/I_max column reaches 1 at the "
+                f"concentration it was normalised by; if this one does not, either it is not "
+                f"normalised or the normalising point is missing from the dataset, and a fit "
+                f"would divide the prediction by the wrong concentration.")
 
     # `kind` and `synthetic` must agree. "parametric" counts as synthetic for the purpose
     # of tainting a fit -- the individual points are a model, not measurements -- while
@@ -259,8 +347,10 @@ _I_DEACT = 0.70 * np.exp(-_T_DEACT / 15.0) + 0.30 * np.exp(-_T_DEACT / 70.0)
 
 DEACTIVATION_BENCHMARK = DeactivationDataset(
     citation_label="synthetic biexponential deactivation trace",
-    pulse_duration_ms=1.0,
-    gaba_conc_um=1000.0,
+    pulse_ms=1.0,
+    conc_mm=1.0,
+    n_components=2,
+    fit_window_ms=100.0,
     time_ms=_T_DEACT,
     normalized_current=_I_DEACT,
     observable=Observable.CHARGE,
@@ -442,6 +532,83 @@ JAHN1997_PEAK_CRC = DoseResponseDataset(
     role="train",
 )
 
+
+# ---------------------------------------------------------------------------------------
+# 4. PARAMETRIC deactivation trace from a named source. DEACTIVATION observable.
+#
+# BARBERIS 2007 BRIEF PULSE DEACTIVATION (Eur J Neurosci 25(9):2726-2740, PMC1950087).
+# Reconstructed from Table 1 fitted parameters: three time constants and three areas,
+# all with published errors, measured following a 2 ms pulse of 10 mM GABA at 22-24 C,
+# -70 mV with ultrafast solution exchange (10-90% in 60-100 us) in rat alpha1beta2gamma2S
+# (splice variant substitution for gamma2L; recorded explicitly).
+#
+# Unlike the Jahn CRC, this reconstruction involves NO EXTRAPOLATION beyond the measured
+# window: evaluated over a 1000 ms window, it captures the slow 221.35 ms component
+# (which carries 44.3 of the 52.5 ms weighted tau) down to ~1% of peak.
+# Recomputed sum(A_i tau_i) = 53.55 ms against published tau_w = 52.5 +/- 2.9 ms (0.36 SEM).
+#
+# Declared kind="parametric", synthetic=True: the parameters are attributable measurements;
+# the individual curve points are the paper's model of its data.
+# ---------------------------------------------------------------------------------------
+from ..literature import DEACTIVATIONS as _DEACTIVATIONS
+
+_BARBERIS_ROW = _DEACTIVATIONS[1]
+_BARBERIS_TAUS, _BARBERIS_AREAS = _BARBERIS_ROW.components
+_BARBERIS_FIT_WINDOW_MS = 1000.0
+# THE GRID IS PART OF THE DATASET'S INFORMATION CONTENT, and the first version of this got it
+# wrong in a way no check of the VALUES would catch. It used np.linspace(0, 1000, 100) -- a
+# uniform 10.1 ms spacing -- while the components span two decades (2.8 to 221 ms) and the
+# FAST component carries the largest area (0.57). That grid puts exactly ONE sample at or
+# before one tau_fast, so the trace that appears to constrain the fast decay does not, and
+# the fast decay is where the unbinding information this dataset exists to supply lives.
+#
+# A noiseless refit hides it completely (it returns the components to the digit on any grid).
+# At the project's own sigma = 0.02, measured over 400 replicates by
+# `scripts/deact_sampling.py`, tau_fast comes back as 2.60 +/- 2.43 ms on the uniform grid
+# -- 98% scatter, i.e. unidentified -- against 2.81 +/- 0.18 ms on the hybrid grid below.
+#
+# Pure log spacing fixes the fast end but costs the slow one (it thins the tail where the
+# 221 ms component, 83% of the weighted tau, lives). The hybrid keeps both: log-spaced
+# through the fast and middle components, uniform across the tail. Same point count.
+_T_BARBERIS = np.unique(np.concatenate([
+    [0.0],
+    np.geomspace(0.2, 30.0, 50),                       # resolves tau_1 = 2.8 and tau_2 = 33.4
+    np.linspace(40.0, _BARBERIS_FIT_WINDOW_MS, 50),    # covers tau_3 = 221.35 out to ~1% of peak
+])).astype(float)
+_I_BARBERIS = np.zeros_like(_T_BARBERIS)
+for _tau, _area in zip(_BARBERIS_TAUS, _BARBERIS_AREAS):
+    _I_BARBERIS += _area * np.exp(-_T_BARBERIS / _tau)
+
+BARBERIS2007_DEACT = DeactivationDataset(
+    citation_label="Barberis 2007 alpha1beta2gamma2S deactivation after 2 ms pulse",
+    time_ms=_T_BARBERIS,
+    normalized_current=_I_BARBERIS,
+    pulse_ms=2.0,
+    conc_mm=10.0,
+    n_components=3,
+    fit_window_ms=_BARBERIS_FIT_WINDOW_MS,
+    observable=Observable.DEACTIVATION,
+    normalisation="fraction_of_max",
+    kind="parametric",
+    synthetic=True,
+    source_key="barberis2007",
+    figure="Table 1, brief pulse (2 ms)",
+    preparation=("HEK293 outside-out macropatches and small lifted whole cells, rat "
+                 "alpha1beta2gamma2S (splice-variant substitution for gamma2L), "
+                 "22-24 C, -70 mV, ultrafast exchange (60-100 us)"),
+    n_cells=6,
+    origin=(
+        f"Parametric triple-exponential deactivation trace from Barberis et al. 2007 "
+        f"Table 1: tau_1={_BARBERIS_TAUS[0]} ms (A_1={_BARBERIS_AREAS[0]}), "
+        f"tau_2={_BARBERIS_TAUS[1]} ms (A_2={_BARBERIS_AREAS[1]}), "
+        f"tau_3={_BARBERIS_TAUS[2]} ms (A_3={_BARBERIS_AREAS[2]}); "
+        f"2 ms pulse of 10 mM GABA, n=6, weighted tau=52.5 +/- 2.9 ms (sum A_i tau_i = 53.55 ms). "
+        f"Evaluated over {_BARBERIS_FIT_WINDOW_MS:.0f} ms window to capture the slow "
+        f"{_BARBERIS_TAUS[2]} ms component. Rat alpha1beta2gamma2S (splice-variant substitution for gamma2L)."
+    ),
+    role="train",
+)
+
 #: What is still missing, named so it cannot be forgotten (roadmap P1-2, P3).
 #:
 #: P3's second anchor test -- "k_off becomes identifiable once a kinetic dataset is in the
@@ -478,7 +645,7 @@ JAHN1997_PEAK_CRC = DoseResponseDataset(
 #
 # This is the same failure class as PEAK-vs-EQUILIBRIUM (P1), absolute-vs-normalised (P4)
 # and PEAK's application dependence (P6): same tag, same units, different protocol. It is
-# recorded rather than averaged away. scripts/literature_gamma2.py holds every reading with
+# recorded rather than averaged away. circuitpharm.literature holds every reading with
 # its conditions and PRINTS the derived quantities; knowledge/14-literature.md is the
 # reading. Nothing below has been entered as a dataset yet -- see each entry for why.
 #
@@ -575,6 +742,7 @@ ALL: dict[str, object] = {
     "dose_response_peak": DOSE_RESPONSE_BENCHMARK,
     "deactivation_charge": DEACTIVATION_BENCHMARK,
     "jahn1997_peak_crc": JAHN1997_PEAK_CRC,
+    "barberis2007_deact": BARBERIS2007_DEACT,
 }
 
 TRAIN = tuple(d for d in ALL.values() if getattr(d, "role", "train") == "train")
@@ -644,6 +812,7 @@ def peak_crc_from_model(model, *, concs_um=None, noise_sd: float = 0.0, seed: in
             # the validator requires the top point to be 1: it IS the normalising point,
             # and adding noise to it would mean the column was normalised by something the
             # dataset does not contain.
+            y = np.clip(y, 0.0, 1.0)
             y[int(np.argmax(concs))] = 1.0
     sem = np.full(y.shape, noise_sd if noise_sd > 0 else 1e-3)
     return DoseResponseDataset(

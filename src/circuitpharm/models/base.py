@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
-from typing import Protocol, runtime_checkable, Any
+from typing import Protocol, runtime_checkable
 import numpy as np
 
 
@@ -37,18 +37,24 @@ class Observable(str, Enum):
     (roadmap §2.3). The repository's signature failure is exactly this class of mistake:
     a preBotzinger circuit calibrated against whole-body minute ventilation, now VOID.
 
-    PEAK         max P_open during an agonist application -- fast-perfusion
-                 concentration-response curves report this.
-    EQUILIBRIUM  stationary P_open with desensitisation included -- the tonic /
-                 extrasynaptic current reports this. For the 5-state scheme it differs
-                 from PEAK by a factor of ~3 at the same parameters.
-    CHARGE       integral of P_open over a DECLARED window -- synaptic charge transfer,
-                 and the bridge to the circuit layer's conductance.
+    PEAK            max P_open during an agonist application -- fast-perfusion
+                    concentration-response curves report this.
+    EQUILIBRIUM     stationary P_open with desensitisation included -- the tonic /
+                    extrasynaptic current reports this. For the 5-state scheme it differs
+                    from PEAK by a factor of ~3 at the same parameters.
+    CHARGE          integral of P_open over a DECLARED window -- synaptic charge transfer,
+                    and the bridge to the circuit layer's conductance.
+    DEACTIVATION    macroscopic current decay or relaxation time constant after a declared
+                    agonist pulse. Requires pulse_ms, conc_mm, n_components, and fit_window_ms.
+    MEAN_OPEN_TIME  single-channel or ensemble mean open duration. Requires explicit
+                    conditioning (e.g. INTRABURST, INTRACLUSTER, NONSTATIONARY_WINDOW, POPULATION).
     """
 
     PEAK = "PEAK"
     EQUILIBRIUM = "EQUILIBRIUM"
     CHARGE = "CHARGE"
+    DEACTIVATION = "DEACTIVATION"
+    MEAN_OPEN_TIME = "MEAN_OPEN_TIME"
 
 
 class ObservableMismatch(TypeError):
@@ -59,13 +65,18 @@ class ObservableMismatch(TypeError):
 class ObservedQuantity:
     """A number together with the observable it is a number of.
 
-    Arithmetic between two of these raises unless the observables match. This is the
-    enforcement half of roadmap §2.3; the declarations live on the model methods.
+    Arithmetic between two of these raises unless the observables and protocols match.
+    This is the enforcement half of roadmap §2.3; the declarations live on the model methods.
     """
 
     value: float
     observable: Observable
     window_ms: float | None = None
+    pulse_ms: float | None = None
+    conc_mm: float | None = None
+    n_components: int | None = None
+    fit_window_ms: float | None = None
+    conditioning: str | None = None
 
     def __post_init__(self):
         if self.observable is Observable.CHARGE:
@@ -74,6 +85,28 @@ class ObservedQuantity:
                     "a CHARGE quantity needs an explicit positive `window_ms`: the integral "
                     "of P_open depends on the window it was taken over, so a charge without "
                     "one is not a quantity. Pass the integration span in ms.")
+        elif self.observable is Observable.DEACTIVATION:
+            missing = []
+            if self.pulse_ms is None or not (self.pulse_ms > 0):
+                missing.append("pulse_ms")
+            if self.conc_mm is None or not (self.conc_mm > 0):
+                missing.append("conc_mm")
+            if self.n_components is None or not (self.n_components > 0):
+                missing.append("n_components")
+            if self.fit_window_ms is None or not (self.fit_window_ms > 0):
+                missing.append("fit_window_ms")
+            if missing:
+                raise ValueError(
+                    f"a DEACTIVATION quantity needs explicit positive protocol declarations "
+                    f"({', '.join(missing)} missing). Pulse duration, concentration in mM, "
+                    f"component count and fit window in ms must all be declared; deactivation is "
+                    f"protocol-dependent.")
+        elif self.observable is Observable.MEAN_OPEN_TIME:
+            valid_cond = ("INTRABURST", "INTRACLUSTER", "NONSTATIONARY_WINDOW", "POPULATION")
+            if self.conditioning not in valid_cond:
+                raise ValueError(
+                    f"a MEAN_OPEN_TIME quantity needs `conditioning` in {valid_cond}; "
+                    f"got {self.conditioning!r}. Definitions differ up to 5x across definitions.")
 
     def _check(self, other: "ObservedQuantity", op: str) -> None:
         if not isinstance(other, ObservedQuantity):
@@ -94,6 +127,25 @@ class ObservedQuantity:
             raise ObservableMismatch(
                 f"cannot {op} two CHARGE quantities over different windows "
                 f"({self.window_ms} ms vs {other.window_ms} ms).")
+        if self.observable is Observable.DEACTIVATION:
+            diffs = []
+            if abs(self.pulse_ms - other.pulse_ms) > 1e-9:
+                diffs.append(f"pulse duration ({self.pulse_ms} ms vs {other.pulse_ms} ms)")
+            if abs(self.conc_mm - other.conc_mm) > 1e-9:
+                diffs.append(f"concentration ({self.conc_mm} mM vs {other.conc_mm} mM)")
+            if self.n_components != other.n_components:
+                diffs.append(f"n_components ({self.n_components} vs {other.n_components})")
+            if abs(self.fit_window_ms - other.fit_window_ms) > 1e-9:
+                diffs.append(f"fit window ({self.fit_window_ms} ms vs {other.fit_window_ms} ms)")
+            if diffs:
+                raise ObservableMismatch(
+                    f"cannot {op} two DEACTIVATION quantities with differing protocols: "
+                    f"{'; '.join(diffs)}.")
+        if self.observable is Observable.MEAN_OPEN_TIME:
+            if self.conditioning != other.conditioning:
+                raise ObservableMismatch(
+                    f"cannot {op} two MEAN_OPEN_TIME quantities with differing conditioning: "
+                    f"{self.conditioning!r} vs {other.conditioning!r}.")
 
     def __truediv__(self, other):
         self._check(other, "divide")
@@ -101,11 +153,21 @@ class ObservedQuantity:
 
     def __sub__(self, other):
         self._check(other, "subtract")
-        return ObservedQuantity(self.value - other.value, self.observable, self.window_ms)
+        return ObservedQuantity(
+            self.value - other.value, self.observable,
+            window_ms=self.window_ms, pulse_ms=self.pulse_ms,
+            conc_mm=self.conc_mm, n_components=self.n_components,
+            fit_window_ms=self.fit_window_ms, conditioning=self.conditioning,
+        )
 
     def __add__(self, other):
         self._check(other, "add")
-        return ObservedQuantity(self.value + other.value, self.observable, self.window_ms)
+        return ObservedQuantity(
+            self.value + other.value, self.observable,
+            window_ms=self.window_ms, pulse_ms=self.pulse_ms,
+            conc_mm=self.conc_mm, n_components=self.n_components,
+            fit_window_ms=self.fit_window_ms, conditioning=self.conditioning,
+        )
 
     def __lt__(self, other):
         self._check(other, "compare")
@@ -576,7 +638,8 @@ class ReceptorModel(Protocol):
         """
         ...
 
-    def dose_response(self, concs_um: np.ndarray, pam_factor: float = 1.0) -> np.ndarray:
+    def dose_response(self, concs_um: np.ndarray, pam_factor: float = 1.0, *,
+                      observable: Observable = Observable.EQUILIBRIUM) -> np.ndarray:
         """Open probability across concentrations, on this model's `native_observable`."""
         ...
 

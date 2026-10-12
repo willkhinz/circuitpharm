@@ -274,22 +274,36 @@ def blocked_cv(spec: ModelSpec, datasets, *, n_folds: int = 4, n_starts: int = 4
     folds = _blocks(ds, n_folds)
     all_idx = np.arange(np.asarray(ds.concs_um).size)
 
+    is_norm = getattr(ds, "normalisation", "absolute") == "fraction_of_max"
+    top_idx = int(np.argmax(np.asarray(ds.concs_um, dtype=float))) if is_norm else None
+
     per_fold, failed = [], 0
     for held in folds:
         train_idx = np.setdiff1d(all_idx, held)
-        train = _subset(ds, train_idx)
-        test = _subset(ds, held)
         try:
+            train = _subset(ds, train_idx)
             fit = fit_mle_vector(spec.factory, [train], param_names=spec.param_names,
                                  bounds=spec.bounds, n_starts=n_starts, seed=seed,
                                  caller=f"blocked_cv/{spec.name}")
             sigma = float(fit.per_dataset[0].sigma_hat)
             model = spec.factory(np.array([fit.values[n] for n in spec.param_names]))
-            scored = make_log_likelihood([test], caller=f"blocked_cv/{spec.name}/score",
-                                         n_params=spec.n_free)(model)
+            if is_norm:
+                # Include the normalizing point so test is a valid fraction_of_max dataset
+                # and predictions are normalized by P(c_max), then score only held points.
+                eval_idx = np.append(held, top_idx)
+                test_eval = _subset(ds, eval_idx)
+                pred_eval = _predict(model, test_eval)[:-1]
+                obs_eval = np.asarray(test_eval.mean_response, dtype=float)[:-1]
+                residuals = obs_eval - pred_eval
+                rss = float(np.sum(residuals ** 2))
+                n = int(held.size)
+            else:
+                test = _subset(ds, held)
+                scored = make_log_likelihood([test], caller=f"blocked_cv/{spec.name}/score",
+                                             n_params=spec.n_free)(model)
+                rss = float(scored.per_dataset[0].rss)
+                n = int(scored.per_dataset[0].n)
             # the held-out density at the TRAINING sigma, not the test one
-            rss = float(scored.per_dataset[0].rss)
-            n = int(scored.per_dataset[0].n)
             lpd = float(-0.5 * (rss / sigma ** 2 + n * np.log(2.0 * np.pi * sigma ** 2)))
         except Exception:
             failed += 1
@@ -405,11 +419,16 @@ def compare_models(models: Sequence[str], train, holdout=(), *, n_folds: int = 4
         note = (f"UNRESOLVED. Blocked CV prefers {cv_winner} ({cv_verdict.note}); AICc "
                 f"prefers {aicc_winner}. Both are reported; neither is the answer.")
     else:
+        if cv_winner == max(cv.values(), key=lambda c: c.total_lpd).name:
+            prov_text = (f"blocked {n_folds}-fold CV and AICc both prefer {cv_winner}; CV "
+                         f"margin over the runner-up {cv_margin:.3f} nats, paired SE "
+                         f"{cv_verdict.margin_se:.3f}")
+        else:
+            prov_text = (f"blocked {n_folds}-fold CV and AICc both prefer {cv_winner}; "
+                         f"{cv_verdict.note}")
         verdict = Quantity(
             name="model_comparison_verdict", _value=cv_winner, tier=Tier.UNCALIBRATED,
-            provenance=(f"blocked {n_folds}-fold CV and AICc both prefer {cv_winner}; CV "
-                        f"margin over the runner-up {cv_margin:.3f} nats, paired SE "
-                        f"{cv_verdict.margin_se:.3f}"),
+            provenance=prov_text,
             promote_by="fit against digitised data, and score the prospective holdout",
             caveats=caveats)
         note = (f"Blocked CV and AICc agree on {cv_winner}. {cv_verdict.note}.")
@@ -544,6 +563,30 @@ def _require_one_observable(specs, datasets, observable) -> Observable:
             f"asked to compare on {observable.value} against data tagged "
             f"{data_obs.value}.")
 
+    if data_obs is Observable.DEACTIVATION:
+        for d in datasets[1:]:
+            diffs = []
+            if abs(datasets[0].pulse_ms - d.pulse_ms) > 1e-9:
+                diffs.append(f"pulse duration ({datasets[0].pulse_ms} ms vs {d.pulse_ms} ms)")
+            if abs(datasets[0].conc_mm - d.conc_mm) > 1e-9:
+                diffs.append(f"concentration ({datasets[0].conc_mm} mM vs {d.conc_mm} mM)")
+            if datasets[0].n_components != d.n_components:
+                diffs.append(f"n_components ({datasets[0].n_components} vs {d.n_components})")
+            if abs(datasets[0].fit_window_ms - d.fit_window_ms) > 1e-9:
+                diffs.append(f"fit window ({datasets[0].fit_window_ms} ms vs {d.fit_window_ms} ms)")
+            if diffs:
+                raise ObservableMismatch(
+                    f"the DEACTIVATION datasets declare different protocols: {'; '.join(diffs)}. "
+                    f"Deactivation is protocol-dependent; comparing or pooling across differing "
+                    f"protocols is invalid.")
+    elif data_obs is Observable.MEAN_OPEN_TIME:
+        for d in datasets[1:]:
+            if datasets[0].conditioning != d.conditioning:
+                raise ObservableMismatch(
+                    f"the MEAN_OPEN_TIME datasets declare different conditioning: "
+                    f"{datasets[0].conditioning!r} vs {d.conditioning!r}. Comparing across "
+                    f"differing definitions is invalid.")
+
     # Probed through `_predict`, the same path the likelihood uses, so the check cannot
     # disagree with what the fit will actually do.
     probe = dataclasses.replace(
@@ -637,3 +680,34 @@ def recovery_check(truth: str, *, noise_sd: float = 0.005, n_points: int = 24,
         recovered=recovered,
         note=(f"truth {truth}; CV chose {res.cv_winner}, AICc chose {res.aicc_winner}. "
               + ("recovered" if recovered else "NOT recovered -- " + res.note)))
+
+
+def check_deactivation_protocols(d1, d2) -> None:
+    """Raise ObservableMismatch if two deactivation objects declare differing protocols.
+
+    Works for DeactivationDataset or ObservedQuantity.
+    """
+    p1 = getattr(d1, "pulse_ms", None)
+    p2 = getattr(d2, "pulse_ms", None)
+    c1 = getattr(d1, "conc_mm", None)
+    c2 = getattr(d2, "conc_mm", None)
+    n1 = getattr(d1, "n_components", None)
+    n2 = getattr(d2, "n_components", None)
+    w1 = getattr(d1, "fit_window_ms", None)
+    w2 = getattr(d2, "fit_window_ms", None)
+
+    diffs = []
+    if p1 is not None and p2 is not None and abs(p1 - p2) > 1e-9:
+        diffs.append(f"pulse duration ({p1} ms vs {p2} ms)")
+    if c1 is not None and c2 is not None and abs(c1 - c2) > 1e-9:
+        diffs.append(f"concentration ({c1} mM vs {c2} mM)")
+    if n1 is not None and n2 is not None and n1 != n2:
+        diffs.append(f"n_components ({n1} vs {n2})")
+    if w1 is not None and w2 is not None and abs(w1 - w2) > 1e-9:
+        diffs.append(f"fit window ({w1} ms vs {w2} ms)")
+
+    if diffs:
+        raise ObservableMismatch(
+            f"cannot compare deactivations with differing protocols: {'; '.join(diffs)}."
+        )
+

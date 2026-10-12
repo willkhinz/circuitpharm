@@ -1,6 +1,6 @@
 """The literature readings, pinned.
 
-WHY THESE TESTS EXIST. `scripts/literature_gamma2.py` holds numbers transcribed by hand
+WHY THESE TESTS EXIST. `circuitpharm.literature` holds numbers transcribed by hand
 from seven full texts. Hand transcription is exactly what this project distrusts elsewhere,
 so the readings are pinned here and the DERIVED quantities are recomputed rather than
 restated.
@@ -21,7 +21,13 @@ import sqlite3
 
 import pytest
 
-from scripts.literature_gamma2 import (
+# From the PACKAGE, not from scripts/. These constants used to live in
+# scripts/literature_gamma2.py, which made this module's import depend on the repo root being
+# on sys.path -- it passed under `python -m pytest` and died in CI under bare `pytest`
+# (fixed once in 5643f74 by pyproject's pythonpath, and fixed at the root here by moving the
+# data into the package). `fitting.data` imported them from scripts/ too, which broke
+# `import circuitpharm` from any directory other than the repo root.
+from circuitpharm.literature import (
     DEACTIVATIONS, NOMINAL_DEFECT, OPEN_TIME_FITS, OTHER, PO_CANDIDATES, SOURCES,
     STATED_MEAN_OPEN_TIME, _weighted,
 )
@@ -218,6 +224,69 @@ def test_the_simulated_row_is_marked_as_not_a_measurement():
     assert "SIMULATION" in d.where.upper() or "SIMULAT" in d.where.upper()
     assert math.isnan(d.err_ms), "a simulated point value must not carry an error bar"
     assert "Do not use as data" in d.note
+
+
+def test_deactivation_and_open_time_datasets_enforce_protocol_declarations():
+    """Phase 1: datasets enforce positive protocol declarations and valid conditioning."""
+    import numpy as np
+    from circuitpharm.models.base import Observable, ObservableMismatch
+    from circuitpharm.fitting.data import DeactivationDataset, MeanOpenTimeDataset
+    from circuitpharm.fitting.comparison import check_deactivation_protocols
+
+    # DeactivationDataset missing pulse_ms raises ValueError
+    with pytest.raises(ValueError, match="deactivation requires positive protocol declarations"):
+        DeactivationDataset(
+            citation_label="invalid deact",
+            time_ms=np.linspace(0, 100, 10),
+            normalized_current=np.linspace(1, 0, 10),
+            observable=Observable.DEACTIVATION,
+            conc_mm=1.0,
+            n_components=2,
+            fit_window_ms=100.0,
+            # missing pulse_ms
+        )
+
+    # MeanOpenTimeDataset with missing or invalid conditioning raises ValueError
+    with pytest.raises(ValueError, match="mean open time requires `conditioning`"):
+        MeanOpenTimeDataset(
+            citation_label="invalid open time",
+            mean_open_time_ms=2.5,
+            conditioning="INVALID",  # type: ignore
+        )
+
+    # Comparing Dixon (5.9 ms, 1 ms pulse, 2 components) with Barberis (52.5 ms, 2 ms pulse, 3 components)
+    # raises ObservableMismatch citing differing pulse_ms and n_components
+    dixon_ds = DeactivationDataset(
+        citation_label="Dixon 2014",
+        pulse_ms=1.0,
+        conc_mm=3.0,
+        n_components=2,
+        fit_window_ms=50.0,
+        time_ms=np.linspace(0, 50, 10),
+        normalized_current=np.linspace(1, 0, 10),
+        observable=Observable.DEACTIVATION,
+        synthetic=True,
+        kind="synthetic",
+        origin="test fixture",
+    )
+    barberis_ds = DeactivationDataset(
+        citation_label="Barberis 2007",
+        pulse_ms=2.0,
+        conc_mm=10.0,
+        n_components=3,
+        fit_window_ms=1000.0,
+        time_ms=np.linspace(0, 1000, 10),
+        normalized_current=np.linspace(1, 0, 10),
+        observable=Observable.DEACTIVATION,
+        synthetic=True,
+        kind="synthetic",
+        origin="test fixture",
+    )
+    with pytest.raises(ObservableMismatch) as exc_info:
+        check_deactivation_protocols(dixon_ds, barberis_ds)
+    err = str(exc_info.value)
+    assert "pulse duration" in err
+    assert "n_components" in err
 
 
 # ---------------------------------------------------------------------------------------

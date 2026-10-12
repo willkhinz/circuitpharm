@@ -10,8 +10,6 @@ the behaviour they pin. They are the only durable statement of why that phase ex
 """
 from __future__ import annotations
 
-import warnings
-
 import numpy as np
 import pytest
 
@@ -22,7 +20,6 @@ from circuitpharm.models import (
 )
 from circuitpharm.models.base import (
     DEFAULT_E_CL_MV,
-    DecayFit,
     Observable,
     ObservableMismatch,
     ObservedQuantity,
@@ -381,6 +378,113 @@ def test_charge_quantity_requires_a_window():
     q = ObservedQuantity(1.0, Observable.CHARGE, window_ms=50.0)
     with pytest.raises(ObservableMismatch, match="different windows"):
         q / ObservedQuantity(1.0, Observable.CHARGE, window_ms=25.0)
+
+
+def test_deactivation_quantity_requires_protocol_declarations():
+    """Phase 1: deactivation observable requires pulse_ms, conc_mm, n_components, fit_window_ms."""
+    with pytest.raises(ValueError, match="DEACTIVATION"):
+        ObservedQuantity(10.0, Observable.DEACTIVATION)
+    with pytest.raises(ValueError, match="pulse_ms"):
+        ObservedQuantity(10.0, Observable.DEACTIVATION, conc_mm=10.0, n_components=3, fit_window_ms=1000.0)
+    # Valid declaration passes
+    q = ObservedQuantity(
+        10.0, Observable.DEACTIVATION, pulse_ms=2.0, conc_mm=10.0, n_components=3, fit_window_ms=1000.0
+    )
+    assert q.pulse_ms == 2.0
+
+
+def test_mean_open_time_quantity_requires_conditioning():
+    """Phase 1: mean open time observable requires conditioning in closed set."""
+    with pytest.raises(ValueError, match="MEAN_OPEN_TIME"):
+        ObservedQuantity(2.5, Observable.MEAN_OPEN_TIME)
+    with pytest.raises(ValueError, match="conditioning"):
+        ObservedQuantity(2.5, Observable.MEAN_OPEN_TIME, conditioning="ARBITRARY")
+    q = ObservedQuantity(2.5, Observable.MEAN_OPEN_TIME, conditioning="INTRABURST")
+    assert q.conditioning == "INTRABURST"
+
+
+def test_dixon_and_barberis_deactivations_cannot_be_compared():
+    """Phase 1 Acceptance: comparing Dixon's 5.9 ms with Barberis's 52.5 ms raises ObservableMismatch,
+    citing their differing pulse_ms / n_components.
+    """
+    dixon = ObservedQuantity(
+        5.9, Observable.DEACTIVATION,
+        pulse_ms=1.0, conc_mm=3.0, n_components=2, fit_window_ms=50.0,
+    )
+    barberis = ObservedQuantity(
+        52.5, Observable.DEACTIVATION,
+        pulse_ms=2.0, conc_mm=10.0, n_components=3, fit_window_ms=1000.0,
+    )
+    with pytest.raises(ObservableMismatch) as exc_info:
+        _ = dixon < barberis
+    err_msg = str(exc_info.value)
+    assert "pulse duration" in err_msg
+    assert "n_components" in err_msg
+
+    with pytest.raises(ObservableMismatch):
+        _ = dixon / barberis
+
+
+def test_deactivation_dataset_rejects_contradictory_aliases():
+    """Phase 1b: DeactivationDataset must not silently accept contradictory aliases."""
+    from circuitpharm.fitting.data import DeactivationDataset
+    t = np.linspace(0, 100, 10)
+    y = np.exp(-t / 10.0)
+
+    # Contradictory pulse durations
+    with pytest.raises(ValueError, match="contradictory pulse durations"):
+        DeactivationDataset(
+            citation_label="contradiction_pulse", time_ms=t, normalized_current=y,
+            observable=Observable.DEACTIVATION,
+            pulse_ms=1.0, pulse_duration_ms=999.0,
+            conc_mm=1.0, n_components=2, fit_window_ms=50.0,
+            synthetic=True, kind="synthetic", origin="probe"
+        )
+
+    # Contradictory concentrations (3.0 mM vs 1.0 uM = 0.001 mM)
+    with pytest.raises(ValueError, match="contradictory concentrations"):
+        DeactivationDataset(
+            citation_label="contradiction_conc", time_ms=t, normalized_current=y,
+            observable=Observable.DEACTIVATION,
+            pulse_ms=1.0, conc_mm=3.0, gaba_conc_um=1.0,
+            n_components=2, fit_window_ms=50.0,
+            synthetic=True, kind="synthetic", origin="probe"
+        )
+
+
+def test_mean_open_time_dataset_requires_concentration():
+    """Phase 1b: MeanOpenTimeDataset must require explicit positive conc_mm without silent defaults."""
+    from circuitpharm.fitting.data import MeanOpenTimeDataset
+
+    # Missing conc_mm
+    with pytest.raises(ValueError, match="positive concentration"):
+        MeanOpenTimeDataset(
+            citation_label="test_no_conc",
+            mean_open_time_ms=2.5,
+            conditioning="INTRABURST",
+        )
+
+    # Negative / zero conc_mm
+    with pytest.raises(ValueError, match="positive concentration"):
+        MeanOpenTimeDataset(
+            citation_label="test_zero_conc",
+            mean_open_time_ms=2.5,
+            conditioning="INTRABURST",
+            conc_mm=0.0,
+        )
+
+    # Valid conc_mm passes
+    ds = MeanOpenTimeDataset(
+        citation_label="test_valid",
+        mean_open_time_ms=2.5,
+        conditioning="INTRABURST",
+        conc_mm=10.0,
+        synthetic=True,
+        kind="synthetic",
+        origin="test fixture",
+    )
+    assert ds.conc_mm == 10.0
+
 
 
 def test_model_a_refuses_an_equilibrium_curve():
