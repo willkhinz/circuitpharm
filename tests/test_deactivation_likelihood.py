@@ -176,3 +176,49 @@ def test_the_barberis_dataset_is_the_one_being_scored():
     assert BARBERIS.observable is Observable.DEACTIVATION
     assert BARBERIS.pulse_ms == 2.0 and BARBERIS.conc_mm == 10.0
     assert BARBERIS.n_components == 3
+
+
+# ---------------------------------------------------------------------------------------
+# What the trace determines, and what the stated interval around it means.
+# ---------------------------------------------------------------------------------------
+
+@pytest.mark.slow
+def test_the_published_errors_propagate_to_a_wider_interval_than_the_profile():
+    """The profile width over a NOISE-FREE parametric trace is not a measurement
+    uncertainty, and this test exists so that cannot be forgotten.
+
+    The Barberis trace has no noise, so the residuals a profile sees are the model's
+    systematic misfit; `sigma_hat` is tiny and the curvature correspondingly enormous. The
+    refined profile's 95% width came out NARROWER THAN ITS OWN FINEST GRID STEP
+    (0.026 /ms) -- which looks like precision and is the absence of noise.
+
+    Resampling the source's stated errors (tau +/- 0.3/4.6/14.9 ms, areas +/- 0.04/0.02/0.03,
+    SEM at n = 6) and refitting gives the interval that should actually be quoted. It must
+    come out WIDER, or the propagation is not doing anything.
+    """
+    from scripts.koff_identifiability import propagate_published_errors
+
+    k = propagate_published_errors(n_rep=8, seed=3)
+    assert k.size >= 6, "most resampled fits should succeed"
+    lo, hi = float(np.min(k)), float(np.max(k))
+    spread = hi / lo
+    assert spread > 1.15, (
+        f"propagating the published SEMs moved koff by only {spread:.3f}x, which is "
+        f"narrower than the refined profile grid step -- the propagation is not reaching "
+        f"the fit")
+    # and it must land in the region the profile found, not somewhere unrelated
+    assert 0.02 < np.median(k) < 0.6, f"propagated koff median {np.median(k)} is implausible"
+
+
+@pytest.mark.slow
+def test_koff_prefers_a_slower_value_than_the_model_default():
+    """A recorded observation, not a claim about the receptor. The trace prefers koff
+    several-fold BELOW `KineticAllosteryModel`'s default, and the default is itself part of
+    the 'chimera of two fits' that roadmap P0-13 flags. If this ever inverts, the fit or the
+    default moved and both the roadmap note and knowledge/11-identifiability.md need
+    revisiting."""
+    from scripts.koff_identifiability import propagate_published_errors
+
+    k = propagate_published_errors(n_rep=8, seed=5)
+    assert float(np.median(k)) < KineticAllosteryModel().koff, (
+        "the Barberis trace no longer prefers a slower koff than the model default")

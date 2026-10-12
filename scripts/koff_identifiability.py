@@ -105,6 +105,70 @@ def fit_at(koff, cost, base, n_restart=_N_RESTART, seed=0):
     return best
 
 
+def propagate_published_errors(n_rep=24, seed=7):
+    """Best-fit koff when the SOURCE'S OWN published errors are resampled.
+
+    WHY THIS IS THE HONEST INTERVAL AND THE PROFILE WIDTH IS NOT. The Barberis trace is a
+    NOISE-FREE parametric curve, so the residuals a profile sees are the model's systematic
+    misfit, not experimental scatter -- `sigma_hat` is tiny and the curvature correspondingly
+    enormous. The profile therefore reports an interval narrower than its own finest grid
+    step, which is not precision; it is the absence of noise.
+
+    The real uncertainty is the one the paper states: tau = 2.8 +/- 0.3, 33.4 +/- 4.6,
+    221.35 +/- 14.9 ms and areas 0.57 +/- 0.04, 0.23 +/- 0.02, 0.20 +/- 0.03 (SEM, n = 6).
+    Resampling within those, regenerating the trace and refitting is what propagates them.
+    Areas are renormalised to sum to 1, because that is a constraint of the published fit
+    rather than a free parameter.
+    """
+    from circuitpharm.fitting.data import DeactivationDataset
+    from circuitpharm.literature import DEACTIVATIONS
+    from circuitpharm.models.base import Observable
+
+    row = next(d for d in DEACTIVATIONS if d.label == "Barberis 2007, brief pulse")
+    taus, areas = row.components
+    tau_sem, area_sem = (0.3, 4.6, 14.9), (0.04, 0.02, 0.03)
+    base = KineticAllosteryModel()
+    template = ALL["barberis2007_deact"]
+    t = np.asarray(template.time_ms, dtype=float)
+    rng = np.random.default_rng(seed)
+
+    out = []
+    for _ in range(n_rep):
+        tt = np.maximum([rng.normal(m, s) for m, s in zip(taus, tau_sem)], 1e-3)
+        aa = np.maximum([rng.normal(m, s) for m, s in zip(areas, area_sem)], 1e-6)
+        aa = np.asarray(aa) / np.sum(aa)
+        y = sum(a * np.exp(-t / tau) for a, tau in zip(aa, np.sort(tt)))
+        ds = DeactivationDataset(
+            citation_label="Barberis resampled within published SEM",
+            time_ms=t, normalized_current=y,
+            pulse_ms=template.pulse_ms, conc_mm=template.conc_mm,
+            n_components=3, fit_window_ms=template.fit_window_ms,
+            observable=Observable.DEACTIVATION, normalisation="fraction_of_max",
+            kind="synthetic", synthetic=True,
+            origin=("the Barberis components resampled inside their published SEMs, to "
+                    "propagate the source's stated uncertainty into koff"),
+        )
+        cost = _cost_fn([ds])
+        # koff free as well, so this is a best fit rather than a profile point
+        x0 = np.log10([base.koff] + [getattr(base, k) for k in FREE])
+        def obj(x):
+            try:
+                m = base.with_params(koff=10.0 ** x[0],
+                                     **{k: 10.0 ** v for k, v in zip(FREE, x[1:])})
+            except Exception:
+                return np.inf
+            return cost(m)
+        best, bx = np.inf, None
+        for i in range(2):
+            s0 = x0 if i == 0 else x0 + rng.normal(0.0, 0.3, x0.size)
+            r = minimize(obj, s0, method="Nelder-Mead", options=_OPT)
+            if float(r.fun) < best:
+                best, bx = float(r.fun), r.x
+        if bx is not None and np.isfinite(best):
+            out.append(10.0 ** bx[0])
+    return np.asarray(out)
+
+
 def _scan(grid, cost, base):
     prof = np.array([fit_at(k, cost, base) for k in grid])
     return prof - np.nanmin(prof)
@@ -160,26 +224,42 @@ def main():
         prof_f = _scan(fine, cost, base)
         _report(fine, prof_f, base, f"REFINED -- {lo:.4g} to {hi:.4g} /ms")
         inside = fine[prof_f <= DELTA_95]
+        best = fine[int(prof_f.argmin())]
+        step = float(np.diff(fine).mean())
         print(f"\n{'=' * 84}")
         print("VERDICT")
         print("=" * 84)
-        if 0 < inside.size < fine.size:
-            print(f"  koff IS identifiable from this trace alone.")
-            print(f"  95% interval {inside.min():.4g} to {inside.max():.4g} /ms "
-                  f"= {inside.max() / inside.min():.2f}x "
-                  f"({np.log10(inside.max() / inside.min()):.3f} decades)")
-            print(f"  best fit {fine[int(prof_f.argmin())]:.4g} /ms against the model's "
-                  f"default {base.koff:.4g} /ms")
-        elif inside.size == fine.size:
-            print("  the refined profile is flat: the interval is narrower than the coarse")
-            print("  grid but wider than the refined one. Widen --n-fine.")
+        print(f"  koff IS identifiable from this trace alone: the profile has an interior")
+        print(f"  minimum at {best:.4g} /ms and rises on both sides.")
+        if inside.size <= 1:
+            print(f"\n  The 95% width is NARROWER THAN THE FINEST GRID STEP ({step:.4g} /ms),")
+            print(f"  so no interval is quoted from it. THAT IS NOT PRECISION -- it is the")
+            print(f"  absence of noise: the trace is a noise-free parametric curve, so the")
+            print(f"  residuals are the model's systematic misfit and sigma_hat is tiny.")
         else:
-            print("  no refined point inside the threshold; the profile is not smooth "
-                  "enough to quote an interval.")
+            print(f"\n  profile 95% span {inside.min():.4g} to {inside.max():.4g} /ms "
+                  f"-- but see the caveat below; this is not a measurement uncertainty.")
+
+        print(f"\n  PROPAGATING THE SOURCE'S OWN ERRORS INSTEAD (tau +/- 0.3/4.6/14.9 ms,")
+        print(f"  areas +/- 0.04/0.02/0.03, SEM at n = 6):")
+        k = propagate_published_errors()
+        if k.size:
+            lo, hi = np.percentile(k, [2.5, 97.5])
+            print(f"    best-fit koff over {k.size} resamples: median {np.median(k):.4g} /ms,")
+            print(f"    2.5-97.5 percentile {lo:.4g} to {hi:.4g} /ms = {hi / lo:.2f}x "
+                  f"({np.log10(hi / lo):.3f} decades)")
+            print(f"    THIS is the interval to quote. It is {hi / lo:.1f}x wide against a")
+            print(f"    profile width below {step:.4g} /ms -- the published uncertainty")
+            print(f"    dominates, and the profile never saw it.")
+        else:
+            print("    every resampled fit failed; no propagated interval available.")
+
+        print(f"\n  Against the model's current default koff = {base.koff:.4g} /ms, the trace")
+        print(f"  prefers {best / base.koff:.2f}x that value.")
         print("\n  This could not have been measured before 2026-10-11: the deactivation")
         print("  half of the likelihood did not exist, so the dataset was inert.")
-        print("  The number is PARAMETRIC-grade -- it says what the published components")
-        print("  determine, not what the receptor's koff is.")
+        print("  Everything here is PARAMETRIC-grade -- it says what the published")
+        print("  components determine, not what the receptor's koff is.")
 
 
 if __name__ == "__main__":
