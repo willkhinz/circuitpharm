@@ -1,8 +1,48 @@
 # Plan — Phase 1b through 4, written for delegated agents
 
 **Author:** Claude Opus 5, 2026-10-10, after reviewing Phase 5 (`3a8f962`).
-**Status: NOT STARTED. Awaiting go-ahead.**
 **Supersedes** `PLAN-next-upgrade.md` §2–§5. Read `knowledge/14-literature.md` first.
+
+> ## Status, 2026-10-12
+>
+> | phase | state |
+> |---|---|
+> | **1** protocol declarations | **DONE**, landed in `b0c547d`. Its two defects (§2.1, §2.2) were fixed by another agent before I reached them, so **§2 of this plan is complete**. |
+> | **1b** fix + land Phase 1 | **DONE** (`b0c547d`). |
+> | **2** Barberis deactivation, `k_off` | **DONE**, `b0c547d` + `a18805a`. Four defects found en route — see below. |
+> | **3** `JAHN1997_PEAK_CRC` decision | **NOT STARTED.** Now unblocked: Phase 2's prerequisite is met. |
+> | **4** P6 σ re-derivation | **NOT STARTED.** |
+> | **5** `P_o,max` verdict | **DONE**, reviewed and fixed (`3a8f962`). |
+>
+> **§3's grade question is settled** — `kind="parametric"` already existed and was used. The
+> sharpened remnant (Jahn extrapolates four decades, Barberis extrapolates nothing, and the
+> taxonomy cannot tell them apart) is still open and still the user's, and now matters *more*
+> because both datasets are in `TRAIN` at the same grade.
+>
+> **Four defects found while doing Phase 2**, all recorded in the commits rather than
+> quietly fixed:
+>
+> 1. **The deactivation half of the likelihood did not exist.** `_predict` raised
+>    `ObservableMismatch` for everything but PEAK and EQUILIBRIUM, and nothing in `src/` read
+>    a deactivation trace at all — so `make_log_likelihood(TRAIN)` had been raising
+>    `AttributeError` since before Phase 2 (the pre-existing synthetic CHARGE benchmark breaks
+>    it too, so **not** a Phase 2 regression). The gap was never only data.
+> 2. **The Barberis trace was correct in every value and mis-sampled.** A uniform 10.1 ms grid
+>    over components spanning two decades put one sample at or before one τ_fast, while the
+>    fast component carries the largest area. A noiseless refit hides it entirely; at σ = 0.02
+>    it recovers τ_fast as 2.60 ± 2.43 ms. Fixed with a hybrid grid at the same point count.
+> 3. **The library had started importing from `scripts/`**, which broke `import circuitpharm`
+>    from any directory but the repo root. The data now lives in `circuitpharm.literature`.
+> 4. **The profile width over a noise-free trace is not an uncertainty.** It came out narrower
+>    than its own grid step and would have been quoted as spectacular precision. Propagating
+>    the source's stated SEMs gives an interval **1.6× wide** instead.
+>
+> **Step 5's train-vs-holdout question resolved itself:** the deactivation went to `TRAIN`
+> because that is where it makes `k_off` identifiable, and `HOLDOUT` is **still empty**.
+> Filling it with Barberis's paired-pulse recovery (0.33 ± 0.03 at a 100 ms gap, fully
+> stated) needs a new observable and dataset type, and is the obvious next small piece.
+
+**Status of the rest: Phases 3 and 4 NOT STARTED. Awaiting go-ahead.**
 
 ---
 
