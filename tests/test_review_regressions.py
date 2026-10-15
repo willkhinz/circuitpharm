@@ -817,3 +817,52 @@ def test_the_result_schema_does_not_depend_on_the_environment():
     assert at > handler, (
         "joint_excursion is added before the ImportError handler, i.e. inside the try. On a "
         "lean install it will be skipped and the result schema becomes environment-dependent.")
+
+    # Dynamically verify that include_motor=False still contains joint_excursion
+    cand = Compound.from_profile("alogabat", occupancy=0.35)
+    rs = ev.evaluate(cand, n_seed=1, include_motor=False)
+    assert rs.quantity("joint_excursion").tier is Tier.VOID
+
+
+# ------------------------------------------------- E27: protocol-dependent observables
+#                                                   (deactivation & mean open time)
+def test_deactivation_comparisons_require_identical_protocols():
+    """E27 (Phase 1). Deactivation is protocol-dependent: pulse duration moves tau_w 6.9x
+    (Barberis 2007: 52.5 ms at 2 ms vs 364 ms at 3 s), and component count distinguishes
+    Dixon's 5.9 ms (2 components) from Barberis's 52.5 ms (3 components).
+
+    No module may compare or pool deactivation values whose declared protocols differ.
+    """
+    import pytest as _pytest
+    from circuitpharm.models.base import Observable, ObservableMismatch, ObservedQuantity
+    from circuitpharm.fitting.comparison import check_deactivation_protocols
+
+    # 1. ObservedQuantity comparisons (<, >, -, /, +) fail loudly when protocols differ
+    dixon_q = ObservedQuantity(
+        5.9, Observable.DEACTIVATION,
+        pulse_ms=1.0, conc_mm=3.0, n_components=2, fit_window_ms=50.0,
+    )
+    barberis_q = ObservedQuantity(
+        52.5, Observable.DEACTIVATION,
+        pulse_ms=2.0, conc_mm=10.0, n_components=3, fit_window_ms=1000.0,
+    )
+
+    with _pytest.raises(ObservableMismatch) as exc:
+        _ = dixon_q < barberis_q
+    err = str(exc.value)
+    assert "pulse duration" in err and "n_components" in err
+
+    with _pytest.raises(ObservableMismatch):
+        _ = dixon_q / barberis_q
+
+    # 2. check_deactivation_protocols helper also raises
+    with _pytest.raises(ObservableMismatch) as exc2:
+        check_deactivation_protocols(dixon_q, barberis_q)
+    assert "pulse duration" in str(exc2.value)
+
+    # 3. Missing declarations fail loudly (no silent defaults allowed)
+    with _pytest.raises(ValueError, match="DEACTIVATION"):
+        ObservedQuantity(5.9, Observable.DEACTIVATION)
+    with _pytest.raises(ValueError, match="fit_window_ms"):
+        ObservedQuantity(5.9, Observable.DEACTIVATION, pulse_ms=1.0, conc_mm=3.0, n_components=2)
+

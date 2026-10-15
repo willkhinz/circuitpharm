@@ -18,6 +18,11 @@ from circuitpharm.assays import (                      # noqa: F401
 # backward-compatible aliases
 run = stretch_reflex
 
+__all__ = [
+    "trajectory", "stretch_reflex", "model_xml", "CASES",
+    "DT", "HOLD", "RAMP", "PRE", "POST", "run", "XML",
+]
+
 
 def XML():                                             # noqa: N802
     """Deprecated: `XML` was a module-level relative path string. Call `model_xml()`."""

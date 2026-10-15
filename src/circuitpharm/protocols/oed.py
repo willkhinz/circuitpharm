@@ -41,7 +41,7 @@ import numpy as np
 
 from ..models.base import Observable, ObservableMismatch, ReceptorModel
 from ..provisional import void, warn_provisional
-from ..results import Quantity, ResultSet, Tier
+from ..results import Quantity
 
 _DEFECT = ("AIC/BIC/weights computed at UNFITTED parameters, with k counting declared "
            "rather than estimated parameters and sigma assumed rather than estimated -- so "
@@ -139,6 +139,11 @@ def evaluate_model_fit(
                 f"Observable.PEAK is the one all three can produce.")
         observable = next(iter(distinct))
 
+    elif observable is Observable.CHARGE:
+        raise ObservableMismatch(
+            f"a concentration-response comparison is on PEAK or EQUILIBRIUM; "
+            f"{observable.value} is a charge and needs a window and a waveform.")
+
     warn_provisional(what="model comparison (AIC/BIC/Akaike weights)", defect=_DEFECT,
                      register_item="P0-5 / C5", promote_by=_PROMOTE)
 
@@ -149,6 +154,10 @@ def evaluate_model_fit(
         if observable is Observable.PEAK:
             y_pred = m.peak_dose_response(concs, pam_factor=1.0)
         elif observable is Observable.EQUILIBRIUM:
+            if m.native_observable is not Observable.EQUILIBRIUM:
+                raise ObservableMismatch(
+                    f"{m.name} is {m.native_observable.value}-native and has no equilibrium curve: "
+                    f"compare on PEAK, which every scheme here can produce.")
             y_pred = m.dose_response(concs, pam_factor=1.0)
         else:
             raise ObservableMismatch(
@@ -235,13 +244,27 @@ def find_discriminating_protocol(
                 f"difference across observables finds an axis mismatch, not a mechanism.")
         observable = next(iter(distinct))
 
+    elif observable is Observable.CHARGE:
+        raise ObservableMismatch(
+            f"a concentration-response comparison is on PEAK or EQUILIBRIUM; "
+            f"{observable.value} is a charge and needs a window and a waveform.")
+
     warn_provisional(what="the discriminating-protocol search", defect=_OED_DEFECT,
                      register_item="C6 / P6", promote_by=_OED_PROMOTE)
 
     def _predict(m, g, p):
         if observable is Observable.PEAK:
             return float(np.atleast_1d(m.peak_dose_response(np.array([g]), pam_factor=p))[0])
-        return float(m.steady_state(g, pam_factor=p))
+        elif observable is Observable.EQUILIBRIUM:
+            if m.native_observable is not Observable.EQUILIBRIUM:
+                raise ObservableMismatch(
+                    f"{m.name} is {m.native_observable.value}-native and has no equilibrium curve: "
+                    f"compare on PEAK, which every scheme here can produce.")
+            return float(m.steady_state(g, pam_factor=p))
+        else:
+            raise ObservableMismatch(
+                f"a concentration-response comparison is on PEAK or EQUILIBRIUM; "
+                f"{observable.value} is a charge and needs a window and a waveform.")
 
     best_score = -1.0
     best_gaba = 1.0

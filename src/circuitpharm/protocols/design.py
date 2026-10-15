@@ -192,8 +192,7 @@ def posterior_predictive_score(
     rng = np.random.default_rng(rng_seed)
     pairs_a = rng.permutation(ya)[:n]
     pairs_b = rng.permutation(yb)[:n]
-    noise = rng.normal(0.0, sigma_meas, (2, n))
-    expected_sep = float(np.mean(np.abs((pairs_a + noise[0]) - (pairs_b + noise[1]))))
+    expected_sep = float(np.mean(np.abs(pairs_a - pairs_b)))
 
     var_a = float(np.var(ya, ddof=1))
     var_b = float(np.var(yb, ddof=1))

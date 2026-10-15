@@ -18,14 +18,11 @@ from circuitpharm.protocols import (
     pulse_train,
     ambient_with_spillover,
     extract_electrophys_metrics,
-    decompose_modulation_gain,
     compare_phasic_tonic_mechanisms,
     evaluate_model_fit,
     find_discriminating_protocol,
 )
 from circuitpharm.fitting import (
-    DOSE_RESPONSE_BENCHMARK,
-    DEACTIVATION_BENCHMARK,
     compute_kinetic_objective,
     compute_profile_likelihood,
     compute_fisher_information_matrix,
@@ -232,7 +229,7 @@ def test_model_comparison_and_oed():
     Also note the explicit `observable=`: Model A is PEAK-native and Models B and C are
     EQUILIBRIUM-native, so there is no default axis and omitting it now raises.
     """
-    from circuitpharm.models.base import Observable
+    from circuitpharm.models.base import Observable, ObservableMismatch
 
     m_a = OperationalScalarModel()
     m_b = KineticAllosteryModel()
@@ -245,7 +242,7 @@ def test_model_comparison_and_oed():
         warnings.simplefilter("ignore")
         comp = evaluate_model_fit([m_a, m_b, m_c], concs, y_true,
                                   measurement_noise_std=0.02,
-                                  observable=Observable.EQUILIBRIUM)
+                                  observable=Observable.PEAK)
         assert len(comp) == 3
         total_w = sum(c.akaike_weight.get(acknowledge_void=True) for c in comp)
         assert abs(total_w - 1.0) < 1e-4
@@ -253,10 +250,19 @@ def test_model_comparison_and_oed():
             assert c.aic.tier is Tier.VOID
 
         protocol = find_discriminating_protocol([m_a, m_b, m_c], noise_sigma=0.02,
-                                                observable=Observable.EQUILIBRIUM)
+                                                observable=Observable.PEAK)
     assert protocol.discrimination_score.get(acknowledge_void=True) > 0.0
     assert len(protocol.predicted_responses) == 3
     assert len(protocol.falsification_boundaries.get(acknowledge_void=True)) == 3
+
+    # OperationalScalarModel is PEAK-native; passing EQUILIBRIUM must raise ObservableMismatch
+    with pytest.raises(ObservableMismatch, match="equilibrium"):
+        evaluate_model_fit([m_a, m_b, m_c], concs, y_true,
+                           measurement_noise_std=0.02,
+                           observable=Observable.EQUILIBRIUM)
+    with pytest.raises(ObservableMismatch, match="equilibrium"):
+        find_discriminating_protocol([m_a, m_b, m_c], noise_sigma=0.02,
+                                    observable=Observable.EQUILIBRIUM)
 
 
 # ==============================================================================

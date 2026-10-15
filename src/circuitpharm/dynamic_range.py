@@ -409,7 +409,8 @@ def dynamic_range_posterior_report(
                                 + (posterior_note or "its chain failed a diagnostic")),
                         register_item="P6-2",
                         promote_by="run the chain to convergence (see fitting/posterior.py)",
-                        caveats=caveats)
+                        caveats=caveats,
+                        units=units)
         return Quantity(name=name, _value=tp.median, tier=posterior_tier, units=units,
                         provenance=full_prov,
                         promote_by=("digitise the anchor observables and acquire a kinetic "

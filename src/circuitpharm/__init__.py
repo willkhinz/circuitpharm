@@ -95,6 +95,7 @@ from .models import (  # noqa: E402
     OperationalScalarModel, KineticAllosteryModel, ExtendedDesensitizationModel,
 )
 from .dynamic_range import DynamicRangeEvaluation, evaluate_dynamic_range  # noqa: E402
+from . import parameters, provisional  # noqa: E402
 
 __version__ = "0.1.0"
 
@@ -113,5 +114,6 @@ __all__ = [
     "ReceptorModel", "WaveformResult",
     "OperationalScalarModel", "KineticAllosteryModel", "ExtendedDesensitizationModel",
     "DynamicRangeEvaluation", "evaluate_dynamic_range",
+    "parameters", "provisional",
     "__version__",
 ]

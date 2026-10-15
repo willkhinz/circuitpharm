@@ -12,8 +12,9 @@ import numpy as np
 from scipy.integrate import solve_ivp
 
 from .base import (OPEN_STATE_INDEX, PEAK_APPLICATION_MS, DecayFit, Observable,
-                   ReceptorModel, WaveformResult, fit_biexponential_decay,
-                   peak_open_probability_constant, resolve_initial_state)
+                   ObservableMismatch, ReceptorModel, WaveformResult,
+                   fit_biexponential_decay, peak_open_probability_constant,
+                   resolve_initial_state)
 
 
 STATES_5 = ("R", "AR", "A2R", "A2O", "A2D")
@@ -97,7 +98,8 @@ class KineticAllosteryModel(ReceptorModel):
         return e / (1.0 + e + d)
 
     def apply_pam(self, affinity_factor: float = 1.0,
-                  gating_factor: float = 1.0) -> "KineticAllosteryModel":
+                  gating_factor: float = 1.0, *,
+                  pam_factor: float | None = None) -> "KineticAllosteryModel":
         """Apply allosteric modulation.
 
         affinity_factor: fold-decrease in koff (slowing unbinding). At equilibrium this
@@ -116,6 +118,8 @@ class KineticAllosteryModel(ReceptorModel):
         a silent super-agonist. One decision, stated here, for all three models
         (roadmap P0-12).
         """
+        if pam_factor is not None:
+            affinity_factor = pam_factor
         for nm, v in (("affinity_factor", affinity_factor),
                       ("gating_factor", gating_factor)):
             v = float(v)
@@ -178,7 +182,8 @@ class KineticAllosteryModel(ReceptorModel):
         dist = self.state_distribution(gaba_um, pam_factor)
         return float(dist[OPEN_IDX_5])
 
-    def dose_response(self, concs_um: np.ndarray, pam_factor: float = 1.0) -> np.ndarray:
+    def dose_response(self, concs_um: np.ndarray, pam_factor: float = 1.0, *,
+                      observable: Observable = Observable.EQUILIBRIUM) -> np.ndarray:
         """EQUILIBRIUM open probability. See `native_observable`.
 
         This is NOT the peak-current concentration-response that published CRCs report --
@@ -188,6 +193,10 @@ class KineticAllosteryModel(ReceptorModel):
         chi-squared of 9290 for 9 data points (roadmap C2). Use `peak_dose_response` for
         PEAK data.
         """
+        if observable is not Observable.EQUILIBRIUM:
+            raise ObservableMismatch(
+                f"{self.name} is EQUILIBRIUM-native and has no {observable.value} curve in "
+                f"dose_response. Use peak_dose_response for PEAK data.")
         concs = np.asarray(concs_um, dtype=float)
         mod = self.apply_pam(affinity_factor=pam_factor)
         x = np.maximum(concs, 0.0) / mod.kd_um

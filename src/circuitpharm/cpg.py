@@ -36,7 +36,7 @@ SIMPLIFICATIONS, stated honestly:
     the four motor anchors (see knowledge/03-model-spec.md) has NOT been done.
 """
 import zlib
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 import numpy as np
 
 
@@ -72,6 +72,8 @@ class Drug:
 
     def gaba_scale(self) -> float:
         """PHASIC (synaptic) GABA-A conductance multiplier, capped."""
+        if self.gaba_a_efficacy_cap is None:
+            return self.gaba_a_gain
         return min(self.gaba_a_gain, self.gaba_a_efficacy_cap)
 
     def gaba_scale_tonic(self) -> float:
@@ -83,6 +85,8 @@ class Drug:
         g = self.gaba_a_gain if self.gaba_a_gain_tonic is None else self.gaba_a_gain_tonic
         cap = (self.gaba_a_efficacy_cap if self.gaba_a_cap_tonic is None
                else self.gaba_a_cap_tonic)
+        if cap is None:
+            return g
         return min(g, cap)
 
     @classmethod

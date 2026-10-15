@@ -30,7 +30,7 @@ All pharmacologically load-bearing nodes are conductance-based:
 """
 import numpy as np
 from . import substrate as sub
-from .cpg import Pop, Syn, Drug, E_REV, spindle_ia
+from .cpg import Syn, Drug, E_REV
 from .rg2 import GroupPacemakerRG
 
 # RG OUTPUT UNITS — the thing that makes swapping rhythm generators dangerous.
@@ -171,6 +171,7 @@ class SpinalCircuit:
                         sens=(self.gaba_sens_phasic if rec == "gabaa"
                               else self.glyr_sens if rec == "gly" else 1.0))
         self.t = 0.0
+        self.rg_out = (0.0, 0.0)
         self.trace = {k: [] for k in self.pops}
         self.trace.update(t=[], RG_F=[], RG_E=[])
 

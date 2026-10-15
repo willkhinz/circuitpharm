@@ -31,7 +31,7 @@ PAIRED interval spans zero, it cannot rank.
 
 Run:  python scripts/uncertainty.py --draws 150
 """
-import os, argparse
+import os, sys, argparse
 import numpy as np
 from multiprocessing import Pool
 from circuitpharm.resp import PreBotC, resp_metrics
@@ -154,7 +154,7 @@ if __name__ == "__main__":
             bad_draw.add(draw)
         if np.isnan(mn):
             continue
-        V.setdefault((draw, arm), []).append(100.0 * mn / ctrl)
+        V.setdefault((draw, arm), []).append(100.0 * mn / ctrl if (ctrl and not np.isnan(ctrl)) else float("nan"))
         S[arm].append(sens)
     reached_all = set(range(a.draws)) - bad_draw
     per = {arm: np.array([np.mean(V[(d, arm)]) for d in range(a.draws)

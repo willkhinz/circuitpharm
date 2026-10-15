@@ -119,10 +119,10 @@ def integrated_autocorr_time(chain: np.ndarray, c: float = 5.0) -> float:
         return float("nan")
     acf /= acf[0]
     taus = 2.0 * np.cumsum(acf) - 1.0
-    window = np.flatnonzero(np.arange(len(taus)) < c * taus)
-    if window.size == 0:
+    closed = np.flatnonzero(np.arange(len(taus)) >= c * taus)
+    if closed.size == 0:
         return float("nan")
-    return float(taus[window[-1]])
+    return float(taus[closed[0]])
 
 
 def split_rhat(chain: np.ndarray) -> float:
@@ -309,16 +309,24 @@ def sample_ensemble(
     frozen = [int(i) for i in np.flatnonzero(accepts < min_walker_share * median_accepts)]
 
     failures = []
-    if not np.isfinite(worst_tau):
-        failures.append("integrated autocorrelation time could not be estimated "
-                        "(chain too short for the window to close)")
-    elif n_kept < min_tau_multiples * worst_tau:
+    nan_taus = [k for k, t in taus.items() if not np.isfinite(t)]
+    if nan_taus:
+        failures.append(f"integrated autocorrelation time could not be estimated for {nan_taus} "
+                        f"(chain too short for the window to close)")
+    elif np.isfinite(worst_tau) and n_kept < min_tau_multiples * worst_tau:
         failures.append(f"chain is {n_kept / worst_tau:.1f} autocorrelation times long, "
                         f"need >= {min_tau_multiples:g}")
-    if not np.isfinite(worst_rhat):
-        failures.append("split-Rhat could not be estimated")
-    elif worst_rhat > max_rhat:
+    elif not np.isfinite(worst_tau):
+        failures.append("integrated autocorrelation time could not be estimated "
+                        "(chain too short for the window to close)")
+
+    nan_rhats = [k for k, r in rhats.items() if not np.isfinite(r)]
+    if nan_rhats:
+        failures.append(f"split-Rhat could not be estimated for {nan_rhats}")
+    elif np.isfinite(worst_rhat) and worst_rhat > max_rhat:
         failures.append(f"worst split-Rhat {worst_rhat:.4f} > {max_rhat}")
+    elif not np.isfinite(worst_rhat):
+        failures.append("split-Rhat could not be estimated")
     if not (accept_range[0] <= acc <= accept_range[1]):
         failures.append(f"acceptance fraction {acc:.3f} outside {accept_range}")
     if frozen:

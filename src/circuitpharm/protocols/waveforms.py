@@ -32,6 +32,8 @@ def synaptic_transient(
     t_rel = np.maximum(t - t_start, 0.0)
     mask = t >= t_start
     r, c = float(rise_ms), float(clear_ms)
+    if r > c:
+        r, c = c, r
 
     if r <= 1e-4:
         # Monoexponential instantaneous jump and decay
@@ -273,7 +275,7 @@ def paired_pulse_ratio(res: WaveformResult, gaba: np.ndarray, *,
     onsets = np.flatnonzero(np.diff(above.astype(int)) == 1) + 1
     if above.size and above[0]:
         onsets = np.insert(onsets, 0, 0)
-    if onsets.size < 2:
+    if onsets.size < 2 or onsets.size != n_expected or onsets[-1] >= p.size:
         raise ValueError(
             f"found {onsets.size} pulse onset(s) in the agonist trace, expected "
             f"{n_expected}; the train and the time vector disagree.")

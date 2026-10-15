@@ -47,8 +47,8 @@ once a dataset carrying a kinetic timescale is in the likelihood.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import Callable, Sequence
+from dataclasses import dataclass
+from typing import Sequence
 
 import numpy as np
 from scipy.optimize import minimize
@@ -413,7 +413,7 @@ def compute_fisher_information_matrix(model: KineticAllosteryModel,
 # reparameterisation (fitting/reparam.py), where the problem is well-posed -- so its
 # results are NOT void, only UNCALIBRATED, and they are the ones to use.
 # =======================================================================================
-from .reparam import EQUILIBRIUM_IDENTIFIABLE, UNLOCKED_BY, IdentifiableParams  # noqa: E402
+from .reparam import EQUILIBRIUM_IDENTIFIABLE, IdentifiableParams  # noqa: E402
 
 
 @dataclass(frozen=True)
@@ -451,7 +451,7 @@ class ProfileResult:
 IDENTIFIABLE_BOUNDS = {
     "log10_kd": (-1.0, 4.0),     # K_d 0.1 uM to 10 mM
     "log10_E": (-2.0, 3.0),      # gating efficacy 0.01 to 1000
-    "log10_D": (-3.0, 3.0),      # desensitisation ratio 0.001 to 1000
+    "log10_D": (-3.0, 4.0),      # desensitisation ratio 0.001 to 10000
 }
 
 
@@ -531,7 +531,7 @@ def fit_identifiable(dataset=None, *, x0=None) -> tuple[IdentifiableParams, floa
                        options=dict(ftol=1e-15, gtol=1e-12, maxiter=5000))
         start2 = res.x if res.success else s
         res = minimize(lambda v: equilibrium_chi2_identifiable(v, ds), start2,
-                       method="Nelder-Mead",
+                       method="Nelder-Mead", bounds=bounds,
                        options=dict(xatol=1e-9, fatol=1e-11, maxiter=50000))
         if res.success and res.fun < best_cost:
             best, best_cost = res.x, float(res.fun)
@@ -603,12 +603,12 @@ def profile_likelihood(param: str, dataset=None, *, n_grid: int = 25,
         res = minimize(sub, start, method="L-BFGS-B", bounds=bounds,
                        options=dict(ftol=1e-15, gtol=1e-12, maxiter=5000))
         if res.success:
-            polish = minimize(sub, res.x, method="Nelder-Mead",
+            polish = minimize(sub, res.x, method="Nelder-Mead", bounds=bounds,
                               options=dict(xatol=1e-9, fatol=1e-11, maxiter=20000))
             if polish.success and polish.fun <= res.fun:
                 res = polish
         else:
-            res = minimize(sub, start, method="Nelder-Mead",
+            res = minimize(sub, start, method="Nelder-Mead", bounds=bounds,
                            options=dict(xatol=1e-9, fatol=1e-11, maxiter=50000))
         if not res.success:
             raise RuntimeError(

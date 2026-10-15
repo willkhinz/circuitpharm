@@ -11,8 +11,9 @@ import numpy as np
 from scipy.integrate import solve_ivp
 
 from .base import (OPEN_STATE_INDEX, PEAK_APPLICATION_MS, DecayFit, Observable,
-                   ReceptorModel, WaveformResult, fit_biexponential_decay,
-                   peak_open_probability_constant, resolve_initial_state)
+                   ObservableMismatch, ReceptorModel, WaveformResult,
+                   fit_biexponential_decay, peak_open_probability_constant,
+                   resolve_initial_state)
 
 
 STATES_6 = ("R", "AR", "A2R", "A2O", "A2D_fast", "A2D_slow")
@@ -105,7 +106,8 @@ class ExtendedDesensitizationModel(ReceptorModel):
         d_tot = self.total_desens_ratio
         return e / (1.0 + e + d_tot)
 
-    def apply_pam(self, pam_factor: float = 1.0) -> "ExtendedDesensitizationModel":
+    def apply_pam(self, pam_factor: float = 1.0, *,
+                  affinity_factor: float | None = None) -> "ExtendedDesensitizationModel":
         """Apply state-dependent modulation.
 
         `pam_factor` acts as an affinity enhancer on koff (an EQUILIBRIUM EC50 fold-shift,
@@ -121,6 +123,8 @@ class ExtendedDesensitizationModel(ReceptorModel):
         `cpg.Drug.nmda_scale` and `substrate.tonic_gaba`, which are the precedent for
         guarding it here rather than documenting it (roadmap P0-12).
         """
+        if affinity_factor is not None:
+            pam_factor = affinity_factor
         pf = float(pam_factor)
         if not np.isfinite(pf):
             raise ValueError(f"pam_factor must be finite, got {pf!r}")
@@ -195,12 +199,17 @@ class ExtendedDesensitizationModel(ReceptorModel):
             [0.0, 0.0, rs, 0.0, 0.0, -rs],
         ], dtype=float)
 
-    def dose_response(self, concs_um: np.ndarray, pam_factor: float = 1.0) -> np.ndarray:
+    def dose_response(self, concs_um: np.ndarray, pam_factor: float = 1.0, *,
+                      observable: Observable = Observable.EQUILIBRIUM) -> np.ndarray:
         """EQUILIBRIUM open probability, both desensitisation sinks included.
 
         Not the peak-current CRC that published data reports -- see Model B's note and
         roadmap §2.3. Use `peak_dose_response` for PEAK data.
         """
+        if observable is not Observable.EQUILIBRIUM:
+            raise ObservableMismatch(
+                f"{self.name} is EQUILIBRIUM-native and has no {observable.value} curve in "
+                f"dose_response. Use peak_dose_response for PEAK data.")
         concs = np.asarray(concs_um, dtype=float)
         mod = self.apply_pam(pam_factor=pam_factor)
         x = np.maximum(concs, 0.0) / mod.kd_um

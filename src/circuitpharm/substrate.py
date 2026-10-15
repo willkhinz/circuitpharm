@@ -152,7 +152,7 @@ def raw_receptors(substrate: str) -> tuple:
     return ("nmda",) if substrate == "cond" else ()
 
 
-def tonic_gaba(gaba_tonic: float, sens_tonic: float, scale_tonic: float, g_syn):
+def tonic_gaba(gaba_tonic: float, sens_tonic: float, scale_tonic: float | None, g_syn):
     """Standing extrasynaptic GABA-A, added to the synaptic conductance and clamped at zero.
 
     A NAM (scale < 1) meeting a sensitivity above 1 makes the multiplier negative, and a
@@ -160,5 +160,6 @@ def tonic_gaba(gaba_tonic: float, sens_tonic: float, scale_tonic: float, g_syn):
     the voltage diverges instead of the run failing visibly. Same class as the clamp in
     `Drug.nmda_scale`, which was reachable the same way.
     """
-    eff = max(0.0, 1.0 + sens_tonic * (scale_tonic - 1.0))
+    scale = 1.0 if scale_tonic is None else float(scale_tonic)
+    eff = max(0.0, 1.0 + sens_tonic * (scale - 1.0))
     return np.maximum(0.0, g_syn + gaba_tonic * eff)
