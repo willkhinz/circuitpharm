@@ -215,12 +215,33 @@ def other():
             print(f"  NOTE {o['note']}")
 
 
+def datasets():
+    print(_rule("="))
+    print("REGISTERED DATASETS -- coverage and source-measured domains")
+    print(_rule("="))
+    from circuitpharm.fitting.data import ALL
+    print(f"\n{'key':<24} {'kind':<12} {'observable':<15} {'source domain':<18} {'outside':>10} {'frac outside':>14}")
+    print(_rule())
+    for key, ds in ALL.items():
+        domain_str = str(ds.source_measured_domain) if getattr(ds, "source_measured_domain", None) is not None else "-"
+        n_out = getattr(ds, "n_points_outside_source_domain", 0)
+        frac_out = getattr(ds, "fraction_outside_source_domain", 0.0)
+        n_pts = len(getattr(ds, "concs_um", getattr(ds, "time_ms", [])))
+        pts_str = f"{n_out}/{n_pts}" if n_pts else "-"
+        frac_str = f"{frac_out:.1%}" if getattr(ds, "source_measured_domain", None) is not None else "-"
+        obs_val = getattr(ds.observable, "value", str(ds.observable))
+        print(f"{key:<24} {ds.kind:<12} {obs_val:<15} {domain_str:<18} {pts_str:>10} {frac_str:>14}")
+    print("\nJahn spans 0.3 -> 3000 uM with source domain (1.0, 10.0) uM: 6 of 9 points outside (66.7%).")
+    print("Barberis spans 0 -> 1000 ms with source domain (0.0, 1000.0) ms: 0 of 101 points outside (0.0%).")
+
+
 SECTIONS = {
     "sources": sources,
     "open_times": open_times,
     "deactivation": deactivation,
     "consistency": consistency,
     "po": po_candidates,
+    "datasets": datasets,
     "other": other,
 }
 

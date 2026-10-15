@@ -129,13 +129,20 @@ draws its shape information from the decade that was measured. The central value
 unchanged, so §2.5's fit still lands on `D` at its bound — that is now recorded as the
 reconstruction's artefact rather than as a finding.
 
+This extrapolation is now **machine-visible** via `source_measured_domain=(1.0, 10.0)` on
+`JAHN1997_PEAK_CRC`: 6 of its 9 points (66.7%) lie outside the slope window the source
+measured. By contrast, `BARBERIS2007_DEACT` has `source_measured_domain=(0.0, 1000.0)` and
+extrapolates nothing (0 of 101 points outside, 0.0%). Run `python scripts/literature_gamma2.py --section datasets`
+to print the full registered dataset coverage table.
+
 What survives, and is worth keeping: this scheme is slightly **flatter on the rising phase**
 than the central published value, so a genuinely steeper curve would still count against it.
 The slope is evidence, just much weaker evidence than it was being read as.
 
 **Pinned in** `test_the_slope_and_the_plateau_are_compatible_once_measured_the_same_way`,
-`test_two_binding_sites_can_produce_the_published_slope`, and
-`test_the_published_slope_is_a_local_one_and_the_scheme_matches_it`.
+`test_two_binding_sites_can_produce_the_published_slope`,
+`test_the_published_slope_is_a_local_one_and_the_scheme_matches_it`, and
+`test_parametric_datasets_declare_source_measured_domain_and_quantify_extrapolation`.
 `models.base.hill_slope` takes the window as an argument so the comparison cannot be made
 loosely again.
 

@@ -324,6 +324,7 @@ def test_parametric_data_must_name_its_source_and_its_construction():
     for kw, match in (
         (dict(kind="parametric", synthetic=True, origin="o"), "names no `source_key`"),
         (dict(kind="parametric", synthetic=True, source_key="k"), "no `origin` stating"),
+        (dict(kind="parametric", synthetic=True, source_key="k", origin="o"), "declares no `source_measured_domain`"),
     ):
         with pytest.raises(ValueError, match=match):
             DoseResponseDataset(

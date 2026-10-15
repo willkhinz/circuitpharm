@@ -289,6 +289,76 @@ def test_deactivation_and_open_time_datasets_enforce_protocol_declarations():
     assert "n_components" in err
 
 
+def test_parametric_datasets_declare_source_measured_domain_and_quantify_extrapolation():
+    """Task B: parametric datasets must declare source_measured_domain.
+
+    Jahn spans 0.3 -> 3000 uM while measured only over 1-10 uM slope window:
+    n_points_outside_source_domain is 6 of 9 (fraction 6/9).
+    Barberis spans 0 -> 1000 ms and fits within that window:
+    n_points_outside_source_domain is 0 of 101 (fraction 0.0).
+
+    The finding is the asymmetry: fraction_outside_source_domain separates them.
+    A parametric dataset constructed without source_measured_domain raises ValueError.
+    """
+    import numpy as np
+    from circuitpharm.fitting.data import (
+        BARBERIS2007_DEACT,
+        JAHN1997_PEAK_CRC,
+        DeactivationDataset,
+        DoseResponseDataset,
+    )
+    from circuitpharm.models.base import Observable
+
+    # 1. Jahn: 6 of 9 points outside (1.0, 10.0)
+    assert JAHN1997_PEAK_CRC.source_measured_domain == (1.0, 10.0)
+    assert len(JAHN1997_PEAK_CRC.concs_um) == 9
+    assert JAHN1997_PEAK_CRC.n_points_outside_source_domain == 6
+    assert JAHN1997_PEAK_CRC.fraction_outside_source_domain == pytest.approx(6 / 9)
+
+    # 2. Barberis: 0 of 101 points outside (0.0, 1000.0)
+    assert BARBERIS2007_DEACT.source_measured_domain == (0.0, 1000.0)
+    assert len(BARBERIS2007_DEACT.time_ms) == 101
+    assert BARBERIS2007_DEACT.n_points_outside_source_domain == 0
+    assert BARBERIS2007_DEACT.fraction_outside_source_domain == 0.0
+
+    # 3. Assert asymmetry directly
+    assert JAHN1997_PEAK_CRC.fraction_outside_source_domain > 0.6
+    assert BARBERIS2007_DEACT.fraction_outside_source_domain == 0.0
+
+    # 4. Parametric datasets built without source_measured_domain raise ValueError
+    with pytest.raises(ValueError, match="source_measured_domain"):
+        DoseResponseDataset(
+            citation_label="unconstrained parametric dose-response",
+            preparation="HEK293",
+            concs_um=np.array([1.0, 10.0]),
+            mean_response=np.array([0.1, 0.9]),
+            sem=np.array([0.01, 0.01]),
+            observable=Observable.PEAK,
+            kind="parametric",
+            synthetic=True,
+            source_key="jahn_a1b2g2_kinetics",
+            origin="test fixture",
+            # source_measured_domain omitted
+        )
+
+    with pytest.raises(ValueError, match="source_measured_domain"):
+        DeactivationDataset(
+            citation_label="unconstrained parametric deactivation",
+            time_ms=np.array([0.0, 10.0]),
+            normalized_current=np.array([1.0, 0.5]),
+            pulse_ms=2.0,
+            conc_mm=10.0,
+            n_components=1,
+            fit_window_ms=10.0,
+            observable=Observable.DEACTIVATION,
+            kind="parametric",
+            synthetic=True,
+            source_key="barberis2007",
+            origin="test fixture",
+            # source_measured_domain omitted
+        )
+
+
 # ---------------------------------------------------------------------------------------
 # P_o. Task 4: which quantity is 0.750 meant to be.
 # ---------------------------------------------------------------------------------------

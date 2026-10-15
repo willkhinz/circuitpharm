@@ -108,6 +108,11 @@ class DoseResponseDataset:
     digitisation: str = ""
     n_cells: int | None = None
     role: Literal["train", "holdout"] = "train"
+    #: For kind="parametric" ONLY: the domain the SOURCE actually measured, in this dataset's
+    #: own x units and as (lo, hi). REQUIRED for parametric data, because the entire
+    #: difference between a faithful reconstruction and an extrapolation is whether the
+    #: dataset's own points lie inside it.
+    source_measured_domain: tuple[float, float] | None = None
 
     def __post_init__(self):
         _validate_dataset(self)
@@ -115,6 +120,20 @@ class DoseResponseDataset:
     @property
     def key(self) -> str:
         return self.citation_label
+
+    @property
+    def n_points_outside_source_domain(self) -> int:
+        if self.source_measured_domain is None:
+            return 0
+        lo, hi = self.source_measured_domain
+        concs = np.asarray(self.concs_um, dtype=float)
+        return int(np.sum((concs < lo) | (concs > hi)))
+
+    @property
+    def fraction_outside_source_domain(self) -> float:
+        if len(self.concs_um) == 0:
+            return 0.0
+        return float(self.n_points_outside_source_domain) / float(len(self.concs_um))
 
 
 MeanOpenTimeConditioning = Literal[
@@ -152,6 +171,11 @@ class DeactivationDataset:
     preparation: str = ""
     n_cells: int | None = None
     role: Literal["train", "holdout"] = "train"
+    #: For kind="parametric" ONLY: the domain the SOURCE actually measured, in this dataset's
+    #: own x units and as (lo, hi). REQUIRED for parametric data, because the entire
+    #: difference between a faithful reconstruction and an extrapolation is whether the
+    #: dataset's own points lie inside it.
+    source_measured_domain: tuple[float, float] | None = None
 
     def __post_init__(self):
         if self.pulse_ms is not None and self.pulse_duration_ms is not None:
@@ -178,6 +202,20 @@ class DeactivationDataset:
     @property
     def key(self) -> str:
         return self.citation_label
+
+    @property
+    def n_points_outside_source_domain(self) -> int:
+        if self.source_measured_domain is None:
+            return 0
+        lo, hi = self.source_measured_domain
+        t = np.asarray(self.time_ms, dtype=float)
+        return int(np.sum((t < lo) | (t > hi)))
+
+    @property
+    def fraction_outside_source_domain(self) -> float:
+        if len(self.time_ms) == 0:
+            return 0.0
+        return float(self.n_points_outside_source_domain) / float(len(self.time_ms))
 
 
 @dataclass(frozen=True)
@@ -278,6 +316,20 @@ def _validate_dataset(ds) -> None:
             raise ValueError(
                 f"{ds.citation_label!r} is parametric but has no `origin` stating which "
                 f"published parameters were used and how the curve was generated.")
+        domain = getattr(ds, "source_measured_domain", None)
+        if domain is None:
+            raise ValueError(
+                f"{ds.citation_label!r} is parametric but declares no `source_measured_domain`. "
+                f"Parametric datasets reconstruct points from published fitted parameters, so "
+                f"declaring the domain the source actually measured as (lo, hi) in the dataset's "
+                f"own x units is required to distinguish faithful within-domain reconstructions "
+                f"from unmeasured extrapolations.")
+        if not (isinstance(domain, tuple) and len(domain) == 2
+                and isinstance(domain[0], (int, float)) and isinstance(domain[1], (int, float))
+                and domain[0] <= domain[1]):
+            raise ValueError(
+                f"{ds.citation_label!r}: `source_measured_domain` must be a tuple[float, float] "
+                f"with lo <= hi; got {domain!r}.")
         return
 
     if ds.synthetic:
@@ -515,6 +567,7 @@ JAHN1997_PEAK_CRC = DoseResponseDataset(
     normalisation="fraction_of_max",
     kind="parametric",
     synthetic=True,          # see DataKind: parametric taints a fit as synthetic does
+    source_measured_domain=(1.0, 10.0),
     source_key="jahn_a1b2g2_kinetics",
     figure="dose-response relation reported in the abstract (EC50 and Hill slope)",
     digitisation=("NOT digitised. Generated from the paper's own fitted Hill parameters "
@@ -526,7 +579,11 @@ JAHN1997_PEAK_CRC = DoseResponseDataset(
                   "unreachable from this environment (pubmed/PMC/EuropePMC egress-blocked) "
                   "so the figure was never seen. 2026-10-09."),
     origin=("Hill curve from the published EC50 and slope; see `digitisation`. The paper's "
-            "measured quantities are the two parameters, not these nine points."),
+            "measured quantities are the two parameters, not these nine points. "
+            "source_measured_domain=(1.0, 10.0) records the 1-10 uM slope window. "
+            "The EC50 (11.6 uM) and saturation (3 mM) are separately constrained by the source "
+            "even though they sit outside that window, so the field records the slope window "
+            "and is not the whole of what the source says."),
     motivated_by="",
     n_cells=None,
     role="train",
@@ -591,6 +648,7 @@ BARBERIS2007_DEACT = DeactivationDataset(
     normalisation="fraction_of_max",
     kind="parametric",
     synthetic=True,
+    source_measured_domain=(0.0, 1000.0),
     source_key="barberis2007",
     figure="Table 1, brief pulse (2 ms)",
     preparation=("HEK293 outside-out macropatches and small lifted whole cells, rat "
@@ -700,7 +758,8 @@ MISSING_DATASETS = {
         "WHAT IS STILL MISSING HERE: a DIGITISED deactivation trace rather than a "
         "parametric reconstruction, and one for gamma2L rather than gamma2S. Dixon 2014 is "
         "the gamma2L source but publishes only a weighted scalar, not components, so it "
-        "cannot be reconstructed at all."),
+        "cannot be reconstructed at all. See `scripts/literature_gamma2.py --section datasets` "
+        "for domain coverage across datasets."),
     "single_channel_mean_open_time": (
         "Mean open time for alpha1beta2gamma2L. Would replace "
         "gabaa_kinetics.FIT_FIXED_ALPHA -- currently a CONVENTION -- with a measurement. "
