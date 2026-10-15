@@ -944,15 +944,16 @@ so the claim cannot rot. The same pass also added a `NOMINAL_DEFECT = 0.750` lit
 duplicate `PO_MAX_CONVENTION = 0.750` to `parameters.py`, consumed by nothing but the test
 that asserted they existed; both are removed.
 
-**OPEN, and a judgement call rather than a measurement:** is `FITTED` the right basis? It
-means "set to make a different, anchored quantity come out right", but `po_max` **is** the
-anchor — `provenance.py` itself calls it "circular if used as an anchor" — and the audit now
-finds it a convention the literature cannot replace. `Basis.CONVENTION` ("a structural
-choice, not an empirical quantity") is arguably the more honest grade, with
-`FIT_FIXED_ALPHA` as the precedent for a value held fixed to keep a fit well-posed. **Not
-changed here**, because regrading a basis alters the project's provenance accounting and the
-counts `tests/test_provenance.py` defends, and that is a decision to take deliberately rather
-than as a side effect of a documentation fix.
+**DECIDED: keep `Basis.FITTED`. Close the question.**
+* `Basis` records **how a number was derived**, not whether it *could be replaced*. The
+  2026-10-10 literature audit was a finding about replaceability, and it already lives in
+  `_NOMINAL_DEFECT["operational"]` where a reader of the defaults meets it.
+* `Basis.FITTED`'s own definition carries the warning this number most needs: *"it means the
+  number carries that anchor's assumptions and **cannot be quoted independently**."*
+  `po_max = 0.75` **is** the fit target, and `provenance.py` already calls it "circular if
+  used as an anchor". `Basis.CONVENTION` — "a structural choice, not an empirical quantity" —
+  would **lose** that circularity warning, which is the opposite of the intent.
+* Regrading moves counts that `tests/test_provenance.py` defends, for no informational gain.
 
 **P0 Definition of Done.** All thirteen closed; `pytest -q` shows **zero failures and no
 skips you introduced** — P0-5 and P0-6 keep every function callable, so nothing in this
