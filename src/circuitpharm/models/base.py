@@ -48,6 +48,8 @@ class Observable(str, Enum):
                     agonist pulse. Requires pulse_ms, conc_mm, n_components, and fit_window_ms.
     MEAN_OPEN_TIME  single-channel or ensemble mean open duration. Requires explicit
                     conditioning (e.g. INTRABURST, INTRACLUSTER, NONSTATIONARY_WINDOW, POPULATION).
+    PAIRED_PULSE_RECOVERY  ratio of second pulse amplitude to first pulse amplitude
+                    (onset-referenced). Requires pulse_ms, conc_mm, and gap_ms.
     """
 
     PEAK = "PEAK"
@@ -55,6 +57,7 @@ class Observable(str, Enum):
     CHARGE = "CHARGE"
     DEACTIVATION = "DEACTIVATION"
     MEAN_OPEN_TIME = "MEAN_OPEN_TIME"
+    PAIRED_PULSE_RECOVERY = "PAIRED_PULSE_RECOVERY"
 
 
 class ObservableMismatch(TypeError):

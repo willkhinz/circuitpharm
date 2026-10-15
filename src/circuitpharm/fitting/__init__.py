@@ -12,6 +12,7 @@ from .data import (
     equilibrium_crc_from_model,
     peak_crc_from_model,
     BARBERIS2007_DEACT,
+    BARBERIS2007_PAIRED_PULSE,
     DEACTIVATION_BENCHMARK,
     DOSE_RESPONSE_BENCHMARK,
     HOLDOUT,
@@ -25,6 +26,7 @@ from .data import (
     MeanOpenTimeDataset,
     MeanOpenTimeConditioning,
     MEAN_OPEN_TIME_CONDITIONINGS,
+    PairedPulseDataset,
     assert_real_data,
     holdout_guard,
 )
@@ -99,6 +101,7 @@ __all__ = [
     # data
     "ALL",
     "BARBERIS2007_DEACT",
+    "BARBERIS2007_PAIRED_PULSE",
     "DOSE_RESPONSE_BENCHMARK",
     "DEACTIVATION_BENCHMARK",
     "TRAIN",
@@ -112,6 +115,7 @@ __all__ = [
     "MeanOpenTimeDataset",
     "MeanOpenTimeConditioning",
     "MEAN_OPEN_TIME_CONDITIONINGS",
+    "PairedPulseDataset",
     "assert_real_data",
     "holdout_guard",
     "equilibrium_crc_from_model",

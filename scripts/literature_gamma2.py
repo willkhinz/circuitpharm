@@ -235,6 +235,55 @@ def datasets():
     print("Barberis spans 0 -> 1000 ms with source domain (0.0, 1000.0) ms: 0 of 101 points outside (0.0%).")
 
 
+def holdout():
+    print(_rule("="))
+    print("HOLDOUT EVALUATION -- Barberis 2007 Paired-Pulse Recovery (100 ms gap)")
+    print(_rule("="))
+    import numpy as np
+    from circuitpharm.fitting.data import JAHN1997_PEAK_CRC, BARBERIS2007_PAIRED_PULSE
+    from circuitpharm.fitting.likelihood import score_holdout, predict_paired_pulse_recovery
+    from circuitpharm.models.kinetic_jw95 import KineticAllosteryModel
+    from circuitpharm.models.extended_desens import ExtendedDesensitizationModel
+    from circuitpharm.fitting.comparison import compare_models, MODEL_SPECS
+
+    target = BARBERIS2007_PAIRED_PULSE.mean_response
+    sem = BARBERIS2007_PAIRED_PULSE.sem
+    print(f"\nPublished target: R = {target:.2f} +/- {sem:.2f} (SEM, n = {BARBERIS2007_PAIRED_PULSE.n_cells})")
+    print(f"Protocol: {BARBERIS2007_PAIRED_PULSE.pulse_ms:.1f} ms pulses, {BARBERIS2007_PAIRED_PULSE.conc_mm:.1f} mM GABA, {BARBERIS2007_PAIRED_PULSE.gap_ms:.1f} ms gap")
+
+    print("\n1. NOMINAL (UNFITTED) DEFAULTS:")
+    print(_rule())
+    mb_nom = KineticAllosteryModel()
+    mc_nom = ExtendedDesensitizationModel()
+    r_b_nom = predict_paired_pulse_recovery(mb_nom, BARBERIS2007_PAIRED_PULSE)
+    r_c_nom = predict_paired_pulse_recovery(mc_nom, BARBERIS2007_PAIRED_PULSE)
+    ll_b_nom = score_holdout(mb_nom, [BARBERIS2007_PAIRED_PULSE], caller="literature_gamma2/holdout")
+    ll_c_nom = score_holdout(mc_nom, [BARBERIS2007_PAIRED_PULSE], caller="literature_gamma2/holdout")
+    print(f"  kinetic_jw95:    pred R = {r_b_nom:.4f}  (residual {abs(r_b_nom - target):.4f} = {abs(r_b_nom - target)/sem:.1f} SEM)  LL = {ll_b_nom.total_log_likelihood:.4f}")
+    print(f"  extended_desens: pred R = {r_c_nom:.4f}  (residual {abs(r_c_nom - target):.4f} = {abs(r_c_nom - target)/sem:.1f} SEM)  LL = {ll_c_nom.total_log_likelihood:.4f}")
+    print("  -> Both nominal defaults over-recover (under-desensitise) by >17x SEM.")
+
+    print("\n2. FITTED TO JAHN1997_PEAK_CRC (via compare_models):")
+    print(_rule())
+    res = compare_models(["kinetic_jw95", "extended_desens"], [JAHN1997_PEAK_CRC], [BARBERIS2007_PAIRED_PULSE],
+                         n_folds=4, n_starts=4, cv_starts=2)
+    for name in ("kinetic_jw95", "extended_desens"):
+        fit = res.fits[name]
+        spec = MODEL_SPECS[name]
+        v = np.array([fit.values[p] for p in spec.param_names], dtype=float)
+        m_fit = spec.factory(v)
+        r_fit = predict_paired_pulse_recovery(m_fit, BARBERIS2007_PAIRED_PULSE)
+        holdout_ll = res.holdout_log_likelihood[name]
+        print(f"  {name:<16}: pred R = {r_fit:.4f}  (residual {abs(r_fit - target):.4f} = {abs(r_fit - target)/sem:.1f} SEM)")
+        print(f"    fit point = {fit.values}")
+        print(f"    at bound  = {fit.at_bound}")
+        print(f"    train AICc = {fit.aicc:.2f}, holdout LL = {holdout_ll:.4f}")
+    print(f"\n  Model comparison verdict: {res.verdict._value}")
+    print(f"  CV winner: {res.cv_winner}, AICc winner: {res.aicc_winner}, rankings agree: {res.rankings_agree}")
+    print("  -> Models fitted only to peak CRC do NOT generalise out-of-sample: predicted recovery")
+    print(f"     is 0.1942 vs observed 0.33 +/- 0.03 (residual 0.1358, 4.5x SEM).")
+
+
 SECTIONS = {
     "sources": sources,
     "open_times": open_times,
@@ -242,6 +291,7 @@ SECTIONS = {
     "consistency": consistency,
     "po": po_candidates,
     "datasets": datasets,
+    "holdout": holdout,
     "other": other,
 }
 

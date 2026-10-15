@@ -247,6 +247,37 @@ class MeanOpenTimeDataset:
         return self.citation_label
 
 
+@dataclass(frozen=True)
+class PairedPulseDataset:
+    """A paired-pulse recovery observation (scalar ratio of second pulse amplitude to first)."""
+
+    citation_label: str
+    mean_response: float
+    pulse_ms: float | None = None
+    conc_mm: float | None = None
+    gap_ms: float | None = None
+    sem: float | None = None
+    observable: Observable = Observable.PAIRED_PULSE_RECOVERY
+    kind: DataKind = "digitised"
+    synthetic: bool = False
+    origin: str = ""
+    motivated_by: str = ""
+    source_key: str = ""
+    figure: str = ""
+    digitisation: str = ""
+    preparation: str = ""
+    receptor: str = ""
+    n_cells: int | None = None
+    role: Literal["train", "holdout"] = "holdout"
+
+    def __post_init__(self):
+        _validate_dataset(self)
+
+    @property
+    def key(self) -> str:
+        return self.citation_label
+
+
 def _validate_dataset(ds) -> None:
     """A dataset cannot be both generated and sourced, and must say which it is."""
     if ds.kind not in ("digitised", "parametric", "synthetic"):
@@ -264,6 +295,19 @@ def _validate_dataset(ds) -> None:
                 f"({', '.join(missing)} missing). Pulse duration, concentration in mM, "
                 f"component count and fit window in ms must all be explicitly declared; "
                 f"deactivation is protocol-dependent.")
+
+    if ds.observable is Observable.PAIRED_PULSE_RECOVERY or isinstance(ds, PairedPulseDataset):
+        missing = []
+        for fld in ("pulse_ms", "conc_mm", "gap_ms"):
+            val = getattr(ds, fld, None)
+            if val is None or not (isinstance(val, (int, float)) and val > 0):
+                missing.append(fld)
+        if missing:
+            raise ValueError(
+                f"{ds.citation_label!r}: paired-pulse recovery requires positive protocol declarations "
+                f"({', '.join(missing)} missing). Pulse duration in ms (`pulse_ms`), concentration in mM "
+                f"(`conc_mm`), and gap in ms (`gap_ms`) must all be explicitly declared; "
+                f"paired-pulse recovery is protocol-dependent.")
 
     if ds.observable is Observable.MEAN_OPEN_TIME or isinstance(ds, MeanOpenTimeDataset):
         cond = getattr(ds, "conditioning", None)
@@ -667,6 +711,40 @@ BARBERIS2007_DEACT = DeactivationDataset(
     role="train",
 )
 
+BARBERIS2007_PAIRED_PULSE = PairedPulseDataset(
+    citation_label="Barberis 2007 alpha1beta2gamma2S paired-pulse recovery at 100 ms gap",
+    mean_response=0.33,
+    sem=0.03,
+    pulse_ms=2.0,
+    conc_mm=10.0,
+    gap_ms=100.0,
+    observable=Observable.PAIRED_PULSE_RECOVERY,
+    kind="digitised",
+    synthetic=False,
+    source_key="barberis2007",
+    figure="Table 1, Fig. 5 caption",
+    digitisation=(
+        "Fully stated scalar value (R = 0.33 +/- 0.03, SEM, n = 8) read directly from "
+        "Barberis et al. 2007 Table 1 and Fig. 5 caption; no figure digitisation or curve "
+        "reconstruction required."
+    ),
+    preparation=(
+        "HEK293 outside-out macropatches and small lifted whole cells, rat "
+        "alpha1beta2gamma2S (splice-variant substitution for gamma2L), "
+        "22-24 C, -70 mV, ultrafast exchange (60-100 us)"
+    ),
+    receptor="alpha1beta2gamma2S (splice-variant substitution for gamma2L)",
+    n_cells=8,
+    origin=(
+        "Barberis et al. 2007 Table 1 and Fig. 5 caption: paired-pulse recovery R = 0.33 +/- 0.03 "
+        "(SEM, n = 8) after two 2 ms pulses of 10 mM GABA separated by a 100 ms gap. "
+        "Stated scalar measurement on rat alpha1beta2gamma2S (splice-variant substitution for gamma2L). "
+        "Registered as the project's first non-synthetic dataset (kind='digitised', synthetic=False) "
+        "with role='holdout' to serve as out-of-sample test for P5 model comparison and P6 falsification."
+    ),
+    role="holdout",
+)
+
 #: What is still missing, named so it cannot be forgotten (roadmap P1-2, P3).
 #:
 #: P3's second anchor test -- "k_off becomes identifiable once a kinetic dataset is in the
@@ -808,8 +886,9 @@ MISSING_DATASETS = {
         "recovery at a 100 ms gap = 0.33 +/- 0.03 (Table 1; Fig. 5 caption gives n = 8). "
         "This is a stated interval with a stated value and needs no reconstruction, which "
         "makes it the cheapest honest holdout available. "
-        "NOT ENTERED pending the protocol-declaration decision above, since a paired-pulse "
-        "observable must declare its pulse duration (2 ms here) and gap."),
+        "STATUS CHANGED 2026-10-14: entered as BARBERIS2007_PAIRED_PULSE with role='holdout', "
+        "kind='digitised', synthetic=False, Observable.PAIRED_PULSE_RECOVERY, pulse_ms=2.0, "
+        "conc_mm=10.0, gap_ms=100.0. The project's first non-synthetic dataset."),
 }
 
 
@@ -819,6 +898,7 @@ ALL: dict[str, object] = {
     "deactivation_charge": DEACTIVATION_BENCHMARK,
     "jahn1997_peak_crc": JAHN1997_PEAK_CRC,
     "barberis2007_deact": BARBERIS2007_DEACT,
+    "barberis2007_paired_pulse": BARBERIS2007_PAIRED_PULSE,
 }
 
 TRAIN = tuple(d for d in ALL.values() if getattr(d, "role", "train") == "train")

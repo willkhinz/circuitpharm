@@ -1049,10 +1049,11 @@ Required datasets, minimum three, each a *separate* published source:
    you add.
 3. **A held-out set, never used in any fit.** Candidates: paired-pulse recovery at a
    stated interval, a desensitisation onset time course, single-channel mean open time, or
-   a PAM concentration-response at a *different* ambient GABA. P5's cross-validation and
-   P6's falsification both consume this. Reserve it in code —
-   `Dataset.role: Literal["train", "holdout"]` — and add a test that no fitting function
-   can reach a `holdout` row.
+   a PAM concentration-response at a *different* ambient GABA. (2026-10-15: Candidate 1
+   registered as `BARBERIS2007_PAIRED_PULSE`, a published scalar 0.33 ± 0.03 at 100 ms gap,
+   n = 8, filling `HOLDOUT`). P5's cross-validation and P6's falsification both consume this.
+   Reserve it in code — `Dataset.role: Literal["train", "holdout"]` — and add a test that no
+   fitting function can reach a `holdout` row.
 
 **If you cannot obtain a real digitisation for one of these, stop and report.** Do not
 synthesise. An honest P1 with two real datasets and a written gap is worth more than three
@@ -1435,6 +1436,16 @@ Built in `fitting/comparison.py`; `oed.evaluate_model_fit` stays callable and VO
    not there to be estimated, and the diagnostics say so instead of returning an interval.
    **P5 may therefore not report a posterior for Model C**, and `parameters.get` was
    already right to refuse one.
+5. **THE HOLDOUT IS NON-EMPTY AND THE MODELS FAIL OUT-OF-SAMPLE (2026-10-15).**
+   `fitting.data.BARBERIS2007_PAIRED_PULSE` fills `HOLDOUT` with Barberis et al. 2007 Table 1's
+   stated paired-pulse recovery ($0.33 \pm 0.03$ at a 100 ms gap, 2 ms pulse of 10 mM GABA,
+   rat α1β2γ2S, n = 8). At nominal defaults, Model B predicts $R = 0.8893$ (LL = -0.8379) and
+   Model C predicts $R = 0.8529$ (LL = -0.7705) — both under-desensitise drastically. When
+   fitted to `JAHN1997_PEAK_CRC`, the steep Hill slope drives desensitisation $D$ to its lower
+   bound ($10^{-3}$, eliminating desensitisation), and both models predict $R = 0.1942$
+   (residual 0.1358, $4.5\times$ SEM; holdout LL = +0.5774 for B, +0.5773 for C). The models
+   do not generalise out-of-sample without kinetic desensitisation training data.
+
 
 ---
 

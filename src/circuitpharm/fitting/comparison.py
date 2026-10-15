@@ -589,9 +589,12 @@ def _require_one_observable(specs, datasets, observable) -> Observable:
 
     # Probed through `_predict`, the same path the likelihood uses, so the check cannot
     # disagree with what the fit will actually do.
+    resp = (np.array([0.1, 0.5, 1.0])
+            if getattr(datasets[0], "normalisation", "absolute") == "fraction_of_max"
+            else np.zeros(3))
     probe = dataclasses.replace(
         datasets[0], concs_um=np.array([1.0, 10.0, 100.0]),
-        mean_response=np.zeros(3), sem=np.full(3, 1e-3))
+        mean_response=resp, sem=np.full(3, 1e-3))
     cannot = {}
     for spec in specs:
         model = spec.factory(np.array([0.5 * (lo + hi) for lo, hi in spec.bounds]))

@@ -23,7 +23,8 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from ..models.base import Observable, ObservableMismatch
+from ..models.base import DecayFit, Observable, ObservableMismatch, WaveformResult
+from ..protocols.waveforms import paired_pulse_ratio
 from .data import assert_real_data, holdout_guard
 from .identifiability import IDENTIFIABLE_BOUNDS
 from .reparam import EQUILIBRIUM_IDENTIFIABLE, IdentifiableParams
@@ -126,6 +127,89 @@ def predict_deactivation(model, ds, *, n_pulse=_DEACT_N_PULSE, n_tail=_DEACT_N_T
     return np.interp(np.asarray(ds.time_ms, dtype=float), t_decay, y_decay)
 
 
+def predict_paired_pulse_recovery(
+    model, ds, *, n_pulse: int = 200, n_gap: int = 500, n_tail: int = 500, tail_ms: float = 50.0
+) -> np.ndarray:
+    """Predicted paired-pulse recovery ratio for `ds`'s declared protocol.
+
+    THE GUARD IS ON `q_matrix`, NOT ON `simulate_waveform`.
+    Every model here has a `simulate_waveform`: `OperationalScalarModel` inherits one that
+    relaxes towards an instantaneous Hill target at an assumed time constant. A paired-pulse
+    recovery ratio requires physical state transitions between pulses; an operational scalar
+    scheme has no states to relax between, so any recovery it produced would measure an invented
+    relaxation time constant rather than a binding or desensitisation rate.
+
+    The simulation integrates two square pulses of duration `pulse_ms` at `conc_mm` separated
+    by `gap_ms` across two sequential segments (pulse 1 + gap, then pulse 2 + tail) to guarantee
+    that stiff transition edges at pulse onsets are evaluated accurately by the ODE solver.
+    The ratio is computed using `protocols.waveforms.paired_pulse_ratio`, referencing the second
+    pulse amplitude to the baseline at pulse onset rather than from zero (following Barberis
+    et al. 2007 Eq. R = (I2 - I3) / I1).
+    """
+    if not hasattr(model, "q_matrix"):
+        raise ObservableMismatch(
+            f"{ds.citation_label!r} is PAIRED_PULSE_RECOVERY data -- an onset-referenced "
+            f"amplitude ratio -- but {type(model).__name__} has no `q_matrix`, so it has "
+            f"no states to relax between. Its `simulate_waveform` relaxes towards a Hill "
+            f"target at an assumed time constant, so any recovery it produces measures "
+            f"that assumption and not a rate. Compare it on PEAK, which every scheme here "
+            f"can produce, or drop the model that has no such quantity.")
+
+    pulse_ms = getattr(ds, "pulse_ms", None)
+    conc_mm = getattr(ds, "conc_mm", None)
+    gap_ms = getattr(ds, "gap_ms", None)
+    if not (pulse_ms and conc_mm and gap_ms):
+        raise ValueError(
+            f"{ds.citation_label!r} is PAIRED_PULSE_RECOVERY data but does not declare "
+            f"pulse_ms={pulse_ms!r}, conc_mm={conc_mm!r}, gap_ms={gap_ms!r}. "
+            f"All three are part of the observable, not metadata about it.")
+
+    conc_um = float(conc_mm) * 1000.0
+    pulse_ms = float(pulse_ms)
+    gap_ms = float(gap_ms)
+
+    # Segment 1: pulse 1 + gap
+    t_seg1 = np.unique(np.concatenate([
+        np.linspace(0.0, pulse_ms, n_pulse),
+        pulse_ms + np.geomspace(1e-4, gap_ms, n_gap),
+    ]))
+    gaba_seg1 = np.where(t_seg1 <= pulse_ms, conc_um, 0.0)
+    p_rest = model.state_distribution(0.0) if hasattr(model, "state_distribution") else None
+    res1 = model.simulate_waveform(t_seg1, gaba_seg1, initial_state=p_rest)
+    p_gap = res1.states[-1] if hasattr(res1, "states") and res1.states is not None else None
+
+    # Segment 2: pulse 2 + post-pulse tail
+    t_seg2 = np.unique(np.concatenate([
+        np.linspace(0.0, pulse_ms, n_pulse),
+        pulse_ms + np.geomspace(1e-4, float(tail_ms), n_tail),
+    ]))
+    gaba_seg2 = np.where(t_seg2 <= pulse_ms, conc_um, 0.0)
+    res2 = model.simulate_waveform(t_seg2, gaba_seg2, initial_state=p_gap)
+
+    # Combine into a single WaveformResult and agonist array for paired_pulse_ratio
+    t_comb = np.concatenate([t_seg1, t_seg2[1:] + t_seg1[-1]])
+    gaba_comb = np.concatenate([gaba_seg1, gaba_seg2[1:]])
+    p_open_comb = np.concatenate([res1.p_open, res2.p_open[1:]])
+
+    res_comb = WaveformResult(
+        t=t_comb,
+        gaba=gaba_comb,
+        p_open=p_open_comb,
+        peak_p_open=float(np.max(p_open_comb)),
+        charge_integral=0.0,
+        decay_tau_ms=float("nan"),
+        steady_state_tail=float(p_open_comb[-1]),
+        decay=DecayFit.failed(),
+    )
+    pp = paired_pulse_ratio(res_comb, gaba_comb, n_expected=2)
+    ratio = float(pp["ppr_2_over_1"])
+
+    y_obs = _observed(ds)
+    if y_obs.ndim == 0:
+        return np.asarray(ratio, dtype=float)
+    return np.asarray([ratio], dtype=float)
+
+
 def _predict(model, ds):
     """Model prediction for one dataset, ON THAT DATASET'S OBSERVABLE AND SCALE."""
     obs = ds.observable
@@ -157,12 +241,16 @@ def _predict(model, ds):
         # it returns here rather than falling through to the concentration-based
         # normalisation below -- a deactivation dataset has no `concs_um` to index.
         return predict_deactivation(model, ds)
+    elif obs is Observable.PAIRED_PULSE_RECOVERY:
+        # A scalar ratio, already normalised to its own first pulse amplitude by construction.
+        return predict_paired_pulse_recovery(model, ds)
     else:
         raise ObservableMismatch(
             f"{ds.citation_label!r} is tagged {obs.value}; this likelihood handles "
-            f"concentration-response datasets (PEAK or EQUILIBRIUM) and DEACTIVATION time "
-            f"courses. A CHARGE dataset is an integral over a window rather than a decay "
-            f"shape, and still needs its own door -- see protocols/waveforms.py.")
+            f"concentration-response datasets (PEAK or EQUILIBRIUM), DEACTIVATION time "
+            f"courses, and PAIRED_PULSE_RECOVERY ratios. A CHARGE dataset is an integral "
+            f"over a window rather than a decay shape or ratio, and still needs its own "
+            f"door -- see protocols/waveforms.py.")
 
     if getattr(ds, "normalisation", "absolute") == "fraction_of_max":
         # The data is I/I_max, so the prediction must be P/P(c_max) -- divided at the SAME
@@ -199,9 +287,9 @@ def _observed(ds):
         raise ObservableMismatch(
             f"{getattr(ds, 'citation_label', ds)!r} is tagged "
             f"{getattr(obs, 'value', obs)!r} and carries no response column this likelihood "
-            f"can read. PEAK and EQUILIBRIUM datasets supply `mean_response`; DEACTIVATION "
-            f"supplies `normalized_current`. A CHARGE dataset is an integral over a window "
-            f"rather than either, and still needs its own door -- see protocols/waveforms.py.")
+            f"can read. PEAK, EQUILIBRIUM and PAIRED_PULSE_RECOVERY datasets supply `mean_response`; "
+            f"DEACTIVATION supplies `normalized_current`. A CHARGE dataset is an integral over a "
+            f"window rather than either, and still needs its own door -- see protocols/waveforms.py.")
     return np.asarray(ds.mean_response, dtype=float)
 
 

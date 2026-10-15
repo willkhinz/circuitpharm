@@ -527,3 +527,102 @@ def test_li_control_data_is_attributed_to_its_actual_origin():
     them would be a mis-citation of exactly the kind this project tracks."""
     assert "Li et al. (2007b)" in SOURCES["li2008"].note
     assert "jphysiol.2007.142794" in SOURCES["li2008"].note
+
+
+def test_paired_pulse_holdout_registration_and_validation():
+    """Task D: Barberis 2007 paired-pulse recovery is registered as the first real holdout.
+
+    Observable.PAIRED_PULSE_RECOVERY requires pulse_ms, conc_mm and gap_ms.
+    The dataset is scalar (0.33 +/- 0.03 at 100 ms gap, 2 ms pulses, 10 mM GABA, n=8).
+    It is digitised, synthetic=False, role='holdout', and records gamma2S substitution.
+    OperationalScalarModel raises ObservableMismatch (no q_matrix).
+    Markov schemes predict finite recoveries and score against holdout without taint.
+    """
+    import warnings
+    import numpy as np
+    from circuitpharm.fitting.data import (
+        ALL,
+        HOLDOUT,
+        BARBERIS2007_PAIRED_PULSE,
+        PairedPulseDataset,
+        assert_real_data,
+    )
+    from circuitpharm.fitting.likelihood import score_holdout, _predict
+    from circuitpharm.models import (
+        ExtendedDesensitizationModel,
+        KineticAllosteryModel,
+        OperationalScalarModel,
+    )
+    from circuitpharm.models.base import Observable, ObservableMismatch
+    from circuitpharm.provisional import ProvisionalResultWarning
+
+    # 1. Registered in ALL and HOLDOUT
+    assert "barberis2007_paired_pulse" in ALL
+    assert ALL["barberis2007_paired_pulse"] is BARBERIS2007_PAIRED_PULSE
+    assert len(HOLDOUT) == 1
+    assert HOLDOUT[0] is BARBERIS2007_PAIRED_PULSE
+
+    # 2. Dataset properties and gamma2S recording
+    ds = BARBERIS2007_PAIRED_PULSE
+    assert ds.observable is Observable.PAIRED_PULSE_RECOVERY
+    assert ds.kind == "digitised"
+    assert ds.synthetic is False
+    assert ds.role == "holdout"
+    assert ds.source_key == "barberis2007"
+    assert ds.mean_response == pytest.approx(0.33)
+    assert ds.sem == pytest.approx(0.03)
+    assert ds.pulse_ms == 2.0
+    assert ds.conc_mm == 10.0
+    assert ds.gap_ms == 100.0
+    assert ds.n_cells == 8
+    assert "gamma2S" in ds.receptor
+    assert "gamma2L" in ds.receptor
+    assert "gamma2S" in ds.preparation
+
+    # 3. Protocol declaration requirements: missing or non-positive fields raise ValueError
+    for kw, match in (
+        (dict(mean_response=0.33, conc_mm=10.0, gap_ms=100.0), "pulse_ms"),
+        (dict(mean_response=0.33, pulse_ms=2.0, gap_ms=100.0), "conc_mm"),
+        (dict(mean_response=0.33, pulse_ms=2.0, conc_mm=10.0), "gap_ms"),
+        (dict(mean_response=0.33, pulse_ms=0.0, conc_mm=10.0, gap_ms=100.0), "pulse_ms"),
+    ):
+        with pytest.raises(ValueError, match=match):
+            PairedPulseDataset(
+                citation_label="invalid protocol",
+                kind="synthetic",
+                synthetic=True,
+                origin="test fixture",
+                **kw,
+            )
+
+    # 4. Guard on q_matrix: OperationalScalarModel raises ObservableMismatch
+    op = OperationalScalarModel()
+    with pytest.raises(ObservableMismatch, match="no `q_matrix`|no states to relax between"):
+        _predict(op, ds)
+
+    # 5. First non-synthetic dataset does not taint with ProvisionalResultWarning
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        fake = assert_real_data([ds], caller="test")
+        assert fake == []
+    prov = [w for w in caught if issubclass(w.category, ProvisionalResultWarning)]
+    assert len(prov) == 0
+
+    # 6. Scoring against holdout: Markov models predict finite recoveries and score cleanly
+    b = KineticAllosteryModel()
+    pred_b = float(_predict(b, ds))
+    assert 0.0 < pred_b < 1.0
+
+    c = ExtendedDesensitizationModel()
+    pred_c = float(_predict(c, ds))
+    assert 0.0 < pred_c < 1.0
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        res_b = score_holdout(b, HOLDOUT, caller="test")
+        res_c = score_holdout(c, HOLDOUT, caller="test")
+    prov = [w for w in caught if issubclass(w.category, ProvisionalResultWarning)]
+    assert len(prov) == 0
+    assert np.isfinite(res_b.total_log_likelihood)
+    assert np.isfinite(res_c.total_log_likelihood)
+
