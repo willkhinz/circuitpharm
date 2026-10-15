@@ -98,9 +98,22 @@ why it must be read rather than discarded wholesale:
 
 ---
 
-## 3. Two decisions that are the user's, not an agent's
+## 3. Two decisions — BOTH NOW TAKEN (2026-10-14)
 
-Do not implement either unprompted. Both are now *more* pressing than when first raised.
+Both were reserved for the user and have now been decided, so an agent may implement them.
+`AGENT-BRIEF.md` tasks B and C are the implementations. **Decided, not open:**
+
+* **(a) Do NOT subdivide `parametric`. Add a coverage field instead.** `DataKind` records how
+  the points came to be, and Jahn and Barberis came to be the same way; the difference is
+  *coverage*, not provenance. A `source_measured_domain` field with a derived
+  `fraction_outside_source_domain` separates them without regrading anything — **Jahn has 6 of
+  9 points outside the 1–10 µM window its source measured; Barberis has 0 of 101.** Verified.
+* **(b) Keep `po_max` at `Basis.FITTED`.** `FITTED`'s definition carries the "cannot be quoted
+  independently" circularity warning, which is exactly what this number needs and what
+  `CONVENTION` would lose. The replaceability finding belongs in the note, where it already
+  is, not in the basis.
+
+The original arguments are preserved below for the record.
 
 **(a) Should `parametric` be subdivided?** `jahn1997_peak_crc` and `barberis2007_deact` are
 both `kind="parametric"` and sit in `TRAIN` together, so the taxonomy cannot express a trust
