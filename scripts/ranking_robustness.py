@@ -109,7 +109,7 @@ if __name__ == "__main__":
             R[k].append(score(k, frac, ex, ratio) / ref)
 
     print(f"{a.draws} draws. Score = subjective drive per unit preBotC respiratory")
-    print(f"burden, RELATIVE to a non-selective benzodiazepine (= 1.0 by construction).")
+    print("burden, RELATIVE to a non-selective benzodiazepine (= 1.0 by construction).")
     print("The lumped calibration scale cancels in every draw.\n")
     print(f"{'arm':<24}{'median':>9}{'5th':>8}{'95th':>8}{'P(better than ref)':>21}")
     print("-" * 70)
@@ -190,7 +190,7 @@ if __name__ == "__main__":
     print("            a tenth of nominal, and an a5-selective compound's burden is roughly")
     print("            proportional to it, so the upper tail measures the prior. Flooring at")
     print("            nominal moves alogabat's median 16.05 -> 7.57 and its 95th 84.85 -> 14.31.")
-    print(f"            Reproduce with:  --a5-floor 0.02")
+    print("            Reproduce with:  --a5-floor 0.02")
     print("\n" + "=" * 70)
     print("VERDICT")
     print("=" * 70)

@@ -27,7 +27,7 @@ validation target for this module.
 """
 import numpy as np
 from . import substrate as sub
-from .cpg import Pop, Syn, Drug, E_REV
+from .cpg import Syn, Drug, E_REV
 
 
 class GroupPacemakerRG:

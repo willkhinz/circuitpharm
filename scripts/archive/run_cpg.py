@@ -2,7 +2,7 @@
 import time
 import numpy as np
 from half_centre_cpg import HalfCentreCPG
-from circuitpharm.cpg import Drug, burst_metrics
+from circuitpharm.cpg import burst_metrics
 # SIDE-EFFECT GUARD added 2026-10-07. This script previously did its work at MODULE level,
 # so merely importing it ran it. For `port_muscle.py` that regenerated the MuJoCo body
 # model, and for `build_kb.py`/`build_compounds.py` it rewrote the pharmacology database --

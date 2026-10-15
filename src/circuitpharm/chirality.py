@@ -30,11 +30,10 @@ therefore IDENTICAL for enantiomers. A fingerprint model is structurally incapab
 distinguishing a eutomer from a distomer, which is why chiral pharmacology needs
 mechanistic or 3D methods rather than 2D ML. This script proves it numerically.
 """
-import argparse, sys
+import argparse
 import numpy as np
 from rdkit import Chem
 from rdkit.Chem import AllChem, Descriptors, rdMolDescriptors
-from rdkit.Chem import rdMolTransforms  # noqa: F401
 from rdkit import RDLogger
 RDLogger.DisableLog("rdApp.*")
 

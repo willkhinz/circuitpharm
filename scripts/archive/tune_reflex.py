@@ -1,7 +1,6 @@
 """Find an Ia->Mn gain that puts the dynamic reflex OFF the refractory ceiling,
 so drug modulation is visible. Target dynamic peak 40-70 Hz (ceiling is 125 Hz)."""
 import os
-import numpy as np
 from multiprocessing import Pool
 from circuitpharm.circuit import SpinalCircuit
 from circuitpharm.cpg import Drug

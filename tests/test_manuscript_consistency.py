@@ -172,7 +172,6 @@ def test_falsification_intervals_are_the_reachable_ones(text, scheme):
 
 def test_ambient_sweep_and_the_cap_crossing_match(text, scheme):
     import numpy as np
-    from circuitpharm import gabaa_kinetics as gk
     s = scheme
     po_inf = 1.0 / (1.0 + (s.alpha / s.beta) * (1.0 + s.d / s.r))
     for g in (0.10, 0.20, 0.40, 0.70, 0.80, 1.50, 3.00):
@@ -200,7 +199,6 @@ def test_selectivity_table_matches_subtypes_module(text):
     # value must appear, and the 4-decimal value must NOT, so false precision cannot creep
     # back in via a later edit. Exact values stay available from paper_numbers.py.
     def two_sf(x):
-        from decimal import Decimal
         if x == 0:
             return "0.00"
         import math
@@ -249,7 +247,7 @@ def test_provenance_claims_match_the_audit(text):
     """Table 5 must not attribute an UNSOURCED cell to a citation. The previous draft
     attributed the whole table to Pirker and Kasugai; the audit rates 9 of 15 cells
     UNSOURCED and one an outright GUESS."""
-    from circuitpharm.provenance import ALL, RANKING_INPUT_TABLES, Basis, audit
+    from circuitpharm.provenance import RANKING_INPUT_TABLES, Basis, audit
 
     # SCOPED to the ranking's inputs, which is what the manuscript's sentence is about.
     # The audit later grew to cover the receptor-model defaults and the benchmark datasets

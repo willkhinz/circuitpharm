@@ -129,7 +129,7 @@ def main():
     fl = rows["lif"][arms[0]]["ctrl_freq"]; fc = rows["cond"][arms[0]]["ctrl_freq"]
     print(f"\ncontrols: LIF mean {cl:.2f} @ {fl:.3f} Hz   |   COND mean {cc:.2f} @ {fc:.3f} Hz")
     print(f"          mean output differs {cl/max(cc,1e-9):.1f}x -- which is why only the")
-    print(f"          FRACTIONAL change is compared.")
+    print("          FRACTIONAL change is compared.")
 
     vl = np.array([rows["lif"][x]["frac"] for x in arms], float)
     vc = np.array([rows["cond"][x]["frac"] for x in arms], float)
@@ -142,7 +142,7 @@ def main():
     rho = spearman(vl[ok], vc[ok])
     order_l = [arms[i] for i in np.argsort(-vl[ok])]
     order_c = [arms[i] for i in np.argsort(-vc[ok])]
-    print(f"ORDERING (most to least respiratory burden)")
+    print("ORDERING (most to least respiratory burden)")
     print(f"  LIF : {' > '.join(order_l)}")
     print(f"  COND: {' > '.join(order_c)}")
     print(f"\nSpearman rho = {rho:+.4f} over {int(ok.sum())} arms")

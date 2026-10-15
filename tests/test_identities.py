@@ -5,7 +5,6 @@ it does not ask whether the model is right about biology, it asks whether the co
 what it claims to. Every assertion here should hold to numerical precision, so any
 tolerance is either zero or set by float round-off -- never by "close enough".
 """
-import numpy as np
 import pytest
 
 from circuitpharm.cpg import Drug

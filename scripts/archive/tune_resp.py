@@ -7,7 +7,6 @@ With suprathreshold drive the population fires tonically and only ripples -- whi
 old relative-threshold metric then mis-reported as a fast rhythm.
 """
 import os, itertools
-import numpy as np
 from multiprocessing import Pool
 from circuitpharm.resp import PreBotC, resp_metrics
 

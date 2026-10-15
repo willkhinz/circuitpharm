@@ -17,8 +17,8 @@ from dataclasses import replace
 
 from circuitpharm.cpg import Pop
 from circuitpharm.neuron import (
-    BRS1999_MODEL1, CELLS, CondPop, CellParams, ParamSet, ProvenanceMismatch,
-    isolated, run_isolated, spike_regime,
+    BRS1999_MODEL1, CELLS, CondPop, ParamSet, ProvenanceMismatch,
+    isolated, run_isolated,
 )
 
 P = BRS1999_MODEL1

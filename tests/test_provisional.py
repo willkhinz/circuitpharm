@@ -22,7 +22,6 @@ import pytest
 from circuitpharm.fitting import (
     DEACTIVATION_BENCHMARK,
     DOSE_RESPONSE_BENCHMARK,
-    HOLDOUT,
     TRAIN,
     assert_real_data,
     compute_profile_likelihood,
@@ -31,7 +30,7 @@ from circuitpharm.fitting import (
     holdout_guard,
     run_ensemble_mcmc,
 )
-from circuitpharm.fitting.data import DoseResponseDataset, _validate_dataset
+from circuitpharm.fitting.data import DoseResponseDataset
 from circuitpharm.fitting.identifiability import invariance_report
 from circuitpharm.models import KineticAllosteryModel
 from circuitpharm.models.base import Observable

@@ -7,7 +7,6 @@ Mn response per unit Ia drive; %ctrl is the paired ratio to the control at the s
 import os, itertools
 import numpy as np
 from multiprocessing import Pool
-from circuitpharm.circuit import SpinalCircuit
 from circuitpharm.cpg import Drug
 import scripts.reflex as R
 

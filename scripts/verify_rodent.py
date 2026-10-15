@@ -1,9 +1,7 @@
 """Verify the dm_control rodent (Aldarondo et al. 2024 body) loads and steps."""
 import os, time
 # macOS: leave MUJOCO_GL unset (defaults to glfw); physics runs headless regardless
-import numpy as np
 import mujoco
-from dm_control import mjcf
 import dm_control
 # SIDE-EFFECT GUARD added 2026-10-07. This script previously did its work at MODULE level,
 # so merely importing it ran it. For `port_muscle.py` that regenerated the MuJoCo body

@@ -44,7 +44,7 @@ Run:  python scripts/kinetics_sensitivity.py
 import os, itertools
 import numpy as np
 from multiprocessing import Pool
-from circuitpharm.gabaa_kinetics import (Scheme, fit_scheme, derive, calibrate_pam,
+from circuitpharm.gabaa_kinetics import (fit_scheme, derive, calibrate_pam,
                                    FIT_RANGES)
 
 PEAKS = (300.0, 1000.0, 3000.0)       # uM, cleft peak
@@ -92,7 +92,7 @@ def job(a):
             d = derive(s, affinity=aff, ambient_um=amb, pulse=pulse)
             rows.append((peak, clear, amb, base_ok, aff, d))
         return rows
-    except Exception as e:                      # keep one bad cell from killing the sweep
+    except Exception:                      # keep one bad cell from killing the sweep
         return [(peak, clear, amb, False, np.nan, None) for amb in AMBIENTS]
 
 
@@ -146,10 +146,10 @@ if __name__ == "__main__":
         print("\n-> SELF-CONSISTENT on the anchored data. The GABA-A arm can be driven by")
         print("   ONE mechanistic parameter instead of three hand-set ones, and the")
         print("   tonic/phasic asymmetry and the ceiling both come out as predictions.")
-        print(f"\n   The passing cells all sit at a SATURATING cleft (high peak and/or")
+        print("\n   The passing cells all sit at a SATURATING cleft (high peak and/or")
         print("   slow clearance), which is the physiologically expected regime and was")
         print("   not imposed -- the data selected it.")
-        print(f"\n   STANDING PREDICTION, not validated here: tonic-current potentiation of")
+        print("\n   STANDING PREDICTION, not validated here: tonic-current potentiation of")
         print(f"   {min(tg):.1f}-{max(tg):.1f}x. This is the scheme's sharpest testable")
         print("   claim and the obvious next literature target. It also matters for this")
         print("   project specifically: a5 is largely EXTRASYNAPTIC, so the scheme says an")

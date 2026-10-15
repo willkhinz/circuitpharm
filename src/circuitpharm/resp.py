@@ -27,7 +27,7 @@ producing a substantial forebrain effect. `glun2b_fraction` is the knob that enc
 """
 import numpy as np
 from . import substrate as sub
-from .cpg import Pop, Syn, Drug, E_REV
+from .cpg import Syn, Drug, E_REV
 
 # Physiologically admissible respiratory frequency, Hz. IMPORTED, not re-declared: this
 # module carried its own copy of (0.30, 2.50) alongside `config.EUPNOEA_BAND`, which is

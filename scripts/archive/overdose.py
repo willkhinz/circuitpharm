@@ -19,7 +19,7 @@ ethanol's own lethal/intoxicating ratio is roughly 5x (20 mM strong intoxication
 ~100 mM lethal), so an overdose index above ~5 is an improvement on alcohol and below it
 is not.
 """
-import os, itertools
+import os
 import numpy as np
 from multiprocessing import Pool
 from circuitpharm.resp import PreBotC, resp_metrics

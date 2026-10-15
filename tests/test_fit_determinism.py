@@ -40,7 +40,6 @@ import pytest
 
 from circuitpharm.config import SYNAPTIC_PULSE
 from circuitpharm.gabaa_kinetics import (
-    DEFAULT_RATES,
     FIT_FIXED_ALPHA,
     FIT_RANGES,
     FIT_TARGETS,

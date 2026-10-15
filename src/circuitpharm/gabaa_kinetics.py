@@ -82,8 +82,12 @@ robust than any individual rate constant.
     python -m circuitpharm.gabaa_kinetics            # fit, validate, and derive the three numbers
 """
 from dataclasses import dataclass, replace
+from typing import TYPE_CHECKING
 import numpy as np
 from scipy.integrate import solve_ivp
+
+if TYPE_CHECKING:
+    from .models.kinetic_jw95 import KineticAllosteryModel
 
 # np.trapezoid was added in NumPy 2.0 and np.trapz was REMOVED in it, while pyproject
 # allows numpy>=1.26 -- so neither name alone works across the supported range. Resolved
@@ -587,7 +591,7 @@ if __name__ == "__main__":
     print("  cap         2.5")
     if np.isfinite(aff):
         d = derive(s, affinity=aff)
-        print(f"\nthe kinetic scheme, calibrated only on the EC50 shift, instead says:")
+        print("\nthe kinetic scheme, calibrated only on the EC50 shift, instead says:")
         print(f"  tonic gain   {d['tonic_gain']:.2f}  vs synaptic gain "
               f"{d['phasic_gain']:.2f}  -- these MUST differ; the model uses one number")
         print(f"  tau ratio    {d['tau_ratio']:.2f}  (model hand-sets 1.60)")

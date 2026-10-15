@@ -12,7 +12,6 @@ from circuitpharm.resp import PreBotC, resp_metrics
 from circuitpharm.circuit import SpinalCircuit
 from circuitpharm.cpg import Drug
 from circuitpharm.subtypes import PROFILES
-import scripts.reflex as R
 
 RESP_OP = dict(drive=170.0, g_adapt=2.5, tau_adapt=400.0, w=dict(ee_ampa=0.45, ee_nmda=0.2475))
 IA_SCALE, N_SEED = 0.30, 4

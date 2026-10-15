@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Build data/pharmacology.db — structured knowledge base for the alcohol-substitute project.
 Idempotent: drops and rebuilds. Every row carries a source_key into `sources`."""
-import sqlite3, os, pathlib
+import sqlite3, pathlib
 import sys
 import shutil
 import datetime

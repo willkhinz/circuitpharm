@@ -189,13 +189,13 @@ if __name__ == "__main__":
     print(f"  ventilation {dv:+.1f}%  (target {TARGET_VENT}, FITTED)")
     print(f"  amplitude   {da:+.1f}%  (target {TARGET_AMP}, FITTED)")
     print(f"  rate        {df:+.1f}%  (clinical {TARGET_RATE:+.0f}, NOT FITTED --")
-    print(f"              no chemoreflex in the model, so this is unreachable in")
-    print(f"              principle and carries no information about the drug)")
+    print("              no chemoreflex in the model, so this is unreachable in")
+    print("              principle and carries no information about the drug)")
     d = DRUGS[sh]
     print(f"\n  the drug at that shift: phasic {d['phasic_gain']:.3f}x, "
           f"tonic {d['tonic_gain']:.2f}x, tau {d['tau_ratio']:.2f}x")
-    print(f"  OLD one-pool calibration for comparison: gain 2.0 both pools, "
-          f"tau 1.60, gaba_sens 0.150")
+    print("  OLD one-pool calibration for comparison: gain 2.0 both pools, "
+          "tau 1.60, gaba_sens 0.150")
     # IDENTIFIABILITY. A single "best" cell implies the parameters are pinned down. Check
     # whether they actually are, by finding every cell whose ventilation lands inside the
     # clinical spread (-14.3 +/- 5.9% and -19 +/- 7% => roughly -8% to -26%).

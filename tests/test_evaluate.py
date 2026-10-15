@@ -1,5 +1,4 @@
 """The public evaluation API, including that it refuses to hand out VOID numbers."""
-import numpy as np
 import pytest
 
 from circuitpharm.evaluation import Compound, evaluate

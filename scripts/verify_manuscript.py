@@ -124,7 +124,7 @@ def main() -> int:
         env["PYTHONPATH"] = str(tree / "src")
         env.pop("PYTHONHOME", None)
 
-        print(f"\n[2/4] environment")
+        print("\n[2/4] environment")
         ver = run([sys.executable, "-c",
                    "import sys,numpy,scipy,circuitpharm;"
                    "print(sys.version.split()[0],numpy.__version__,scipy.__version__);"
@@ -139,7 +139,7 @@ def main() -> int:
             if claimed not in text:
                 print(f"      WARNING: the manuscript does not state version {claimed}")
 
-        print(f"\n[3/4] running the generators from the clean tree")
+        print("\n[3/4] running the generators from the clean tree")
         out = run([sys.executable, "scripts/paper_numbers.py"], cwd=tree, env=env)
         print(f"      paper_numbers.py            {len(out.splitlines())} lines")
         for floor in (0.0, 0.01, 0.02):
@@ -148,7 +148,7 @@ def main() -> int:
             print(f"      ranking_robustness.py       --a5-floor {floor}")
 
         # ---- every quoted figure must appear in that output ----------------------------
-        print(f"\n[4/4] checking the manuscript's figures against that output")
+        print("\n[4/4] checking the manuscript's figures against that output")
         bad = 0
         for cat, vals in CATEGORIES.items():
             misses, absent = [], []

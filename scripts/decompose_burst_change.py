@@ -262,7 +262,6 @@ def main():
                   f"{sdF:8.4f}   (n={len(rows)} seeds, SD)")
             # The floor's LOG change is meaningless when the control floor is ~0, which is
             # the normal case for a quiescent inter-burst interval -- it reported dlog = 22.
-            floors = [r[5] for r in rows]
             fl = (f"log {B:+.3f}" if np.isfinite(B) and abs(B) < 10.0
                   else "control floor ~ 0, log undefined")
             print(f"  {'':17s} raw mean log {MT:+.4f}; inter-burst floor {fl}")

@@ -41,7 +41,7 @@ class.""")
         occupancy=0.35,  # fraction of modulator sites bound -- NOT a mass dose
     )
     g = cand.pool_gains()
-    print(f"\nderived from the Markov gating scheme (one calibrated parameter):")
+    print("\nderived from the Markov gating scheme (one calibrated parameter):")
     print(f"  tonic conductance gain   {g['tonic']:.2f}x")
     print(f"  phasic conductance gain  {g['phasic']:.3f}x")
     print(f"  decay tau ratio          {g['tau']:.2f}x")

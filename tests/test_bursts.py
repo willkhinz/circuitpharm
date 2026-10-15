@@ -8,7 +8,7 @@ and duty cycle by construction, so "correct" is defined before the detector runs
 import numpy as np
 import pytest
 
-from circuitpharm.bursts import (DUTY_MAX, DUTY_MIN, HI_FRAC, LO_FRAC, SMOOTH_FRAC,
+from circuitpharm.bursts import (DUTY_MAX, DUTY_MIN, SMOOTH_FRAC,
                                  detect_bursts)
 
 INVITRO = (0.05, 1.00)

@@ -1,5 +1,5 @@
 """Verify the muscle-ported rodent: compiles, muscles are real, antagonists oppose."""
-import numpy as np, mujoco, time, pathlib
+import mujoco, time, pathlib
 # SIDE-EFFECT GUARD added 2026-10-07. This script previously did its work at MODULE level,
 # so merely importing it ran it. For `port_muscle.py` that regenerated the MuJoCo body
 # model, and for `build_kb.py`/`build_compounds.py` it rewrote the pharmacology database --

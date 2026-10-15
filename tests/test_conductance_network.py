@@ -12,7 +12,7 @@ import numpy as np
 import pytest
 
 from circuitpharm.config import RESP_OP
-from circuitpharm.resp import PreBotC, REQUIRED_W, resp_metrics
+from circuitpharm.resp import PreBotC, resp_metrics
 
 # A known-alive conductance operating point (stage-2 output of scripts/anchor_cond_resp.py:
 # weight-block scale 0.9 x the LIF table). Used so these tests work whether or not

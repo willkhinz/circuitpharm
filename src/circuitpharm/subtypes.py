@@ -26,7 +26,7 @@ measured proteomics. They are the weakest numbers here and are the first thing t
 with real data. Their ORDERING (a1 dominant in medulla, a5 forebrain-restricted) is solid;
 their precise values are not.
 """
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 SUBTYPES = ("a1", "a23", "a5", "d_a4", "eps")
 

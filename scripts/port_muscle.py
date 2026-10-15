@@ -16,7 +16,7 @@ NOTE: _ext/_flx is a LENGTH convention: ext LENGTHENS as qpos rises (gear +1). N
 flexor/extensor assignment must be validated against joint kinematics before mapping
 motoneuron pools onto it. Non-hindlimb actuators are left untouched.
 """
-import os, pathlib, dm_control
+import pathlib, dm_control
 from lxml import etree
 # SIDE-EFFECT GUARD added 2026-10-07. This script previously did its work at MODULE level,
 # so merely importing it ran it. For `port_muscle.py` that regenerated the MuJoCo body

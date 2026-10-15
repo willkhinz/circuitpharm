@@ -32,12 +32,6 @@ RESP_OP = MappingProxyType(dict(
 
 # CONDUCTANCE-SUBSTRATE RESPIRATORY OPERATING POINT (roadmap link 5).
 #
-# (A duplicate copy of this header stood here, 20 lines long, still reading "None means NOT
-# YET ANCHORED" above a value that IS anchored -- stale documentation directly contradicting
-# the code beneath it, which is the defect class this file was created to prevent. Removed
-# 2026-10-09, roadmap P0-12. The surviving header below is the current one.)
-# CONDUCTANCE-SUBSTRATE RESPIRATORY OPERATING POINT (roadmap link 5).
-#
 # None means NOT ANCHORED, and `PreBotC(substrate="cond")` raises rather than falling back
 # to RESP_OP above -- whose `drive` is in pA and weights in nS relative to the LIF cell
 # (C=200 pF, g_L=10 nS) rather than the Butera cell (C=21 pF, g_L=2.8 nS).
