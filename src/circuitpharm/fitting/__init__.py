@@ -102,6 +102,11 @@ from .posterior import (
     sample_posterior_vector,
     save_chain,
 )
+from .diagnostic import (
+    DiagnosticFitResult,
+    diagnostic_log_likelihood,
+    fit_diagnostic_consistency,
+)
 
 __all__ = [
     # data
@@ -195,4 +200,8 @@ __all__ = [
     "comparison_report",
     "recovery_check",
     "check_deactivation_protocols",
+    # diagnostic
+    "DiagnosticFitResult",
+    "diagnostic_log_likelihood",
+    "fit_diagnostic_consistency",
 ]
