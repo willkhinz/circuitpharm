@@ -73,6 +73,8 @@ DataKind = Literal["digitised", "parametric", "synthetic"]
 #: prediction the same way the data was normalised, which confines the dataset's evidence
 #: to the curve's shape -- its EC50 and slope -- where it belongs.
 Normalisation = Literal["absolute", "fraction_of_max"]
+NoiseModel = Literal["stated_sem", "estimated"]
+NOISE_MODELS: tuple[NoiseModel, ...] = ("stated_sem", "estimated")
 
 
 @dataclass(frozen=True)
@@ -113,6 +115,7 @@ class DoseResponseDataset:
     #: difference between a faithful reconstruction and an extrapolation is whether the
     #: dataset's own points lie inside it.
     source_measured_domain: tuple[float, float] | None = None
+    noise_model: NoiseModel = "estimated"
 
     def __post_init__(self):
         _validate_dataset(self)
@@ -176,6 +179,7 @@ class DeactivationDataset:
     #: difference between a faithful reconstruction and an extrapolation is whether the
     #: dataset's own points lie inside it.
     source_measured_domain: tuple[float, float] | None = None
+    noise_model: NoiseModel = "estimated"
 
     def __post_init__(self):
         if self.pulse_ms is not None and self.pulse_duration_ms is not None:
@@ -238,6 +242,7 @@ class MeanOpenTimeDataset:
     preparation: str = ""
     n_cells: int | None = None
     role: Literal["train", "holdout"] = "train"
+    noise_model: NoiseModel = "estimated"
 
     def __post_init__(self):
         _validate_dataset(self)
@@ -269,6 +274,7 @@ class PairedPulseDataset:
     receptor: str = ""
     n_cells: int | None = None
     role: Literal["train", "holdout"] = "holdout"
+    noise_model: NoiseModel = "estimated"
 
     def __post_init__(self):
         _validate_dataset(self)
@@ -282,6 +288,26 @@ def _validate_dataset(ds) -> None:
     """A dataset cannot be both generated and sourced, and must say which it is."""
     if ds.kind not in ("digitised", "parametric", "synthetic"):
         raise ValueError(f"{ds.citation_label!r}: unknown kind {ds.kind!r}")
+
+    if getattr(ds, "noise_model", None) not in NOISE_MODELS:
+        raise ValueError(
+            f"{ds.citation_label!r}: unknown noise_model {getattr(ds, 'noise_model', None)!r}; "
+            f"expected one of {NOISE_MODELS}")
+
+    if ds.noise_model == "stated_sem":
+        sem = getattr(ds, "sem", getattr(ds, "sem_ms", None))
+        if sem is None:
+            raise ValueError(
+                f"{ds.citation_label!r}: declares noise_model='stated_sem' but has no sem")
+        if isinstance(sem, (int, float)):
+            if sem <= 0 or not np.isfinite(sem):
+                raise ValueError(
+                    f"{ds.citation_label!r}: stated sem must be positive and finite, got {sem!r}")
+        else:
+            sem_arr = np.asarray(sem, dtype=float)
+            if sem_arr.size == 0 or np.any(sem_arr <= 0) or not np.all(np.isfinite(sem_arr)):
+                raise ValueError(
+                    f"{ds.citation_label!r}: stated sem must be positive and finite")
 
     if ds.observable is Observable.DEACTIVATION or isinstance(ds, DeactivationDataset):
         missing = []
@@ -431,6 +457,7 @@ DOSE_RESPONSE_BENCHMARK = DoseResponseDataset(
     motivated_by=("Mortensen et al. 2012 (J Physiol 590:69-78) and Sigel & Steinmann 2012 "
                   "report curves of this general shape. NEITHER was digitised and neither "
                   "supports these specific numbers."),
+    noise_model="estimated",
 )
 
 # ---------------------------------------------------------------------------------------
@@ -462,6 +489,7 @@ DEACTIVATION_BENCHMARK = DeactivationDataset(
                   "knowledge/07-paper-review.md records Haas & Macdonald 1999 as measuring "
                   "76.1 ms for this quantity, so the 15 ms component above is NOT that "
                   "paper's number and must not be attributed to it."),
+    noise_model="estimated",
 )
 
 
@@ -631,6 +659,7 @@ JAHN1997_PEAK_CRC = DoseResponseDataset(
     motivated_by="",
     n_cells=None,
     role="train",
+    noise_model="estimated",
 )
 
 
@@ -675,7 +704,7 @@ _T_BARBERIS = np.unique(np.concatenate([
     [0.0],
     np.geomspace(0.2, 30.0, 50),                       # resolves tau_1 = 2.8 and tau_2 = 33.4
     np.linspace(40.0, _BARBERIS_FIT_WINDOW_MS, 50),    # covers tau_3 = 221.35 out to ~1% of peak
-])).astype(float)
+    ])).astype(float)
 _I_BARBERIS = np.zeros_like(_T_BARBERIS)
 for _tau, _area in zip(_BARBERIS_TAUS, _BARBERIS_AREAS):
     _I_BARBERIS += _area * np.exp(-_T_BARBERIS / _tau)
@@ -709,6 +738,7 @@ BARBERIS2007_DEACT = DeactivationDataset(
         f"{_BARBERIS_TAUS[2]} ms component. Rat alpha1beta2gamma2S (splice-variant substitution for gamma2L)."
     ),
     role="train",
+    noise_model="estimated",
 )
 
 BARBERIS2007_PAIRED_PULSE = PairedPulseDataset(
@@ -743,6 +773,7 @@ BARBERIS2007_PAIRED_PULSE = PairedPulseDataset(
         "with role='holdout' to serve as out-of-sample test for P5 model comparison and P6 falsification."
     ),
     role="holdout",
+    noise_model="stated_sem",
 )
 
 #: What is still missing, named so it cannot be forgotten (roadmap P1-2, P3).

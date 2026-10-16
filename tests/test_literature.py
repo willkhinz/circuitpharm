@@ -571,6 +571,7 @@ def test_paired_pulse_holdout_registration_and_validation():
     assert ds.source_key == "barberis2007"
     assert ds.mean_response == pytest.approx(0.33)
     assert ds.sem == pytest.approx(0.03)
+    assert ds.noise_model == "stated_sem"
     assert ds.pulse_ms == 2.0
     assert ds.conc_mm == 10.0
     assert ds.gap_ms == 100.0
@@ -585,6 +586,8 @@ def test_paired_pulse_holdout_registration_and_validation():
         (dict(mean_response=0.33, pulse_ms=2.0, gap_ms=100.0), "conc_mm"),
         (dict(mean_response=0.33, pulse_ms=2.0, conc_mm=10.0), "gap_ms"),
         (dict(mean_response=0.33, pulse_ms=0.0, conc_mm=10.0, gap_ms=100.0), "pulse_ms"),
+        (dict(mean_response=0.33, pulse_ms=2.0, conc_mm=10.0, gap_ms=100.0, noise_model="invalid"), "noise_model"),
+        (dict(mean_response=0.33, pulse_ms=2.0, conc_mm=10.0, gap_ms=100.0, sem=None, noise_model="stated_sem"), "no sem"),
     ):
         with pytest.raises(ValueError, match=match):
             PairedPulseDataset(
@@ -625,4 +628,69 @@ def test_paired_pulse_holdout_registration_and_validation():
     assert len(prov) == 0
     assert np.isfinite(res_b.total_log_likelihood)
     assert np.isfinite(res_c.total_log_likelihood)
+    # Stated-SEM scoring: nominal defaults miss by >17x SEM, scoring strongly negative
+    assert res_b.total_log_likelihood < -100.0
+    assert res_c.total_log_likelihood < -100.0
+    fit_b = res_b.per_dataset[0]
+    assert fit_b.noise_model == "stated_sem"
+    assert fit_b.stated_sem == 0.03
+    assert fit_b.sigma_hat == pytest.approx(0.5593, abs=1e-3)
+
+
+def test_holdout_noise_model_uses_published_sem_scoring():
+    """Task A: the holdout score must use the published SEM, scoring -7.66 rather than +0.577.
+
+    For a single-point holdout, estimating sigma from 1 residual gave +0.577 (absorbing the miss).
+    Using the published SEM (0.03) gives -7.66 (scoring the 4.5x SEM miss as negative log-likelihood).
+    Both sigma_hat and stated_sem are reported on DatasetFit.
+    """
+    import numpy as np
+    from circuitpharm.fitting.data import (
+        BARBERIS2007_PAIRED_PULSE,
+        DOSE_RESPONSE_BENCHMARK,
+        HOLDOUT,
+        JAHN1997_PEAK_CRC,
+        PairedPulseDataset,
+        DoseResponseDataset,
+    )
+    from circuitpharm.fitting.comparison import MODEL_SPECS
+    from circuitpharm.fitting.likelihood import score_holdout, concentrated_log_likelihood
+
+    # 1. Fitted Model B parameters against Jahn CRC
+    spec = MODEL_SPECS["kinetic_jw95"]
+    v = np.array([2.0187309337948527, 2.214634354318136, -3.0])
+    m_fit = spec.factory(v)
+
+    res = score_holdout(m_fit, HOLDOUT, caller="test")
+    fit = res.per_dataset[0]
+    assert fit.noise_model == "stated_sem"
+    assert fit.stated_sem == 0.03
+    assert fit.sigma_hat == pytest.approx(0.1358, abs=1e-3)
+    # Crucial assertion: -7.66 rather than +0.577
+    assert res.total_log_likelihood == pytest.approx(-7.66, abs=0.02)
+    assert fit.log_likelihood == pytest.approx(-7.66, abs=0.02)
+    assert res.n_estimated == 0  # holdout has n_params=0 and stated_sem has no estimated noise scale
+
+    # 2. A dataset declaring "stated_sem" with no sem raises
+    with pytest.raises(ValueError, match="no sem"):
+        DoseResponseDataset(
+            citation_label="no sem stated",
+            preparation="p",
+            concs_um=np.array([1.0]),
+            mean_response=np.array([0.5]),
+            sem=None,
+            kind="synthetic",
+            synthetic=True,
+            origin="o",
+            noise_model="stated_sem",
+        )
+
+    # 3. Existing CRC path remains on "estimated" with unchanged behavior
+    assert JAHN1997_PEAK_CRC.noise_model == "estimated"
+    assert DOSE_RESPONSE_BENCHMARK.noise_model == "estimated"
+    res_crc = concentrated_log_likelihood(m_fit, [JAHN1997_PEAK_CRC], n_params=3)
+    fit_crc = res_crc.per_dataset[0]
+    assert fit_crc.noise_model == "estimated"
+    assert fit_crc.sigma_hat == pytest.approx(np.sqrt(fit_crc.rss / fit_crc.n), rel=1e-12)
+    assert res_crc.n_estimated == 4  # 3 params + 1 estimated noise scale
 

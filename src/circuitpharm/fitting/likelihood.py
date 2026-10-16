@@ -25,14 +25,14 @@ import numpy as np
 
 from ..models.base import DecayFit, Observable, ObservableMismatch, WaveformResult
 from ..protocols.waveforms import paired_pulse_ratio
-from .data import assert_real_data, holdout_guard
+from .data import NoiseModel, assert_real_data, holdout_guard
 from .identifiability import IDENTIFIABLE_BOUNDS
 from .reparam import EQUILIBRIUM_IDENTIFIABLE, IdentifiableParams
 
 
 @dataclass(frozen=True)
 class DatasetFit:
-    """One dataset's contribution, with the noise scale that was estimated for it."""
+    """One dataset's contribution, with the noise scale that was used or estimated for it."""
 
     label: str
     observable: Observable
@@ -40,6 +40,8 @@ class DatasetFit:
     rss: float
     sigma_hat: float
     log_likelihood: float
+    noise_model: NoiseModel = "estimated"
+    stated_sem: float | tuple[float, ...] | None = None
 
 
 @dataclass(frozen=True)
@@ -376,15 +378,70 @@ def _score(model, datasets, *, n_params: int) -> LikelihoodResult:
         # a perfect fit sends sigma_hat to 0 and the log-likelihood to +inf, which is a
         # degenerate optimum rather than a good one. Floored at a level far below any real
         # measurement precision, and the floor is reported.
-        sigma2 = max(rss / n, 1e-12)
-        ll = -0.5 * n * (np.log(2.0 * np.pi) + 1.0 + np.log(sigma2))
-        fits.append(DatasetFit(label=ds.citation_label, observable=ds.observable, n=n,
-                               rss=rss, sigma_hat=float(np.sqrt(sigma2)),
-                               log_likelihood=float(ll)))
+        sigma2_hat = max(rss / n, 1e-12)
+        sigma_hat = float(np.sqrt(sigma2_hat))
+
+        noise_model = getattr(ds, "noise_model", "estimated")
+        raw_sem = getattr(ds, "sem", getattr(ds, "sem_ms", None))
+        if raw_sem is None:
+            stated_sem = None
+        elif isinstance(raw_sem, (int, float)):
+            stated_sem = float(raw_sem)
+        else:
+            arr = np.asarray(raw_sem, dtype=float)
+            stated_sem = float(arr.item()) if arr.size == 1 else tuple(float(x) for x in arr)
+
+        if noise_model == "stated_sem":
+            if raw_sem is None:
+                raise ValueError(
+                    f"{ds.citation_label!r}: declares noise_model='stated_sem' but has no sem")
+            if isinstance(raw_sem, (int, float)):
+                sem_val = float(raw_sem)
+                if sem_val <= 0.0 or not np.isfinite(sem_val):
+                    raise ValueError(f"{ds.citation_label!r}: stated sem must be positive and finite, got {sem_val!r}")
+                sigma2 = sem_val ** 2
+                ll = -0.5 * (rss / sigma2 + n * np.log(2.0 * np.pi * sigma2))
+            else:
+                sem_arr = np.asarray(raw_sem, dtype=float)
+                if sem_arr.size == 1:
+                    sem_val = float(sem_arr.item())
+                    if sem_val <= 0.0 or not np.isfinite(sem_val):
+                        raise ValueError(f"{ds.citation_label!r}: stated sem must be positive and finite, got {sem_val!r}")
+                    sigma2 = sem_val ** 2
+                    ll = -0.5 * (rss / sigma2 + n * np.log(2.0 * np.pi * sigma2))
+                else:
+                    if sem_arr.shape != y.shape:
+                        raise ValueError(
+                            f"{ds.citation_label!r}: sem shape {sem_arr.shape} does not match "
+                            f"observation shape {y.shape}")
+                    if np.any(sem_arr <= 0.0) or not np.all(np.isfinite(sem_arr)):
+                        raise ValueError(f"{ds.citation_label!r}: stated sem must be positive and finite")
+                    sigma2 = sem_arr ** 2
+                    ll = -0.5 * float(np.sum((pred - y) ** 2 / sigma2 + np.log(2.0 * np.pi * sigma2)))
+        elif noise_model == "estimated":
+            sigma2 = sigma2_hat
+            ll = -0.5 * n * (np.log(2.0 * np.pi) + 1.0 + np.log(sigma2))
+        else:
+            raise ValueError(f"{ds.citation_label!r}: unknown noise_model {noise_model!r}")
+
+        fits.append(DatasetFit(
+            label=ds.citation_label,
+            observable=ds.observable,
+            n=n,
+            rss=rss,
+            sigma_hat=sigma_hat,
+            log_likelihood=float(ll),
+            noise_model=noise_model,
+            stated_sem=stated_sem,
+        ))
         total += ll
 
-    return LikelihoodResult(total_log_likelihood=float(total), per_dataset=tuple(fits),
-                            n_estimated=int(n_params) + len(fits))
+    n_noise_params = sum(1 for f in fits if f.noise_model == "estimated")
+    return LikelihoodResult(
+        total_log_likelihood=float(total),
+        per_dataset=tuple(fits),
+        n_estimated=int(n_params) + n_noise_params,
+    )
 
 
 @dataclass(frozen=True)
