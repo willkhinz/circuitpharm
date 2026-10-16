@@ -3646,3 +3646,23 @@ silent off-by-one rather than an exception.
 
 Verification: 104 passed across the six test files covering the five touched modules; 3 new
 guards green; slow subset 63 passed.
+
+---
+
+## E27 — deactivation is protocol-dependent, and weighted τ was compared without its protocol
+
+### The error
+Deactivation time courses and weighted decay constants were treated as single numbers comparable across studies, ignoring pulse duration and fit specification. This is recurring error E12/E22 in another guise: treating numbers sharing a unit as numbers of the same quantity.
+
+Deactivation is strongly protocol-dependent, and this is a **published measurement**, not a model artefact:
+- **Pulse duration alone moves $\tau_w$ 6.9×**: Barberis et al. 2007 measured the same receptor ($\alpha_1\beta_2\gamma_2\text{S}$) in the same study at **52.5 ± 2.9 ms** after a 2 ms pulse of 10 mM GABA, and **364 ± 40 ms** after a 3 s pulse.
+- **Component count and fit window explain the Dixon/Barberis 8.9× gap**: Dixon et al. 2014 reported $\tau_w = \mathbf{5.9 \pm 0.5\text{ ms}}$ at $\le 1\text{ ms}$ pulse of 3 mM GABA in $\alpha_1\beta_2\gamma_2\text{L}$ — nearly the same pulse duration as Barberis's 2 ms pulse. The 8.9× discrepancy is not pulse duration or splice variant; it is the fit. Dixon fitted **two exponentials** over a short window; Barberis fitted **three exponentials** over 1000 ms, where the slow component ($\tau_3 = 221.35\text{ ms}$, area 0.20) carries **44.3 ms of the 52.5 ms weighted $\tau$ (83%)**. Dixon's 5.9 ms sits beside Barberis's fast component ($\tau_1 = 2.8 \pm 0.3\text{ ms}$, area 0.57).
+
+A weighted deactivation $\tau$ is therefore undefined until **pulse duration, concentration, component count, and fit window** are all declared. No module may compare, score, or pool deactivation values whose declared protocols differ.
+
+Cross-references:
+- `knowledge/14-literature.md` §3 (deactivation protocol-dependence in the literature).
+- Guard test: `tests/test_review_regressions.py:827` (`test_deactivation_comparisons_require_identical_protocols`), enforcing that `ObservedQuantity` comparisons (`<`, `>`, `-`, `/`, `+`) and `check_deactivation_protocols` raise `ObservableMismatch` whenever protocols differ.
+- Dataset declarations: `DeactivationDataset` requires positive `pulse_ms`, `conc_mm`, `n_components`, and `fit_window_ms`.
+
+Verification: `pytest -q tests/test_review_regressions.py -k test_deactivation_comparisons_require_identical_protocols` passed (1 passed).
