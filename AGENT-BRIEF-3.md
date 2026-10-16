@@ -36,17 +36,22 @@ with the old numbers.
 
 ---
 
-## 1. Task A — push. The last five commits are local only.
+## 1. Task A — ~~push~~ DONE during review; check CI instead
 
-**Size:** XS. **Do this first and separately.**
+**Size:** XS.
 
-`git rev-list --left-right --count origin/claude/quirky-sagan-edtdet...HEAD` returns `0 5`.
-Brief 2's entire output — including the SEM fix that every quantitative claim now rests on —
-exists **only in this working copy.** Nothing is backed up and no CI has seen it.
+Brief 2's five commits were **local only** when this brief was written
+(`rev-list` returned `0 5`) — the SEM fix that every quantitative claim now rests on existed
+in one working copy, unbacked-up and unseen by CI. **Pushing this brief carried them**, so
+they are now on `origin/claude/quirky-sagan-edtdet` (`b81b0e9` and its six parents).
 
-1. Full suite green under **bare `pytest`**, then push to `claude/quirky-sagan-edtdet`.
-2. Check CI. The SEM change touches scoring, so expect numbers to move in any test that
-   asserts a log-likelihood.
+What remains of this task:
+
+1. **Check CI on that push.** The SEM change alters scoring, so expect movement in any test
+   asserting a log-likelihood. 504 fast tests pass locally; CI also runs a lean 3.12 matrix
+   this session has not exercised.
+2. **Push at the end of every task from now on**, not at the end of the brief. Five commits
+   of unbacked-up work is the failure this records.
 
 ---
 
@@ -226,11 +231,11 @@ observable.
 
 | # | task | depends on | size |
 |---|---|---|---|
-| A | **push — five commits are local only** | — | XS |
+| A | ~~push~~ done during review — check CI on `b81b0e9` | — | XS |
 | B | **`po_max` anchor missing from the comparison path** (confounds brief 2's Task D) | A | M |
 | C | redo the Jahn option comparison, recommend to the user | B | M |
 | D | strengthen `resolve_cv`'s 1σ bar; settle Model C | B | M |
 | E | record that no observable discriminates, not just that σ survives | — | S |
 
-Task A because nothing is backed up. Then Task B, because it is the measurement instrument
+Task B first now, because it is the measurement instrument
 for C and D — as the SEM fix was for brief 2.
