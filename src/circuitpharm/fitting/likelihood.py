@@ -23,6 +23,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from ..gabaa_kinetics import FIT_RANGES, FIT_TARGETS, po_max_anchor_log_likelihood
 from ..models.base import DecayFit, Observable, ObservableMismatch, WaveformResult
 from ..protocols.waveforms import paired_pulse_ratio
 from .data import NoiseModel, assert_real_data, holdout_guard
@@ -493,6 +494,7 @@ def fit_mle(model_factory, datasets, *, n_starts: int = 32, seed: int = 0,
 
 def fit_mle_vector(model_factory, datasets, *, param_names, bounds,
                    n_starts: int = 32, seed: int = 0, spread_tol: float = 0.05,
+                   anchor_po_max: bool = False,
                    caller: str = "fit_mle_vector") -> MLEResult:
     """Multi-start MLE over an arbitrary parameter vector, reporting the top-5 spread.
 
@@ -515,7 +517,11 @@ def fit_mle_vector(model_factory, datasets, *, param_names, bounds,
 
     def neg_ll(v):
         try:
-            return -score(model_factory(np.asarray(v, dtype=float))).total_log_likelihood
+            m = model_factory(np.asarray(v, dtype=float))
+            ll = score(m).total_log_likelihood
+            if anchor_po_max and hasattr(m, "po_max"):
+                ll += po_max_anchor_log_likelihood(float(m.po_max))
+            return -ll
         except Exception:
             return 1e12
 
@@ -561,7 +567,27 @@ def fit_mle_vector(model_factory, datasets, *, param_names, bounds,
     unique = all(v <= spread_tol for v in spread.values())
 
     values = {n: float(best_x[i]) for i, n in enumerate(names)}
-    ll = score(model_factory(best_x))
+    best_model = model_factory(best_x)
+    ll = score(best_model)
+    per_dataset = list(ll.per_dataset)
+    total_ll = float(ll.total_log_likelihood)
+    if anchor_po_max and hasattr(best_model, "po_max"):
+        po_max_val = float(best_model.po_max)
+        ll_anc = po_max_anchor_log_likelihood(po_max_val)
+        total_ll += float(ll_anc)
+        target = FIT_TARGETS["po_max"]
+        sigma = (FIT_RANGES["po_max"][1] - FIT_RANGES["po_max"][0]) / 2.0
+        rss_anc = float((po_max_val - target) ** 2)
+        per_dataset.append(DatasetFit(
+            label="po_max gating anchor",
+            observable=Observable.PEAK,
+            n=1,
+            rss=rss_anc,
+            sigma_hat=sigma,
+            log_likelihood=float(ll_anc),
+            noise_model="stated_sem",
+            stated_sem=sigma,
+        ))
     params = (IdentifiableParams.from_vector(best_x)
               if names == list(EQUILIBRIUM_IDENTIFIABLE) else None)
 
@@ -589,9 +615,9 @@ def fit_mle_vector(model_factory, datasets, *, param_names, bounds,
                      f"are not scored")
 
     return MLEResult(values=values, params=params,
-                     log_likelihood=ll.total_log_likelihood,
+                     log_likelihood=total_ll,
                      n_starts=n_starts, n_converged=len(results), top_spread=spread,
-                     per_dataset=ll.per_dataset, converged_uniquely=unique,
+                     per_dataset=tuple(per_dataset), converged_uniquely=unique,
                      at_bound=at_bound,
                      bounds={n: (float(lo[i]), float(hi[i])) for i, n in enumerate(names)},
                      note="; ".join(parts))

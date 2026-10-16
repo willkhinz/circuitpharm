@@ -38,13 +38,14 @@ def evaluate_option(
     include_deact: bool = True,
     n_starts: int = 4,
     seed: int = 42,
+    anchor_po_max: bool = True,
 ) -> dict:
     spec = MODEL_SPECS["kinetic_jw95"]
     datasets = [jahn_ds]
     if include_deact:
         datasets.append(BARBERIS2007_DEACT)
 
-    fit = fit_one(spec, datasets, n_starts=n_starts, seed=seed)
+    fit = fit_one(spec, datasets, n_starts=n_starts, seed=seed, anchor_po_max=anchor_po_max)
     v = np.array([fit.values[k] for k in spec.param_names])
     model = spec.factory(v)
 
@@ -64,18 +65,21 @@ def evaluate_option(
         "option": name,
         "n_points_crc": len(jahn_ds.concs_um),
         "include_deact": include_deact,
+        "anchor_po_max": anchor_po_max,
         "fit_values": fit.values,
         "at_bound": fit.at_bound,
         "log_lik": fit.log_likelihood,
         "d_val": d_val,
         "d_at_bound": d_at_bound,
         "po_max": po_max,
+        "po_max_in_range": fit.po_max_in_range,
         "po_inf": po_inf,
         "pp_pred": pp_pred,
         "holdout_mean": holdout_mean,
         "holdout_sem": holdout_sem,
         "resid": resid,
         "resid_sem": resid_sem,
+        "note": fit.note,
     }
 
 
@@ -96,7 +100,7 @@ def main():
     args = parser.parse_args()
 
     print("================================================================================")
-    print("TASK D: EVALUATING JAHN1997_PEAK_CRC OPTIONS WITH BARBERIS2007_DEACT INCLUDED")
+    print("TASK D: EVALUATING JAHN1997_PEAK_CRC OPTIONS WITH AND WITHOUT PO_MAX ANCHOR")
     print("================================================================================")
     print("Option 1 ('keep'):     Full 9-point parametric reconstruction (0.3 - 3000 uM)")
     print("Option 2 ('restrict'): Measured window [1, 10] uM + saturation anchor 3000 uM (4 pts)")
@@ -107,43 +111,53 @@ def main():
 
     options_to_run = ["keep", "restrict"] if args.option == "all" else ([args.option] if args.option != "split" else ["restrict"])
 
-    for opt in options_to_run:
-        ds = get_jahn_crc(opt)
-        opt_label = f"Option {'1 (keep)' if opt == 'keep' else '2 (restrict)'}"
-        print(f"Fitting {opt_label} with BARBERIS2007_DEACT (n_starts={args.n_starts})...")
-        res = evaluate_option(opt_label, ds, include_deact=True, n_starts=args.n_starts)
-        results.append(res)
-        print(f"  log10_D: {res['d_val']:.4f} (at bound: {res['d_at_bound']})")
-        print(f"  Po,max:  {res['po_max']:.4f} (Po,inf = {res['po_inf']:.4f})")
-        print(f"  PPR pred: {res['pp_pred']:.4f} vs holdout {res['holdout_mean']:.2f} +/- {res['holdout_sem']:.2f}")
-        print(f"  Holdout residual: {res['resid']:+.4f} ({res['resid_sem']:+.2f}x SEM)")
-        print()
+    for anchor in [False, True]:
+        anc_str = "ANCHORED (Task B)" if anchor else "UNANCHORED (Brief 2)"
+        print(f"--- Running {anc_str} ---")
+        for opt in options_to_run:
+            ds = get_jahn_crc(opt)
+            opt_label = f"Option {'1 (keep)' if opt == 'keep' else '2 (restrict)'} [{anc_str}]"
+            print(f"Fitting {opt_label} with BARBERIS2007_DEACT (n_starts={args.n_starts})...")
+            res = evaluate_option(opt_label, ds, include_deact=True, n_starts=args.n_starts, anchor_po_max=anchor)
+            results.append(res)
+            print(f"  log10_D: {res['d_val']:.4f} (at bound: {res['d_at_bound']})")
+            print(f"  Po,max:  {res['po_max']:.4f} (in range [0.70, 0.80]: {res['po_max_in_range']})")
+            print(f"  PPR pred: {res['pp_pred']:.4f} vs holdout {res['holdout_mean']:.2f} +/- {res['holdout_sem']:.2f}")
+            print(f"  Holdout residual: {res['resid']:+.4f} ({res['resid_sem']:+.2f}x SEM)")
+            if res["note"]:
+                print(f"  Note: {res['note']}")
+            print()
 
-    # Also fit Option 1 without deactivation for comparison (the original state reported in handoff)
-    if args.option == "all":
-        print("Fitting Option 1 (keep) WITHOUT deactivation (CRC alone, original handoff state)...")
-        res_no_deact = evaluate_option(
-            "Option 1 (CRC alone, no deact)",
-            get_jahn_crc("keep"),
-            include_deact=False,
-            n_starts=args.n_starts,
-        )
-        results.append(res_no_deact)
-        print(f"  log10_D: {res_no_deact['d_val']:.4f} (at bound: {res_no_deact['d_at_bound']})")
-        print(f"  Po,max:  {res_no_deact['po_max']:.4f}")
-        print(f"  PPR pred: {res_no_deact['pp_pred']:.4f} ({res_no_deact['resid_sem']:+.2f}x SEM)")
-        print()
+        # Also fit Option 1 without deactivation for comparison
+        if args.option == "all":
+            opt_label = f"Option 1 (CRC alone, no deact) [{anc_str}]"
+            print(f"Fitting {opt_label}...")
+            res_no_deact = evaluate_option(
+                opt_label,
+                get_jahn_crc("keep"),
+                include_deact=False,
+                n_starts=args.n_starts,
+                anchor_po_max=anchor,
+            )
+            results.append(res_no_deact)
+            print(f"  log10_D: {res_no_deact['d_val']:.4f} (at bound: {res_no_deact['d_at_bound']})")
+            print(f"  Po,max:  {res_no_deact['po_max']:.4f} (in range: {res_no_deact['po_max_in_range']})")
+            print(f"  PPR pred: {res_no_deact['pp_pred']:.4f} ({res_no_deact['resid_sem']:+.2f}x SEM)")
+            if res_no_deact["note"]:
+                print(f"  Note: {res_no_deact['note']}")
+            print()
 
-    print("================================================================================")
-    print("SUMMARY METRIC COMPARISON TABLE")
-    print("================================================================================")
-    print(f"{'Option / Configuration':<32} | {'log10(D)':<10} | {'D at bound?':<12} | {'Po,max':<8} | {'PPR pred':<10} | {'Holdout Resid (SEM)':<20}")
-    print("-" * 105)
+    print("========================================================================================================================")
+    print("SUMMARY METRIC COMPARISON TABLE (BEFORE & AFTER TASK B ANCHOR)")
+    print("========================================================================================================================")
+    print(f"{'Option / Configuration':<42} | {'log10(D)':<10} | {'D bound?':<10} | {'Po,max':<8} | {'Po,max ok?':<10} | {'Holdout Resid (SEM)':<20}")
+    print("-" * 120)
     for r in results:
-        bound_str = "YES" if r["d_at_bound"] else "NO (interior)"
+        bound_str = "YES" if r["d_at_bound"] else "NO (int)"
+        po_ok = "YES" if r["po_max_in_range"] else "NO (OUT)"
         resid_str = f"{r['resid']:+.4f} ({r['resid_sem']:+.2f}x)"
-        print(f"{r['option']:<32} | {r['d_val']:<10.4f} | {bound_str:<12} | {r['po_max']:<8.4f} | {r['pp_pred']:<10.4f} | {resid_str:<20}")
-    print("-" * 105)
+        print(f"{r['option']:<42} | {r['d_val']:<10.4f} | {bound_str:<10} | {r['po_max']:<8.4f} | {po_ok:<10} | {resid_str:<20}")
+    print("-" * 120)
 
     print("\n================================================================================")
     print("INDEPENDENT EC50 CONSISTENCY CHECK (MORTENSEN ET AL. 2012)")

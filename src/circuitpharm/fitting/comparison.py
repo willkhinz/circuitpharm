@@ -40,6 +40,7 @@ from typing import Callable, Sequence
 
 import numpy as np
 
+from ..gabaa_kinetics import FIT_RANGES
 from ..models.base import Observable, ObservableMismatch, ReceptorModel
 from ..provisional import void
 from ..results import Quantity, ResultSet, Tier
@@ -165,6 +166,8 @@ class ModelFit:
     at_bound: tuple[str, ...]
     converged_uniquely: bool
     note: str
+    po_max: float | None = None
+    po_max_in_range: bool = True
 
     @property
     def k(self) -> int:
@@ -176,6 +179,20 @@ class ModelFit:
         """`k` less the parameters that sat on a bound."""
         return self.k - len(self.at_bound)
 
+    @property
+    def bound_pinned(self) -> bool:
+        """True if any free parameter was stopped at its search box bound."""
+        return bool(self.at_bound)
+
+    def summary(self) -> str:
+        """One-line summary guaranteed to state bound pinning and po_max range violations."""
+        parts = [f"{self.name}: AICc={self.aicc:.2f}, log_lik={self.log_likelihood:.2f}"]
+        if self.po_max is not None:
+            parts.append(f"po_max={self.po_max:.4f}{'' if self.po_max_in_range else ' (OUT OF RANGE)'}")
+        if self.at_bound:
+            parts.append(f"PINNED AT BOUND: {', '.join(self.at_bound)}")
+        return " | ".join(parts)
+
 
 def _information_criteria(log_lik: float, k: int, n: int) -> tuple[float, float, float]:
     aic = 2.0 * k - 2.0 * log_lik
@@ -186,22 +203,42 @@ def _information_criteria(log_lik: float, k: int, n: int) -> tuple[float, float,
     return float(aic), float(aicc), float(bic)
 
 
-def fit_one(spec: ModelSpec, datasets, *, n_starts: int = 8, seed: int = 0) -> ModelFit:
+def fit_one(spec: ModelSpec, datasets, *, n_starts: int = 8, seed: int = 0,
+            anchor_po_max: bool = True) -> ModelFit:
     """Fit one model to its MLE and compute its information criteria."""
     datasets = list(datasets)
     fit = fit_mle_vector(spec.factory, datasets, param_names=spec.param_names,
                          bounds=spec.bounds, n_starts=n_starts, seed=seed,
+                         anchor_po_max=anchor_po_max,
                          caller=f"compare_models/{spec.name}")
     n_data = int(sum(f.n for f in fit.per_dataset))
-    n_sigma = len(fit.per_dataset)
+    n_sigma = sum(1 for f in fit.per_dataset if f.noise_model == "estimated")
     k = spec.n_free + n_sigma
     aic, aicc, bic = _information_criteria(fit.log_likelihood, k, n_data)
     at_bound = tuple(n for n, p in fit.at_bound.items() if any(p))
+
+    best_model = spec.factory(np.array([fit.values[n] for n in spec.param_names]))
+    po_max = float(best_model.po_max) if hasattr(best_model, "po_max") else None
+    lo, hi = FIT_RANGES["po_max"]
+    po_max_in_range = bool(lo <= po_max <= hi) if po_max is not None else True
+
+    note_parts = [fit.note] if fit.note else []
+    if at_bound:
+        note_parts.append(
+            f"WARNING: fit pinned at parameter bound(s): {', '.join(at_bound)} "
+            f"-- optimizer stopped by bound, not data"
+        )
+    if not po_max_in_range and po_max is not None:
+        note_parts.append(
+            f"WARNING: derived po_max={po_max:.4f} is outside FIT_RANGES ({lo}, {hi})"
+        )
+    note = "; ".join(note_parts)
+
     return ModelFit(name=spec.name, values=fit.values,
                     log_likelihood=fit.log_likelihood, n_free=spec.n_free,
                     n_sigma=n_sigma, n_data=n_data, aic=aic, aicc=aicc, bic=bic,
                     at_bound=at_bound, converged_uniquely=fit.converged_uniquely,
-                    note=fit.note)
+                    note=note, po_max=po_max, po_max_in_range=po_max_in_range)
 
 
 # ------------------------------------------------------------------ blocked CV
@@ -255,7 +292,7 @@ class CVScore:
 
 
 def blocked_cv(spec: ModelSpec, datasets, *, n_folds: int = 4, n_starts: int = 4,
-               seed: int = 0) -> CVScore:
+               seed: int = 0, anchor_po_max: bool = True) -> CVScore:
     """Fit on all blocks but one, score the one. Higher `total_lpd` is better.
 
     The held-out score uses the SIGMA ESTIMATED ON THE TRAINING BLOCKS, not one re-estimated
@@ -284,6 +321,7 @@ def blocked_cv(spec: ModelSpec, datasets, *, n_folds: int = 4, n_starts: int = 4
             train = _subset(ds, train_idx)
             fit = fit_mle_vector(spec.factory, [train], param_names=spec.param_names,
                                  bounds=spec.bounds, n_starts=n_starts, seed=seed,
+                                 anchor_po_max=anchor_po_max,
                                  caller=f"blocked_cv/{spec.name}")
             sigma = float(fit.per_dataset[0].sigma_hat)
             model = spec.factory(np.array([fit.values[n] for n in spec.param_names]))
@@ -337,6 +375,7 @@ class ComparisonResult:
 def compare_models(models: Sequence[str], train, holdout=(), *, n_folds: int = 4,
                    n_starts: int = 8, cv_starts: int = 4, seed: int = 0,
                    min_nats: float = 2.0,
+                   anchor_po_max: bool = True,
                    observable: Observable | None = None) -> ComparisonResult:
     """Rank models by blocked CV, with AICc as secondary evidence and a stated verdict.
 
@@ -357,8 +396,10 @@ def compare_models(models: Sequence[str], train, holdout=(), *, n_folds: int = 4
     data_obs = _require_one_observable(specs, train, observable)
     synthetic = assert_real_data(train + holdout, caller="compare_models")
 
-    fits = {s.name: fit_one(s, train, n_starts=n_starts, seed=seed) for s in specs}
-    cv = {s.name: blocked_cv(s, train, n_folds=n_folds, n_starts=cv_starts, seed=seed)
+    fits = {s.name: fit_one(s, train, n_starts=n_starts, seed=seed,
+                            anchor_po_max=anchor_po_max) for s in specs}
+    cv = {s.name: blocked_cv(s, train, n_folds=n_folds, n_starts=cv_starts, seed=seed,
+                             anchor_po_max=anchor_po_max)
           for s in specs}
 
     held = {}
@@ -529,6 +570,9 @@ def _caveats(fits, synthetic, cv) -> tuple[str, ...]:
     pinned = {n: f.at_bound for n, f in fits.items() if f.at_bound}
     if pinned:
         out.append(f"parameters on a bound, which were not estimated: {pinned}")
+    out_of_range = {n: f.po_max for n, f in fits.items() if not f.po_max_in_range and f.po_max is not None}
+    if out_of_range:
+        out.append(f"derived po_max outside FIT_RANGES {FIT_RANGES['po_max']}: {out_of_range}")
     ties = [n for n, f in fits.items() if not f.converged_uniquely]
     if ties:
         out.append(f"the MLE is not unique for {ties}: the top five optima disagree, so "

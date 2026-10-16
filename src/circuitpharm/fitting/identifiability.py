@@ -53,6 +53,7 @@ from typing import Sequence
 import numpy as np
 from scipy.optimize import minimize
 
+from ..gabaa_kinetics import po_max_anchor_chi2
 from ..models.kinetic_jw95 import KineticAllosteryModel
 from ..provisional import void, warn_provisional
 from ..results import Quantity, ResultSet, Tier
@@ -154,7 +155,7 @@ def equilibrium_dose_response_chi2(
     chi2_dr = float(np.sum(((pred - obs) / sem) ** 2))
 
     # A penalty on the analytic gating bound, which is a function of E alone.
-    chi2_pomax = float(((model.po_max - 0.75) / 0.05) ** 2)
+    chi2_pomax = po_max_anchor_chi2(model.po_max)
     return chi2_dr + chi2_pomax
 
 

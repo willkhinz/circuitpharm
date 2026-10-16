@@ -404,3 +404,42 @@ def test_the_report_names_the_conventions_that_were_not_fitted(three_model_compa
     # two of the five conventions have no recorded origin and must say so
     unsourced = [k for k, (_, why) in FIT_CONVENTIONS.items() if "no recorded origin" in why]
     assert set(unsourced) == {"r", "r_fast", "r_slow"}
+
+
+# ============================================================= po_max anchor & bound warnings
+def test_model_fit_po_max_and_bound_warnings():
+    """ModelFit must expose po_max, po_max_in_range, bound_pinned, and loud warnings."""
+    from circuitpharm.fitting.comparison import ModelFit, _caveats
+
+    fit_ok = ModelFit(name="m1", values={}, log_likelihood=0.0, n_free=3, n_sigma=1,
+                      n_data=10, aic=0.0, aicc=0.0, bic=0.0, at_bound=(),
+                      converged_uniquely=True, note="", po_max=0.75, po_max_in_range=True)
+    assert not fit_ok.bound_pinned
+    assert "OUT OF RANGE" not in fit_ok.summary()
+    assert "PINNED" not in fit_ok.summary()
+
+    fit_bad = ModelFit(name="m2", values={}, log_likelihood=0.0, n_free=3, n_sigma=1,
+                       n_data=10, aic=0.0, aicc=0.0, bic=0.0, at_bound=("log10_D",),
+                       converged_uniquely=True, note="", po_max=0.01, po_max_in_range=False)
+    assert fit_bad.bound_pinned
+    assert "PINNED AT BOUND: log10_D" in fit_bad.summary()
+    assert "po_max=0.0100 (OUT OF RANGE)" in fit_bad.summary()
+
+    # Caveats must flag both bound-pinning and out-of-range po_max
+    cav = _caveats({"m1": fit_ok, "m2": fit_bad}, synthetic=False, cv={})
+    cav_str = " ".join(cav)
+    assert "parameters on a bound" in cav_str
+    assert "log10_D" in cav_str
+    assert "derived po_max outside FIT_RANGES" in cav_str
+    assert "0.01" in cav_str
+
+
+def test_fit_one_records_po_max(quiet, peak_from_b):
+    """fit_one on kinetic_jw95 must record po_max and enforce anchor when requested."""
+    spec = MODEL_SPECS["kinetic_jw95"]
+    fit = fit_one(spec, [peak_from_b], n_starts=2, anchor_po_max=True)
+    assert fit.po_max is not None
+    assert isinstance(fit.po_max, float)
+    assert 0.70 <= fit.po_max <= 0.80
+    assert fit.po_max_in_range is True
+

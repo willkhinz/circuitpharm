@@ -283,6 +283,26 @@ FIT_TARGETS = dict(ec50_um=20.0, po_max=0.75, tau_ms=15.0)
 FIT_RANGES = dict(ec50_um=(10.0, 30.0), po_max=(0.70, 0.80), tau_ms=(10.0, 30.0))
 
 
+def po_max_anchor_residual(po_max: float) -> float:
+    """Standardized residual (P_o,max - target) / sigma for the canonical gating anchor."""
+    target = FIT_TARGETS["po_max"]
+    sigma = (FIT_RANGES["po_max"][1] - FIT_RANGES["po_max"][0]) / 2.0
+    return (float(po_max) - target) / sigma
+
+
+def po_max_anchor_chi2(po_max: float) -> float:
+    """Chi-squared penalty on P_o,max from the canonical gating anchor."""
+    return float(po_max_anchor_residual(po_max) ** 2)
+
+
+def po_max_anchor_log_likelihood(po_max: float) -> float:
+    """Log-likelihood contribution of the canonical gating anchor P_o,max ~ Normal(target, sigma^2)."""
+    target = FIT_TARGETS["po_max"]
+    sigma = (FIT_RANGES["po_max"][1] - FIT_RANGES["po_max"][0]) / 2.0
+    res = (float(po_max) - target) / sigma
+    return float(-0.5 * (res ** 2 + np.log(2.0 * np.pi * sigma ** 2)))
+
+
 #: Channel closing rate, ms^-1, HELD FIXED so the fit is well-posed. See `fit_scheme`.
 #:
 #: 1/alpha is the MEAN OPEN TIME: 0.30 ms^-1 means 3.33 ms, which is inside the range
@@ -369,7 +389,7 @@ def fit_scheme(verbose=True, pulse=None,
         m = s.ipsc_metrics(**pulse)
         tau = m["tau"] if np.isfinite(m["tau"]) else 1e3
         return [np.log(s.ec50_um() / FIT_TARGETS["ec50_um"]),
-                (s.po_max() - FIT_TARGETS["po_max"]) / 0.05,
+                po_max_anchor_residual(s.po_max()),
                 np.log(tau / FIT_TARGETS["tau_ms"])]
 
     # xtol/ftol 1e-12: the square system converges quickly, so this costs little, and it
