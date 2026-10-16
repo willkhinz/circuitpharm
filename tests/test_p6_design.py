@@ -592,3 +592,54 @@ def test_posterior_intervals_are_calibrated_across_seeds():
         f"only {joint_hits} of 6 noise realisations had all three 95% intervals cover the "
         f"truth; 5 of 6 was measured, and 4 is the floor below which the intervals are too "
         f"narrow rather than unlucky")
+
+
+def test_paired_pulse_recovery_design_and_protocol_point(candidates):
+    """Task E: Design search and posterior predictive score for PAIRED_PULSE_RECOVERY."""
+    pt = ProtocolPoint(
+        gaba_um=10000.0,
+        pam_factor=2.0,
+        observable=Observable.PAIRED_PULSE_RECOVERY,
+        application_ms=2.0,
+        gap_ms=100.0,
+    )
+    assert "PAIRED_PULSE_RECOVERY" in pt.describe()
+    assert "2 ms pulse" in pt.describe()
+    assert "100 ms gap" in pt.describe()
+
+    # Posterior predictive score on candidates
+    score, intervals, sds, sep = posterior_predictive_score(
+        candidates, pt, sigma_meas=0.03
+    )
+    assert np.isfinite(score)
+    assert score > 0.0
+    assert "kinetic_jw95" in intervals
+    assert "extended_desens" in intervals
+    assert np.isfinite(sep)
+
+    # find_discriminating_protocol_pp on PAIRED_PULSE_RECOVERY
+    res = find_discriminating_protocol_pp(
+        candidates,
+        gaba_grid=(10000.0,),
+        pam_grid=(1.0, 2.0),
+        observables=(Observable.PAIRED_PULSE_RECOVERY,),
+        gap_grid=(50.0, 100.0),
+        sigma_meas=0.03,
+    )
+    assert res.protocol.observable is Observable.PAIRED_PULSE_RECOVERY
+    assert res.n_searched == 4
+    assert np.isfinite(res.score)
+
+    # Operational model has no states and raises ObservableMismatch
+    rng = np.random.default_rng(3)
+    a_draws = np.column_stack([
+        rng.normal(1.1, 0.05, 40),
+        rng.normal(0.15, 0.05, 40),
+        rng.normal(-0.12, 0.03, 40),
+    ])
+    cand_op = {
+        "operational": (MODEL_SPECS["operational"].factory, a_draws),
+        "kinetic_jw95": candidates["kinetic_jw95"],
+    }
+    with pytest.raises(ObservableMismatch, match="paired-pulse"):
+        posterior_predictive_score(cand_op, pt)

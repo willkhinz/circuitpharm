@@ -61,8 +61,15 @@ class ProtocolPoint:
     pam_factor: float
     observable: Observable
     application_ms: float = 300.0
+    gap_ms: float = 100.0
 
     def describe(self) -> str:
+        if self.observable is Observable.PAIRED_PULSE_RECOVERY:
+            return (
+                f"{self.gaba_um:g} uM GABA, PAM {self.pam_factor:g}x (EQUILIBRIUM EC50 "
+                f"shift), measured as {self.observable.value} "
+                f"({self.application_ms:g} ms pulse, {self.gap_ms:g} ms gap)"
+            )
         return (f"{self.gaba_um:g} uM GABA, PAM {self.pam_factor:g}x (EQUILIBRIUM EC50 "
                 f"shift), measured as {self.observable.value}"
                 + (f" over a {self.application_ms:g} ms application"
@@ -141,6 +148,28 @@ def _predict_draws(model_factory, draws: np.ndarray, point: ProtocolPoint) -> np
                         f"{type(m).__name__} is {m.native_observable.value}-native and has "
                         f"no equilibrium response; design on PEAK instead.")
                 val = float(m.steady_state(point.gaba_um, pam_factor=point.pam_factor))
+            elif point.observable is Observable.PAIRED_PULSE_RECOVERY:
+                from ..fitting.likelihood import predict_paired_pulse_recovery
+                from ..fitting.data import PairedPulseDataset
+                if not hasattr(m, "q_matrix"):
+                    raise ObservableMismatch(
+                        f"{type(m).__name__} is {m.native_observable.value}-native and has "
+                        f"no states to simulate paired-pulse recovery.")
+                ds_tmp = PairedPulseDataset(
+                    citation_label="design_protocol",
+                    mean_response=0.33,
+                    sem=0.03,
+                    pulse_ms=point.application_ms,
+                    conc_mm=point.gaba_um / 1000.0,
+                    gap_ms=point.gap_ms,
+                    observable=Observable.PAIRED_PULSE_RECOVERY,
+                    kind="synthetic",
+                    synthetic=True,
+                    origin="design_protocol",
+                    noise_model="stated_sem",
+                )
+                m_mod = m.apply_pam(affinity_factor=point.pam_factor)
+                val = float(predict_paired_pulse_recovery(m_mod, ds_tmp))
             else:
                 raise ObservableMismatch(
                     f"{point.observable.value} is not a single-number response; a CHARGE "
@@ -219,6 +248,7 @@ def find_discriminating_protocol_pp(
     pam_grid: Sequence[float] | None = None,
     observables: Sequence[Observable] = (Observable.PEAK, Observable.EQUILIBRIUM),
     application_grid: Sequence[float] = (300.0,),
+    gap_grid: Sequence[float] | None = None,
     sigma_meas: float = DEFAULT_SIGMA_MEAS,
     rng_seed: int = 0,
 ) -> DesignResult:
@@ -234,6 +264,7 @@ def find_discriminating_protocol_pp(
     """
     gaba = list(gaba_grid or (0.1, 0.3, 1.0, 3.0, 10.0, 30.0, 100.0, 300.0, 1000.0))
     pam = list(pam_grid or (1.0, 1.25, 1.5, 2.0, 2.5, 4.0))
+    gaps = list(gap_grid or (10.0, 20.0, 50.0, 100.0, 200.0, 500.0))
 
     scored: list[tuple[float, ProtocolPoint, dict, dict, float]] = []
     skipped: dict[str, str] = {}
@@ -242,9 +273,12 @@ def find_discriminating_protocol_pp(
         # inside the grid. A model that has no such quantity has none at every
         # concentration, and the earlier version broke out of the innermost loop and relied
         # on the enclosing ones happening to have a single iteration -- correct by accident.
+        probe_gap = gaps[0] if obs is Observable.PAIRED_PULSE_RECOVERY else 100.0
+        probe_app = 2.0 if obs is Observable.PAIRED_PULSE_RECOVERY else float(application_grid[0])
         probe = ProtocolPoint(gaba_um=float(gaba[0]), pam_factor=float(pam[0]),
                               observable=obs,
-                              application_ms=float(application_grid[0]))
+                              application_ms=probe_app,
+                              gap_ms=probe_gap)
         try:
             posterior_predictive_score(candidates, probe, sigma_meas=sigma_meas,
                                        rng_seed=rng_seed)
@@ -254,18 +288,34 @@ def find_discriminating_protocol_pp(
         except Exception:
             pass        # a bad probe point is not a reason to drop the observable
 
-        apps = application_grid if obs is Observable.PEAK else (300.0,)
-        for app in apps:
-            for g in gaba:
-                for p in pam:
-                    pt = ProtocolPoint(gaba_um=float(g), pam_factor=float(p),
-                                       observable=obs, application_ms=float(app))
-                    try:
-                        s, iv, sd, sep = posterior_predictive_score(
-                            candidates, pt, sigma_meas=sigma_meas, rng_seed=rng_seed)
-                    except Exception:
-                        continue
-                    scored.append((s, pt, iv, sd, sep))
+        if obs is Observable.PAIRED_PULSE_RECOVERY:
+            apps = (2.0,) if application_grid == (300.0,) else application_grid
+            for app in apps:
+                for gap in gaps:
+                    for g in gaba:
+                        for p in pam:
+                            pt = ProtocolPoint(gaba_um=float(g), pam_factor=float(p),
+                                               observable=obs, application_ms=float(app),
+                                               gap_ms=float(gap))
+                            try:
+                                s, iv, sd, sep = posterior_predictive_score(
+                                    candidates, pt, sigma_meas=sigma_meas, rng_seed=rng_seed)
+                            except Exception:
+                                continue
+                            scored.append((s, pt, iv, sd, sep))
+        else:
+            apps = application_grid if obs is Observable.PEAK else (300.0,)
+            for app in apps:
+                for g in gaba:
+                    for p in pam:
+                        pt = ProtocolPoint(gaba_um=float(g), pam_factor=float(p),
+                                           observable=obs, application_ms=float(app))
+                        try:
+                            s, iv, sd, sep = posterior_predictive_score(
+                                candidates, pt, sigma_meas=sigma_meas, rng_seed=rng_seed)
+                        except Exception:
+                            continue
+                        scored.append((s, pt, iv, sd, sep))
 
     if not scored:
         raise RuntimeError(

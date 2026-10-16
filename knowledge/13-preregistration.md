@@ -167,6 +167,45 @@ Three other things would change the answer, in rough order of value:
 3. **More cells**, which shrinks `σ_meas/√n` on the MEAN but not the predictive interval —
    worth 2× at best, against the 4× needed.
 
+### 5.1 Re-derivation with declared protocol and re-targeting onto paired-pulse recovery (2026-10-15)
+
+`AGENT-BRIEF-2.md` Task E called for re-deriving the noise requirement with application
+duration declared and matched, and re-targeting the discriminating observable onto
+paired-pulse recovery (`Observable.PAIRED_PULSE_RECOVERY` from Barberis 2007: 2 ms pulses,
+10 mM GABA, 100 ms gap). Reproducible via `scripts/rederive_preregistration.py`.
+
+#### 1. Declared application duration on PEAK
+Matching application duration between model and protocol shows that while the whole-curve
+Hill slope shifts markedly (1.752 at 2 ms → 1.376 at 300 ms), the rising-phase slope
+(`hill_slope(..., window_rel=JAHN1997_SLOPE_WINDOW_REL)`) is stable across durations
+(1.765 at 2 ms vs 1.673 at 300 ms). However, PEAK separation between Model B and Model C
+remains minuscule (expected separation < 0.006 open-probability units), with scores at
+σ = 0.005 reaching at most 0.867 (far below 1.96).
+
+#### 2. Re-targeted observable: PAIRED_PULSE_RECOVERY
+Searching protocol space over 10 mM GABA, 2 ms pulse, PAM 1–4×, and inter-pulse gaps
+(10, 20, 50, 100, 200, 500 ms; 18 protocols searched):
+
+* **Best protocol:** 10 mM GABA, PAM 4×, 2 ms pulse, 100 ms gap.
+* **Expected separation:** 0.0104.
+* **Sensitivity sweep:**
+
+| Observable | Protocol | σ_meas | Raw Score | Corrected | Discriminating? |
+|---|---|---|---|---|---|
+| **EQUILIBRIUM (Old)** | 1000 µM GABA, PAM 4× | 0.020 | 1.495 | 0.000 | no |
+| | | 0.005 | **5.939** | **5.247** | **yes** |
+| **PEAK (Declared 2 ms)** | 1000 µM GABA, PAM 4×, 2 ms | 0.020 | 0.292 | 0.000 | no |
+| | | 0.005 | 0.688 | 0.000 | no |
+| **PAIRED_PULSE (New)** | 10 mM GABA, PAM 4×, 100 ms gap | 0.030 (pub SEM) | 0.339 | 0.000 | no |
+| | | 0.020 | 0.495 | 0.000 | no |
+| | | 0.005 | 1.277 | 0.000 | no |
+
+#### 3. Verdict
+**The σ ≤ 0.005 requirement SURVIVES and does not soften.**
+Neither PEAK nor PAIRED_PULSE_RECOVERY discriminates between Model B and Model C at
+conventional measurement noise (σ = 0.02 or published SEM σ = 0.03) when Model C has
+collapsed its unidentifiable slow sink ($D_{\text{slow}} \to 0$).
+
 ---
 
 ## 6. What this does not claim
