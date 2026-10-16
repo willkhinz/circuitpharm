@@ -1203,6 +1203,19 @@ Ordered by how much they constrain the conclusions, worst first.
 * **Ambient GABA** is evaluated at a representative 0.40 µM; in vivo, GAT-1/GAT-3 transport and
   spillover create dynamic microdomains. The 0.2–0.8 µM span was not verified against its
   source's full text (§7).
+* **Splice-variant substitution (γ2S empirical data applied to a γ2L model).** Every empirical
+  dataset in the repository (Barberis et al. 2007 deactivation and paired-pulse recovery;
+  Keramidas & Harrison 2008, 2010; Mortensen et al. 2012) was measured on α1β2γ2S. The project's
+  recombinant receptor target is α1β2γ2L. In the literature corpus of seven papers
+  (`knowledge/14-literature.md`), only two sources examine γ2L (Li et al. 2008, rat; Dixon et al.
+  2014, human), and neither provides a reconstructable time course — Li et al. 2008 is
+  cell-attached single-channel recording at sub-saturating agonist, while Dixon et al. 2014
+  publishes only a single weighted scalar deactivation time constant (5.9 ± 0.5 ms) with no
+  reported exponential components, precluding kinetic reconstruction. The two splice variants are
+  not assumed equivalent anywhere in this work; this is a recorded substitution, not an
+  identity, and every quantitative result in this repository rests on γ2S data applied to a γ2L
+  model. No attempt is made to correct for this difference, as there is no empirical basis to
+  support a mathematical correction.
 
 **Circuit-layer assumptions.**
 
@@ -1280,6 +1293,14 @@ jointly on ligand efficacy, receptor mechanism, ambient agonist concentration,
 compartmentalisation and network context — the quantity a fixed scalar cap stood in for is
 neither a constant nor small. Establishing what it is in tissue is an experiment, not a
 simulation.
+
+**The empirical calibration rests on a recorded splice-variant substitution.** Every quantitative
+result in the empirical fitting pipeline rests on α1β2γ2S data applied to an α1β2γ2L model target. In
+the seven-paper literature corpus (`knowledge/14-literature.md`), only two sources examine γ2L (Li
+2008, Dixon 2014), and neither provides a reconstructable kinetic time course (Dixon 2014 publishes
+only a single weighted scalar with no components). The two splice variants are not assumed equivalent
+anywhere; this is a recorded substitution, not an identity. No correction is attempted, as there is
+no empirical basis to support one.
 
 ---
 

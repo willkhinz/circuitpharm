@@ -1694,6 +1694,15 @@ up for ≥ 3× it.
 letting the rest stay LIF-scaled. `circuit.py:83` (P0-9). The full set is required, not
 defaulted.
 
+**5.13 Conflating splice variants (γ2S vs γ2L).** Every empirical dataset in the repository
+is measured on α1β2γ2S (Barberis 2007, Keramidas & Harrison 2008/2010, Mortensen 2012), while the
+project's target receptor model is specified as α1β2γ2L. In the literature corpus
+(`knowledge/14-literature.md`), only two sources examine γ2L (Li 2008, Dixon 2014) and neither
+yields a reconstructable time course (Dixon 2014 publishes only a single weighted scalar with no
+components). Applying γ2S empirical data to a γ2L model is a recorded substitution, not an
+equivalence or identity. Never assume the two splice variants are identical, and do not attempt
+ungrounded mathematical corrections.
+
 ---
 
 ## 6. What may be claimed, and when
@@ -1716,13 +1725,16 @@ defaulted.
 | "Protocol X discriminates Models B and C" | **not yet**: the best of 54 scores 0.00 after correcting for the search (P6 §3) | — |
 | "A ~4× reduction in measurement noise would make the experiment exist" | **now** — P6 §5, measured across a σ sweep | UNCALIBRATED |
 | "The scheme depresses threefold across 10→100 Hz" | **now** — P6 §1, once the amplitude is measured from pulse onset | UNCALIBRATED |
+| "Empirical fits apply directly to α1β2γ2L without splice substitution" | **never** — all empirical data are γ2S (literature §1) | — |
 | "This bears on respiratory safety of α5-selective PAMs" | **never, on this programme** | — |
 
-The last row is not pessimism. The circuit-level argument rests on
+The last two rows are not pessimism. The circuit-level argument rests on
 `REGIONS["prebotc"]["a5"] = 0.02` and `EXTRASYN["a5"] = 0.80`, both `UNSOURCED`
 (`provenance.py:82`, `:134`), and the respiratory axis has no valid quantitative anchor at
-all. Receptor-kinetic results are untouched by that — which is exactly why the manuscript's
-scope box separates them, and why you must not quietly re-merge them.
+all. The empirical kinetic calibration rests on a recorded γ2S → γ2L substitution, because
+reconstructable kinetic traces for γ2L do not exist in the published literature. Receptor-kinetic
+results are untouched by that — which is exactly why the manuscript's scope box separates them,
+and why you must not quietly re-merge them.
 
 ---
 
