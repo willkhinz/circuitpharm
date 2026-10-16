@@ -220,7 +220,7 @@ def test_a_sub_two_nat_cv_margin_is_a_tie_and_parsimony_wins():
 
     Per-fold differences were [0.0, 0.7, 0.0, 0.1]. Calling that a win selects the larger
     model over the one the data came from. `resolve_cv` requires the margin to clear both
-    the paired standard error and a 2-nat floor, and breaks a tie on fewest estimated
+    the 2-sigma paired standard error and a 2-nat floor, and breaks a tie on fewest estimated
     parameters -- the one-standard-error rule.
     """
     from circuitpharm.fitting.comparison import CVScore, ModelFit
@@ -242,7 +242,36 @@ def test_a_sub_two_nat_cv_margin_is_a_tie_and_parsimony_wins():
     assert v.winner == "kinetic_jw95", "parsimony must break the tie"
     assert v.margin_nats == pytest.approx(sum(c_folds) - sum(b_folds), abs=1e-9)
     assert 0.5 < v.margin_nats < 1.0
+    assert np.isfinite(v.diff_over_se)
     assert "fewest estimated parameters" in v.note
+    assert "diff/se =" in v.note
+
+
+def test_sub_two_sigma_margin_is_a_tie_even_if_above_min_nats():
+    """A sub-2-sigma margin cannot name a winner even when diff > min_nats.
+
+    Guards against naming a winner when scatter across folds makes the difference
+    compatible with 1-in-3 noise.
+    """
+    from circuitpharm.fitting.comparison import CVScore, ModelFit
+
+    def fit(name, k):
+        return ModelFit(name=name, values={}, log_likelihood=0.0, n_free=k - 1, n_sigma=1,
+                        n_data=24, aic=0.0, aicc=0.0, bic=0.0, at_bound=(),
+                        converged_uniquely=True, note="")
+
+    # diff = [4, 0, 4, 0], sum = 8.0 nats (> 2.0 nat floor).
+    # paired SE = 4.6188 nats. 1*SE = 4.62 (would clear 1-sigma!), but 2*SE = 9.24 nats.
+    # diff / SE = 1.73 sigma, so it must tie and parsimony must choose the smaller model.
+    cv = {"big": CVScore("big", 8.0, (4.0, 0.0, 4.0, 0.0), 4, 0),
+          "small": CVScore("small", 0.0, (0.0, 0.0, 0.0, 0.0), 4, 0)}
+    fits = {"big": fit("big", 5), "small": fit("small", 3)}
+    v = resolve_cv(cv, fits)
+    assert set(v.tied) == {"big", "small"}
+    assert v.winner == "small"
+    assert v.diff_over_se == pytest.approx(8.0 / (np.std([4, 0, 4, 0], ddof=1) * 2.0), rel=1e-6)
+    assert 1.0 < v.diff_over_se < 2.0
+    assert "sub-2σ margin" in v.note
 
 
 def test_a_large_cv_margin_is_not_a_tie():

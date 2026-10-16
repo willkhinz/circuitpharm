@@ -323,7 +323,7 @@ def blocked_cv(spec: ModelSpec, datasets, *, n_folds: int = 4, n_starts: int = 4
                                  bounds=spec.bounds, n_starts=n_starts, seed=seed,
                                  anchor_po_max=anchor_po_max,
                                  caller=f"blocked_cv/{spec.name}")
-            sigma = float(fit.per_dataset[0].sigma_hat)
+            sigma = max(float(fit.per_dataset[0].sigma_hat), 1e-3)
             model = spec.factory(np.array([fit.values[n] for n in spec.param_names]))
             if is_norm:
                 # Include the normalizing point so test is a valid fraction_of_max dataset
@@ -493,6 +493,8 @@ class CVVerdict:
     #: Standard error of that difference, from the PAIRED per-fold differences.
     margin_se: float
     note: str
+    #: Margin divided by paired SE (ratio in units of sigma).
+    diff_over_se: float = float("nan")
 
 
 def resolve_cv(cv: dict[str, CVScore], fits: dict[str, ModelFit], *,
@@ -501,10 +503,10 @@ def resolve_cv(cv: dict[str, CVScore], fits: dict[str, ModelFit], *,
 
     TWO THRESHOLDS, BOTH NECESSARY:
 
-      * THE PAIRED STANDARD ERROR. Each fold scores every model, so the difference is a
+      * THE PAIRED STANDARD ERROR (AT 2 SIGMA). Each fold scores every model, so the difference is a
         paired quantity and its uncertainty is the fold-to-fold scatter of the DIFFERENCE,
-        which is far smaller than the scatter of either score. Comparing totals without it
-        is how a 0.8-nat gap becomes a ranking.
+        which is far smaller than the scatter of either score. A sub-2-sigma margin cannot name
+        a winner, guarding against 1-in-3 noise fluctuations.
       * A FLOOR OF 2 NATS. The roadmap's own forbidden list says a 2-point AIC difference
         is not decisive, and a held-out log-density difference below ~2 nats is a likelihood
         ratio under 8 on 24 points. Measured on the P5 recovery check: Model C, which NESTS
@@ -521,6 +523,7 @@ def resolve_cv(cv: dict[str, CVScore], fits: dict[str, ModelFit], *,
     best = ordered[0]
     tied = [best.name]
     margin = margin_se = 0.0
+    margin_diff_over_se = float("nan")
     reasons = []
     for i, other in enumerate(ordered[1:]):
         a = np.asarray(best.per_fold, dtype=float)
@@ -529,33 +532,36 @@ def resolve_cv(cv: dict[str, CVScore], fits: dict[str, ModelFit], *,
             d = a - b
             diff = float(d.sum())
             se = float(np.std(d, ddof=1) * np.sqrt(d.size))
+            diff_over_se = float(diff / se) if (np.isfinite(se) and se > 0) else float("inf")
         else:
             # folds failed for one of them, so the comparison is not paired and the only
             # honest standard error is none. Said, not assumed.
             diff = float(best.total_lpd - other.total_lpd)
             se = float("nan")
+            diff_over_se = float("nan")
             reasons.append(f"{other.name} was scored on a different set of folds, so its "
                            f"comparison with {best.name} is unpaired and has no stated "
                            f"standard error")
         if i == 0:
-            margin, margin_se = diff, se
-        threshold = min_nats if not np.isfinite(se) else max(min_nats, se)
+            margin, margin_se, margin_diff_over_se = diff, se, diff_over_se
+        threshold = min_nats if not np.isfinite(se) else max(min_nats, 2.0 * se)
         if diff < threshold:
             tied.append(other.name)
 
     winner = min(tied, key=lambda n: (fits[n].k, -cv[n].total_lpd))
+    ratio_str = f"diff/se = {margin_diff_over_se:.2f}σ" if np.isfinite(margin_diff_over_se) else "diff/se = N/A"
     if len(tied) == 1:
-        note = (f"{winner} leads by {margin:.3f} nats (paired SE {margin_se:.3f}), which "
-                f"clears both the standard error and the {min_nats:g}-nat floor")
+        note = (f"{winner} leads by {margin:.3f} nats (paired SE {margin_se:.3f}, {ratio_str}), which "
+                f"clears both the 2σ standard error and the {min_nats:g}-nat floor")
     else:
         note = (f"{', '.join(tied)} are not distinguishable out of sample (leader by "
-                f"{margin:.3f} nats, paired SE {margin_se:.3f}, floor {min_nats:g}); "
+                f"{margin:.3f} nats, paired SE {margin_se:.3f}, {ratio_str}, floor {min_nats:g}, sub-2σ margin); "
                 f"{winner} is selected as the one with the fewest estimated parameters "
                 f"(k = {fits[winner].k})")
     if reasons:
         note += ". " + "; ".join(reasons)
     return CVVerdict(winner=winner, tied=tuple(tied), margin_nats=margin,
-                     margin_se=margin_se, note=note)
+                     margin_se=margin_se, note=note, diff_over_se=margin_diff_over_se)
 
 
 def _caveats(fits, synthetic, cv) -> tuple[str, ...]:
