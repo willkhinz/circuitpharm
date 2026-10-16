@@ -694,3 +694,38 @@ def test_holdout_noise_model_uses_published_sem_scoring():
     assert fit_crc.sigma_hat == pytest.approx(np.sqrt(fit_crc.rss / fit_crc.n), rel=1e-12)
     assert res_crc.n_estimated == 4  # 3 params + 1 estimated noise scale
 
+
+def test_jahn_crc_options():
+    """Task D: Verify the three JAHN1997_PEAK_CRC options and dataset properties."""
+    import numpy as np
+    from circuitpharm.fitting.data import (
+        JAHN1997_PEAK_CRC,
+        JAHN1997_PEAK_CRC_RESTRICTED,
+        TRAIN,
+        get_jahn_crc,
+    )
+
+    # 1. Restricted dataset properties
+    assert len(JAHN1997_PEAK_CRC_RESTRICTED.concs_um) == 4
+    np.testing.assert_array_equal(
+        JAHN1997_PEAK_CRC_RESTRICTED.concs_um,
+        np.array([1.0, 3.0, 10.0, 3000.0]),
+    )
+    assert JAHN1997_PEAK_CRC_RESTRICTED.source_measured_domain == (1.0, 10.0)
+    assert JAHN1997_PEAK_CRC_RESTRICTED.n_points_outside_source_domain == 1
+    assert JAHN1997_PEAK_CRC_RESTRICTED.fraction_outside_source_domain == pytest.approx(0.25)
+    assert JAHN1997_PEAK_CRC_RESTRICTED.noise_model == "estimated"
+
+    # 2. get_jahn_crc flag options
+    assert get_jahn_crc("keep") is JAHN1997_PEAK_CRC
+    assert get_jahn_crc("restrict") is JAHN1997_PEAK_CRC_RESTRICTED
+    split_res = get_jahn_crc("split")
+    assert split_res == (JAHN1997_PEAK_CRC_RESTRICTED, JAHN1997_PEAK_CRC)
+
+    with pytest.raises(ValueError, match="Unknown Jahn option"):
+        get_jahn_crc("invalid")  # type: ignore
+
+    # 3. Guard: TRAIN is NOT modified
+    assert JAHN1997_PEAK_CRC in TRAIN
+    assert JAHN1997_PEAK_CRC_RESTRICTED not in TRAIN
+

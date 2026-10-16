@@ -662,6 +662,56 @@ JAHN1997_PEAK_CRC = DoseResponseDataset(
     noise_model="estimated",
 )
 
+JahnCrcOption = Literal["keep", "restrict", "split"]
+JAHN_CRC_OPTIONS: tuple[JahnCrcOption, ...] = ("keep", "restrict", "split")
+
+_JAHN_RESTRICTED_IDX = np.array([1, 2, 3, 8], dtype=int)
+
+JAHN1997_PEAK_CRC_RESTRICTED = DoseResponseDataset(
+    citation_label="Jahn 1997 alpha1beta2gamma2L peak GABA CRC (restricted to 1-10 uM + saturation anchor)",
+    preparation=JAHN1997_PEAK_CRC.preparation,
+    concs_um=_JAHN_CONCS[_JAHN_RESTRICTED_IDX],
+    mean_response=_JAHN_RESP[_JAHN_RESTRICTED_IDX],
+    sem=_jahn_spread()[_JAHN_RESTRICTED_IDX],
+    observable=Observable.PEAK,
+    normalisation="fraction_of_max",
+    kind="parametric",
+    synthetic=True,
+    source_measured_domain=(1.0, 10.0),
+    source_key="jahn_a1b2g2_kinetics",
+    figure="dose-response relation reported in the abstract (EC50 and Hill slope)",
+    digitisation=(
+        "Restricted to the 1-10 uM measured slope window (3 points: 1.0, 3.0, 10.0 uM) "
+        "plus the 3000 uM saturation anchor reported in the abstract. 4 points total. "
+        "Excludes the 5 unmeasured points (0.3, 30, 100, 300, 1000 uM)."
+    ),
+    origin=JAHN1997_PEAK_CRC.origin,
+    n_cells=None,
+    role="train",
+    noise_model="estimated",
+)
+
+
+def get_jahn_crc(
+    option: JahnCrcOption = "keep",
+) -> DoseResponseDataset | tuple[DoseResponseDataset, DoseResponseDataset]:
+    """Return JAHN1997_PEAK_CRC dataset(s) according to the specified option.
+
+    Options (HANDOFF.md §5.1 / AGENT-BRIEF-2.md Task D):
+    - 'keep': Full 9-point parametric reconstruction (JAHN1997_PEAK_CRC).
+    - 'restrict': 4 points within measured slope window + saturation anchor (JAHN1997_PEAK_CRC_RESTRICTED).
+    - 'split': Both datasets as a tuple (JAHN1997_PEAK_CRC_RESTRICTED, JAHN1997_PEAK_CRC).
+    """
+    if option == "keep":
+        return JAHN1997_PEAK_CRC
+    elif option == "restrict":
+        return JAHN1997_PEAK_CRC_RESTRICTED
+    elif option == "split":
+        return (JAHN1997_PEAK_CRC_RESTRICTED, JAHN1997_PEAK_CRC)
+    raise ValueError(
+        f"Unknown Jahn option: {option!r}. Expected one of {JAHN_CRC_OPTIONS}."
+    )
+
 
 # ---------------------------------------------------------------------------------------
 # 4. PARAMETRIC deactivation trace from a named source. DEACTIVATION observable.
