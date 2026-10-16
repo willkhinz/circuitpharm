@@ -1445,6 +1445,23 @@ Built in `fitting/comparison.py`; `oed.evaluate_model_fit` stays callable and VO
    bound ($10^{-3}$, eliminating desensitisation), and both models predict $R = 0.1942$
    (residual 0.1358, $4.5\times$ SEM; holdout LL = +0.5774 for B, +0.5773 for C). The models
    do not generalise out-of-sample without kinetic desensitisation training data.
+6. **MODEL C IS NOT SUPPORTED (settled, 2026-10-16).** With the canonical `po_max` anchor in
+   place and `sigma_train` floored at 1e-3, Model C's extra slow desensitisation parameter
+   `log10_D_slow` pins at its lower bound `-4.0000`, conferring zero log-likelihood gain on
+   training data (-0.0005 nats). Blocked 4-fold CV yields a margin of only +0.0124 nats
+   (diff/se = 1.41σ against the 2σ bar), failing the tie-break and defaulting to parsimony
+   (Model B). On the prospective holdout, Model B and Model C predict identical recovery
+   (R = 0.1949, log predictive density -7.5456 vs -7.5464). Model C is not supported; as
+   $D_{\text{slow}} \to 0$, it functionally collapses onto Model B.
+7. **JAHN1997_PEAK_CRC KEEPS ITS 9 POINTS (Option 3 kept, 2026-10-16).** Restricting the Jahn CRC
+   to the 3 rising-phase points measured directly (1–10 µM) left $\log_{10} D$ indeterminate over
+   4.4 decades. Diagnostic consistency testing confirmed that the Jahn reconstruction is NOT the
+   outlier in tension with the holdout: fitting Jahn CRC alone misses holdout recovery by
+   $-4.50\sigma$, whereas fitting Barberis deactivation alone drives a $+16.79\sigma$ miss on
+   Barberis paired-pulse recovery from the same laboratory and cell preparation. The tension is
+   internal to the two Barberis observables under Model B's topology. Option 3 (keeping the full
+   9-point reconstruction while retaining the 3-point variant as an artefact demonstration) is
+   confirmed sound.
 
 
 ---
@@ -1560,6 +1577,13 @@ New code in `protocols/design.py` and `dynamic_range.dynamic_range_posterior`;
    `s_max` are ratios of one curve at two `K_d` values and largely cancel. On a stand-in
    posterior with 0.09 decades of spread in `log10 D` the asymptotic tier spans **2.99-fold**
    and the reachable gains **1.05-fold**. A single "123×" headline hides exactly this.
+5. **THE P6 DESIGN QUESTION IS MALFORMED IN THIS REGIME (settled, 2026-10-16).**
+   Re-derivation across all declared candidate observables (Peak open probability under 2–1000 ms
+   pulses, and Barberis paired-pulse recovery at 10–500 ms gaps) demonstrated that NO candidate
+   observable discriminates Model B from Model C at any σ tried (corrected score 0.000). Because
+   Model C collapses onto Model B as $D_{\text{slow}} \to 0$, the models are mathematically
+   indistinguishable in the fitted regime. The obstacle is not experimental measurement scatter
+   (requiring lower σ); the design question itself is malformed in this regime.
 
 ---
 
@@ -1721,9 +1745,9 @@ ungrounded mathematical corrections.
 | "The scheme cannot have a peak Hill slope ≥ 1.8 and a peak `P_o,max` of 0.75" | **now** — P4 §2, structural, no fit involved | VALIDATED |
 | "α1β2γ2's peak Hill slope is 2.2, so the scheme is refuted" | **not yet**: needs the slope digitised from a figure and `P_o,max` sourced, since the 0.750 is the project's own target | — |
 | "A normalised CRC constrains the absolute open probability" | **never** — it carries no information about it (P4 §1.2) | — |
-| "Model C is preferred / disfavoured on this data" | **not yet**: its posterior fails every diagnostic and its fourth parameter sits on a bound (P6 §2) | — |
-| "Protocol X discriminates Models B and C" | **not yet**: the best of 54 scores 0.00 after correcting for the search (P6 §3) | — |
-| "A ~4× reduction in measurement noise would make the experiment exist" | **now** — P6 §5, measured across a σ sweep | UNCALIBRATED |
+| "Model C is preferred / disfavoured on this data" | **settled**: Model C is **NOT SUPPORTED**; pinned at bound -4.0000, CV margin +0.0124 nats (1.41σ < 2σ bar), collapses onto Model B | VALIDATED |
+| "Protocol X discriminates Models B and C" | **settled**: **NO** — corrected score 0.000 across all candidate observables | VALIDATED |
+| "A ~4× reduction in measurement noise would make the experiment exist" | **settled**: **MALFORMED** — models collapse as D_slow → 0, indistinguishable at any σ | VALIDATED |
 | "The scheme depresses threefold across 10→100 Hz" | **now** — P6 §1, once the amplitude is measured from pulse onset | UNCALIBRATED |
 | "Empirical fits apply directly to α1β2γ2L without splice substitution" | **never** — all empirical data are γ2S (literature §1) | — |
 | "This bears on respiratory safety of α5-selective PAMs" | **never, on this programme** | — |

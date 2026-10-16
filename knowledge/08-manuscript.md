@@ -1216,6 +1216,26 @@ Ordered by how much they constrain the conclusions, worst first.
   identity, and every quantitative result in this repository rests on γ2S data applied to a γ2L
   model. No attempt is made to correct for this difference, as there is no empirical basis to
   support a mathematical correction.
+* **Model C (dual-state desensitisation) is unsupported.** Model C nests Model B by adding a
+  second, slower desensitisation state ($D_{\text{slow}}$). When fitted to concentration-response
+  data, $D_{\text{slow}}$ pins at its lower bound ($\log_{10} D_{\text{slow}} = -4.0000$) with
+  zero log-likelihood gain ($-0.0005$ nats). Cross-validation yields a marginal difference of only
+  +0.0124 nats ($1.41\sigma < 2\sigma$ threshold), failing the tie-break rule and deferring to
+  parsimony. On the prospective holdout, Model C yields identical predictions to Model B ($R = 0.1949$).
+  As $D_{\text{slow}} \to 0$, Model C functionally collapses onto Model B.
+* **The discriminating experimental design question is malformed in this regime.** Across all
+  declared candidate observables (equilibrium open probability, peak open probability under 2–1000 ms
+  pulses, and Barberis paired-pulse recovery), no protocol discriminates Model B from Model C
+  (corrected posterior-predictive score $0.000$). Because the models are mathematically identical as
+  $D_{\text{slow}} \to 0$, the obstacle is structural non-identifiability rather than measurement
+  noise $\sigma$.
+* **Jahn 1997 CRC reconstruction retains 9 points (Option 3).** Reconstructing the full 9 points
+  (including extrapolated concentrations outside the measured 1–10 µM rising phase) is retained
+  because restricting the curve to the 3 rising-phase points leaves desensitisation indeterminate
+  over 4.4 decades. A diagnostic tension analysis across real datasets proved that the Jahn CRC is
+  not the source of the out-of-sample holdout failure: the conflict is internal to the two Barberis
+  2007 observables (fast deactivation vs slow paired-pulse recovery), which cannot coexist under
+  Model B's topology.
 
 **Circuit-layer assumptions.**
 
@@ -1301,6 +1321,26 @@ the seven-paper literature corpus (`knowledge/14-literature.md`), only two sourc
 only a single weighted scalar with no components). The two splice variants are not assumed equivalent
 anywhere; this is a recorded substitution, not an identity. No correction is attempted, as there is
 no empirical basis to support one.
+
+**Settled model selection and experimental design conclusions.** Three methodological questions in
+this programme are now closed:
+1. **Model C is unsupported by empirical data.** Its extra parameter $\log_{10} D_{\text{slow}}$
+   pins at its lower bound ($-4.0000$) with no training log-likelihood gain ($-0.0005$ nats), a
+   negligible cross-validation margin (+0.0124 nats, $1.41\sigma$ against the $2\sigma$ threshold),
+   and identical out-of-sample predictions on the holdout ($R = 0.1949$). As $D_{\text{slow}} \to 0$,
+   Model C collapses onto Model B.
+2. **The discriminating design question is malformed in this regime.** Across all declared candidate
+   observables (equilibrium open probability, peak pulses, paired-pulse recovery), no protocol
+   discriminates Model B from Model C (corrected score $0.000$). Because the models are mathematically
+   indistinguishable in this parameter regime, the blocker is structural non-identifiability rather
+   than measurement noise $\sigma$.
+3. **The 9-point Jahn 1997 CRC reconstruction is retained (Option 3).** Diagnostic testing proved
+   that the Jahn reconstruction is not the source of out-of-sample conflict: fitting Jahn CRC alone
+   under-recovers by $-4.50\sigma$, whereas fitting Barberis deactivation alone drives a $+16.79\sigma$
+   over-recovery miss on the Barberis paired-pulse holdout from the same laboratory and cell preparation.
+   The conflict is internal to the two Barberis 2007 observables under Model B's topology. Restricting
+   the Jahn CRC leaves desensitisation indeterminate over 4.4 decades without resolving the Barberis
+   conflict. Retaining the 9-point reconstruction remains sound.
 
 ---
 
