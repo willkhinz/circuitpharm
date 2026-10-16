@@ -167,44 +167,38 @@ Three other things would change the answer, in rough order of value:
 3. **More cells**, which shrinks `σ_meas/√n` on the MEAN but not the predictive interval —
    worth 2× at best, against the 4× needed.
 
-### 5.1 Re-derivation with declared protocol and re-targeting onto paired-pulse recovery (2026-10-15)
+### 5.1 Re-derivation with declared protocols: NO candidate observable discriminates (2026-10-16)
 
-`AGENT-BRIEF-2.md` Task E called for re-deriving the noise requirement with application
-duration declared and matched, and re-targeting the discriminating observable onto
-paired-pulse recovery (`Observable.PAIRED_PULSE_RECOVERY` from Barberis 2007: 2 ms pulses,
-10 mM GABA, 100 ms gap). Reproducible via `scripts/rederive_preregistration.py`.
+The initial pre-registration in §5 filed the verdict: *"The actionable requirement is $\sigma_{\text{meas}} \le 0.005$."* That verdict was true for theoretical instantaneous equilibrium, but buries the core empirical finding: **tightening $\sigma$ does not help if no observable separates the models at any $\sigma$ tried.** The blocker is not noise; it is the absence of a discriminating observable.
 
-#### 1. Declared application duration on PEAK
-Matching application duration between model and protocol shows that while the whole-curve
-Hill slope shifts markedly (1.752 at 2 ms → 1.376 at 300 ms), the rising-phase slope
-(`hill_slope(..., window_rel=JAHN1997_SLOPE_WINDOW_REL)`) is stable across durations
-(1.765 at 2 ms vs 1.673 at 300 ms). However, PEAK separation between Model B and Model C
-remains minuscule (expected separation < 0.006 open-probability units), with scores at
-σ = 0.005 reaching at most 0.867 (far below 1.96).
+Following `AGENT-BRIEF-2.md` and `AGENT-BRIEF-3.md`, two candidate observables with declared and matched experimental protocols were evaluated across protocol space (`scripts/rederive_preregistration.py`):
+1. **PEAK open probability** under declared fast-application pulses (2 ms, 20 ms, 300 ms, 1000 ms).
+2. **Paired-pulse recovery** (`Observable.PAIRED_PULSE_RECOVERY` from Barberis 2007: 10 mM GABA, 2 ms pulse, 10–500 ms inter-pulse gaps, PAM 1–4×).
 
-#### 2. Re-targeted observable: PAIRED_PULSE_RECOVERY
-Searching protocol space over 10 mM GABA, 2 ms pulse, PAM 1–4×, and inter-pulse gaps
-(10, 20, 50, 100, 200, 500 ms; 18 protocols searched):
+#### Summary Table of Candidate Observables Tried
 
-* **Best protocol:** 10 mM GABA, PAM 4×, 2 ms pulse, 100 ms gap.
-* **Expected separation:** 0.0104.
-* **Sensitivity sweep:**
+The printed table below from `scripts/rederive_preregistration.py` reports the old and new candidate observables side by side:
 
-| Observable | Protocol | σ_meas | Raw Score | Corrected | Discriminating? |
+| Observable | Protocol | Expected Sep (Δ) | Raw Score (σ=0.02/0.03) | Corrected Score (σ=0.005) | Discriminating at any σ? |
 |---|---|---|---|---|---|
-| **EQUILIBRIUM (Old)** | 1000 µM GABA, PAM 4× | 0.020 | 1.495 | 0.000 | no |
-| | | 0.005 | **5.939** | **5.247** | **yes** |
-| **PEAK (Declared 2 ms)** | 1000 µM GABA, PAM 4×, 2 ms | 0.020 | 0.292 | 0.000 | no |
-| | | 0.005 | 0.688 | 0.000 | no |
-| **PAIRED_PULSE (New)** | 10 mM GABA, PAM 4×, 100 ms gap | 0.030 (pub SEM) | 0.339 | 0.000 | no |
-| | | 0.020 | 0.495 | 0.000 | no |
-| | | 0.005 | 1.277 | 0.000 | no |
+| **EQUILIBRIUM (Theoretical)** | 1000 µM GABA, PAM 4× | 0.0342 | 1.495 (at 0.02) | 5.247 | **YES** (at σ ≤ 0.005 only) |
+| **PEAK (2 ms pulse)** | 100 µM GABA, PAM 2.5×, 2 ms | 0.0012 | 0.059 (at 0.02) | 0.000 (raw 0.226) | **NO** (indistinguishable) |
+| **PEAK (20–1000 ms pulse)** | 100 µM GABA, PAM 2.5×, 300 ms | 0.0057 | 0.281 (at 0.02) | 0.000 (raw 0.867) | **NO** (indistinguishable) |
+| **PAIRED_PULSE_RECOVERY** | 10 mM GABA, PAM 4×, 100 ms gap | 0.0104 | 0.339 (at 0.03) | 0.000 (raw 1.277) | **NO** (indistinguishable) |
 
-#### 3. Verdict
-**The σ ≤ 0.005 requirement SURVIVES and does not soften.**
-Neither PEAK nor PAIRED_PULSE_RECOVERY discriminates between Model B and Model C at
-conventional measurement noise (σ = 0.02 or published SEM σ = 0.03) when Model C has
-collapsed its unidentifiable slow sink ($D_{\text{slow}} \to 0$).
+#### Analysis: Why Noise Reduction Fails to Resolve the Schemes
+
+1. **PEAK observable fails to separate schemes:**
+   Matching application duration between model and protocol shows that while the whole-curve Hill slope shifts with duration (1.752 at 2 ms → 1.376 at 300 ms), the rising-phase slope (`hill_slope(..., window_rel=JAHN1997_SLOPE_WINDOW_REL)`) is stable (1.765 at 2 ms vs 1.673 at 300 ms). However, peak open probability separation between Model B and Model C is minuscule ($\Delta < 0.006$ open-probability units), yielding a corrected score of **0.000** at both conventional $\sigma = 0.02$ and ultra-low noise $\sigma = 0.005$ (raw score 0.867, far below the 1.96 threshold).
+
+2. **PAIRED_PULSE_RECOVERY fails to separate schemes:**
+   Across 18 searched protocols spanning gap intervals (10–500 ms) and PAM factors (1–4×), the optimal protocol (10 mM GABA, PAM 4×, 100 ms gap) yields an expected separation of only $\Delta = 0.0104$. The corrected posterior-predictive score is **0.000** at the published experimental noise ($\sigma = 0.03$, raw 0.339) and remains **0.000** even at fourfold reduced noise ($\sigma = 0.005$, raw 1.277 < 1.96).
+
+3. **Cross-reference to Task D (The P6 design question is malformed):**
+   The root cause is not experimental measurement scatter ($\sigma$), but model identifiability:
+   As established in Task D (§`scripts/resolve_cv_aicc.py`), Model C's slow desensitisation parameter sits pinned against its lower bound ($\log_{10} D_{\text{slow}} = -4.0000$) on the training concentration-response curve, conferring zero improvement in training log-likelihood ($-0.0005$ nats), zero gain in cross-validation out-of-sample (+0.0124 nats, $\text{diff}/\text{se} = 1.41\sigma < 2.0\sigma$, tying with Model B), and zero difference on the experimental paired-pulse holdout (residual difference $< 0.001$ nats, both predicting $R = 0.1949$).
+   
+   Because Model C nests Model B, when $D_{\text{slow}} \to 0$, Model C functionally collapses onto Model B. The two models are empirically indistinguishable across all physically realizable kinetic protocols not because $\sigma$ is too large, but because Model C's extra parameter is unconstrained and contributes no distinct physical behavior. Seeking a discriminating protocol between B and C in this parameter regime is malformed.
 
 ---
 
