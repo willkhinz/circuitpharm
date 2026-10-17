@@ -1,17 +1,19 @@
 #!/usr/bin/env python3
-"""Joint four-way fit evaluation for kinetic_two_open and kinetic_jw95_free_rates (Agent Brief 11 Task 3).
+"""Symmetric Joint Four-Way Fit Evaluation (Agent Brief 12 Tasks 2 & 3).
 
-Evaluates whether any parameter vector can simultaneously satisfy:
-1. Deactivation components: published errors (tau: +/-0.3, +/-4.6, +/-14.9 ms;
+Evaluates whether any parameter vector of kinetic_two_open or kinetic_jw95_free_rates
+can simultaneously satisfy all four observables within 3 sigma, with EVERY parametric
+dataset scored against its published parameters (Weighting iv extended):
+
+1. Deactivation: 6 published components at published errors (tau: +/-0.3, +/-4.6, +/-14.9 ms;
    areas: rank-2 covariance from +/-0.04, +/-0.02, +/-0.03) under L1_MAX <= 1.5.
-2. Paired-pulse recovery: 0.33 +/- 0.03 (BARBERIS2007_PAIRED_PULSE).
-3. Jahn 1997 peak CRC: JAHN1997_PEAK_CRC with baseline RMSE 0.004917 (threshold <= 3x baseline).
+2. Peak CRC: EC50 = 11.6 +/- 0.9 uM, nH = 2.2 +/- 0.4 over 1-10 uM (Jahn et al. 1997).
+   Retains 9-point reconstruction RMSE and ratio to baseline (0.004917) as a reported view.
+3. Paired-pulse recovery: 0.33 +/- 0.03 (Barberis et al. 2007).
 4. P_o,max gating anchor: band [0.70, 0.80] (target 0.75 +/- 0.05).
 
 NO INVENTED WEIGHTING:
-Each dataset is scored by its own published error. Per-dataset residuals are reported
-separately in sigma (CRC in ratio to baseline RMSE). Feasibility is evaluated via minimax
-violation across all four datasets.
+Every quantity has a published error. Residuals are evaluated and reported in sigma.
 
 Usage:
     PYTHONPATH=src /Users/whinz/Biochemistry/.venv/bin/python scripts/joint_fourway_fit.py
@@ -34,20 +36,31 @@ if str(_ROOT / "src") not in sys.path:
     sys.path.insert(0, str(_ROOT / "src"))
 
 from circuitpharm.fitting.comparison import MODEL_SPECS, ModelSpec
-from circuitpharm.fitting.data import BARBERIS2007_PAIRED_PULSE, JAHN1997_PEAK_CRC
+from circuitpharm.fitting.crc_components import (
+    CRC_BASELINE_RMSE,
+    crc_components_log_likelihood,
+    extract_crc_parameters,
+    get_jahn_published_records,
+    surface_ec50_discrepancy,
+)
+from circuitpharm.fitting.data import (
+    BARBERIS2007_PAIRED_PULSE,
+    JAHN1997_PEAK_CRC,
+    JAHN_EC50_SEM,
+    JAHN_EC50_UM,
+    JAHN_HILL,
+    JAHN_HILL_SEM,
+    JAHN_SLOPE_WINDOW_UM,
+)
 from circuitpharm.fitting.deact_components import (
     DEFAULT_L1_MAX,
     check_amplitude_admissibility,
     deact_components_log_likelihood,
-    get_barberis_errors,
     predict_components_eigen,
 )
-from circuitpharm.fitting.likelihood import _predict, predict_paired_pulse_recovery
+from circuitpharm.fitting.likelihood import predict_paired_pulse_recovery
 from circuitpharm.gabaa_kinetics import FIT_RANGES, FIT_TARGETS
-from circuitpharm.literature import DEACTIVATIONS
 
-
-CRC_BASELINE_RMSE = 0.004917
 TARGET_PP_RECOVERY = 0.33
 SEM_PP_RECOVERY = 0.03
 TARGET_PO_MAX = 0.75
@@ -76,11 +89,11 @@ def evaluate_candidate(
     l1_max: float = DEFAULT_L1_MAX,
     compute_recovery: bool = True,
 ) -> dict[str, Any]:
-    """Score one candidate vector across all four observables without invented weighting."""
+    """Score one candidate vector across all four observables symmetrically without invented weighting."""
     v = np.asarray(vec, dtype=float)
     m = spec.factory(v)
 
-    # 1. Deactivation components
+    # 1. Deactivation components (Weighting iv: 6 published parameters at published errors)
     try:
         taus, areas = predict_components_eigen(m, n_components=3, l1_max=None)
         is_adm, c_ratio = check_amplitude_admissibility(areas, l1_max=l1_max)
@@ -98,7 +111,38 @@ def evaluate_candidate(
         z_taus = (999.0, 999.0, 999.0)
         z_areas = (999.0, 999.0, 999.0)
 
-    # 2. Paired-pulse recovery
+    # 2. Peak CRC (Weighting iv: EC50 = 11.6 +/- 0.9 uM, nH = 2.2 +/- 0.4 over 1-10 uM)
+    try:
+        crc_ll = crc_components_log_likelihood(m, compute_9point_view=True)
+        ec50_um = crc_ll.ec50_um
+        hill_meas = crc_ll.hill_slope
+        hill_full = crc_ll.hill_slope_full
+        hill_rel = crc_ll.hill_slope_rel
+        z_ec50 = crc_ll.z_ec50
+        z_hill = crc_ll.z_hill
+        z_hill_full = crc_ll.z_hill_full
+        z_hill_rel = crc_ll.z_hill_rel
+        chi2_ec50 = crc_ll.chi2_ec50
+        chi2_hill = crc_ll.chi2_hill
+        chi2_crc = crc_ll.chi2_total
+        crc_rmse = crc_ll.crc_rmse
+        crc_ratio = crc_ll.crc_ratio
+    except Exception:
+        ec50_um = float("nan")
+        hill_meas = float("nan")
+        hill_full = float("nan")
+        hill_rel = float("nan")
+        z_ec50 = 999.0
+        z_hill = 999.0
+        z_hill_full = 999.0
+        z_hill_rel = 999.0
+        chi2_ec50 = 1e8
+        chi2_hill = 1e8
+        chi2_crc = 1e8
+        crc_rmse = 999.0
+        crc_ratio = 999.0
+
+    # 3. Paired-pulse recovery (0.33 +/- 0.03 at 500 ms gap)
     if compute_recovery:
         try:
             pp_pred = float(predict_paired_pulse_recovery(m, BARBERIS2007_PAIRED_PULSE))
@@ -110,18 +154,7 @@ def evaluate_candidate(
         pp_pred = float("nan")
         z_pp = float("nan")
 
-    # 3. Jahn 1997 peak CRC
-    try:
-        crc_pred = _predict(m, JAHN1997_PEAK_CRC)
-        crc_obs = np.asarray(JAHN1997_PEAK_CRC.mean_response, dtype=float)
-        crc_rmse = float(np.sqrt(np.mean((crc_pred - crc_obs) ** 2)))
-        crc_ratio = float(crc_rmse / CRC_BASELINE_RMSE)
-    except Exception:
-        crc_pred = np.zeros(9)
-        crc_rmse = 999.0
-        crc_ratio = 999.0
-
-    # 4. P_o,max gating anchor
+    # 4. P_o,max gating anchor (band [0.70, 0.80], target 0.75 +/- 0.05)
     try:
         po_max = float(m.po_max)
         z_po = float((po_max - TARGET_PO_MAX) / SIGMA_PO_MAX)
@@ -134,15 +167,16 @@ def evaluate_candidate(
     pinned = check_at_bound(v, spec.bounds, spec.param_names)
     k_eff = len(spec.param_names) - len(pinned)
 
-    # Normalized 3-sigma violation
-    # Within 3 sigma / 3x baseline requires max_violation <= 1.000
+    # Normalized 3-sigma violation across all four observables
+    # Satisfying all 4 within 3 sigma requires max_violation <= 1.000
     terms = [
         abs(z_taus[0]) / 3.0,
         abs(z_taus[1]) / 3.0,
         abs(z_taus[2]) / 3.0,
         np.sqrt(max(chi2_areas, 0.0)) / 3.0,
+        abs(z_ec50) / 3.0,
+        abs(z_hill) / 3.0,
         (abs(z_pp) / 3.0) if np.isfinite(z_pp) else 0.0,
-        crc_ratio / 3.0,
         abs(z_po) / 3.0,
     ]
     max_violation = float(max(terms)) if (is_adm and deact_ok) else 999.0
@@ -159,10 +193,21 @@ def evaluate_candidate(
         "chi2_taus": chi2_taus,
         "chi2_areas": chi2_areas,
         "chi2_deact": chi2_taus + chi2_areas,
-        "pp_pred": pp_pred,
-        "z_pp": z_pp,
+        "ec50_um": ec50_um,
+        "hill_meas": hill_meas,
+        "hill_full": hill_full,
+        "hill_rel": hill_rel,
+        "z_ec50": z_ec50,
+        "z_hill": z_hill,
+        "z_hill_full": z_hill_full,
+        "z_hill_rel": z_hill_rel,
+        "chi2_ec50": chi2_ec50,
+        "chi2_hill": chi2_hill,
+        "chi2_crc": chi2_crc,
         "crc_rmse": crc_rmse,
         "crc_ratio": crc_ratio,
+        "pp_pred": pp_pred,
+        "z_pp": z_pp,
         "po_max": po_max,
         "z_po": z_po,
         "po_in_band": po_in_band,
@@ -179,7 +224,7 @@ def fit_joint_fourway(
     seed: int = 42,
     l1_max: float = DEFAULT_L1_MAX,
 ) -> dict[str, Any]:
-    """Execute joint multi-objective and feasibility evaluation for a model scheme."""
+    """Execute symmetric multi-objective and feasibility evaluation for a model scheme."""
     t0 = time.perf_counter()
     lo = np.array([b[0] for b in spec.bounds], dtype=float)
     hi = np.array([b[1] for b in spec.bounds], dtype=float)
@@ -201,44 +246,18 @@ def fit_joint_fourway(
         except Exception:
             return 1e8
 
-    # 2. Single-objective: Jahn CRC alone
+    # 2. Single-objective: Sourced Peak CRC alone (EC50 = 11.6 +/- 0.9 uM, nH = 2.2 +/- 0.4)
     def obj_crc(v):
         try:
             m = spec.factory(v)
-            pred = _predict(m, JAHN1997_PEAK_CRC)
-            obs = np.asarray(JAHN1997_PEAK_CRC.mean_response, dtype=float)
-            return float(np.sqrt(np.mean((pred - obs) ** 2)))
+            p = extract_crc_parameters(m)
+            z_e = (p.ec50_um - JAHN_EC50_UM) / JAHN_EC50_SEM
+            z_h = (p.hill_measured - JAHN_HILL) / JAHN_HILL_SEM
+            return float(z_e ** 2 + z_h ** 2)
         except Exception:
             return 1e6
 
-    # 3. Natural published-error sum of squares (no invented weight knobs)
-    # Deactivation: chi2_taus + chi2_areas (published errors)
-    # Recovery: z_pp^2 (published SEM)
-    # CRC: (RMSE / 0.004917)^2 (baseline scale)
-    # po_max: z_po^2 (band half-width 0.05)
-    def obj_natural_joint(v):
-        try:
-            m = spec.factory(v)
-            taus, areas = predict_components_eigen(m, n_components=3, l1_max=None)
-            is_adm, c = check_amplitude_admissibility(areas, l1_max=l1_max)
-            if not is_adm:
-                return 1e8 + c * 1e4
-            ll = deact_components_log_likelihood(taus, areas, l1_max=None)
-            c2_deact = float(ll.chi2_total)
-
-            pred_crc = _predict(m, JAHN1997_PEAK_CRC)
-            obs_crc = np.asarray(JAHN1997_PEAK_CRC.mean_response, dtype=float)
-            rmse_crc = float(np.sqrt(np.mean((pred_crc - obs_crc) ** 2)))
-            c2_crc = (rmse_crc / CRC_BASELINE_RMSE) ** 2
-
-            po_max = float(m.po_max)
-            c2_po = ((po_max - TARGET_PO_MAX) / SIGMA_PO_MAX) ** 2
-
-            return float(c2_deact + c2_crc + c2_po)
-        except Exception:
-            return 1e8
-
-    # 4. Pairwise feasibility objective: Deact vs CRC
+    # 3. Pairwise feasibility objective: Deact vs CRC minimax trade-off
     def obj_deact_crc_viol(v):
         try:
             m = spec.factory(v)
@@ -251,21 +270,47 @@ def fit_joint_fourway(
             c2_a = float(ll.chi2_areas)
             max_z_deact = max(np.max(np.abs(z_t)), np.sqrt(max(c2_a, 0.0)))
 
-            pred_crc = _predict(m, JAHN1997_PEAK_CRC)
-            obs_crc = np.asarray(JAHN1997_PEAK_CRC.mean_response, dtype=float)
-            rmse_crc = float(np.sqrt(np.mean((pred_crc - obs_crc) ** 2)))
-            ratio_crc = rmse_crc / CRC_BASELINE_RMSE
+            p = extract_crc_parameters(m)
+            z_e = abs(p.ec50_um - JAHN_EC50_UM) / JAHN_EC50_SEM
+            z_h = abs(p.hill_measured - JAHN_HILL) / JAHN_HILL_SEM
+            max_z_crc = max(z_e, z_h)
 
-            # Feasibility normalized to 3 sigma / 3x baseline
-            return float(max(max_z_deact / 3.0, ratio_crc / 3.0))
+            return float(max(max_z_deact / 3.0, max_z_crc / 3.0))
         except Exception:
             return 1e6
+
+    # 4. Natural published-error sum of squares (no invented weight knobs)
+    # Deactivation: chi2_taus + chi2_areas (published errors)
+    # CRC: z_ec50^2 + z_nh^2 (published errors)
+    # Recovery: evaluated downstream; fast anchor in inner loop:
+    # po_max: z_po^2 (band half-width 0.05)
+    def obj_natural_joint(v):
+        try:
+            m = spec.factory(v)
+            taus, areas = predict_components_eigen(m, n_components=3, l1_max=None)
+            is_adm, c = check_amplitude_admissibility(areas, l1_max=l1_max)
+            if not is_adm:
+                return 1e8 + c * 1e4
+            ll = deact_components_log_likelihood(taus, areas, l1_max=None)
+            c2_deact = float(ll.chi2_total)
+
+            p = extract_crc_parameters(m)
+            z_e = (p.ec50_um - JAHN_EC50_UM) / JAHN_EC50_SEM
+            z_h = (p.hill_measured - JAHN_HILL) / JAHN_HILL_SEM
+            c2_crc = float(z_e ** 2 + z_h ** 2)
+
+            po_max = float(m.po_max)
+            c2_po = ((po_max - TARGET_PO_MAX) / SIGMA_PO_MAX) ** 2
+
+            return float(c2_deact + c2_crc + c2_po)
+        except Exception:
+            return 1e8
 
     print(f"[{spec.name}] Optimizing Deactivation alone...", flush=True)
     best_d_start = min(pts, key=obj_deact)
     opt_deact = minimize(obj_deact, best_d_start, bounds=spec.bounds, method="L-BFGS-B")
 
-    print(f"[{spec.name}] Optimizing Jahn CRC alone...", flush=True)
+    print(f"[{spec.name}] Optimizing Sourced Peak CRC alone...", flush=True)
     best_c_start = min(pts, key=obj_crc)
     opt_crc = minimize(obj_crc, best_c_start, bounds=spec.bounds, method="L-BFGS-B")
 
@@ -308,8 +353,8 @@ def fit_joint_fourway(
 def format_joint_results_table(results: dict[str, dict[str, Any]]) -> str:
     """Format markdown summary table of per-dataset residuals in sigma."""
     lines = [
-        "| Scheme | Evaluation Profile | $z_{\\tau_1}$ | $z_{\\tau_2}$ | $z_{\\tau_3}$ | $z_{a_1}$ | $z_{a_2}$ | $z_{a_3}$ | $\\sqrt{\\chi^2_a}$ | $z_{pp}$ (Recovery) | CRC RMSE Ratio | $P_{o,max}$ ($z_{po}$) | Max Violation / $3\\sigma$ | Satisfies All 4 $\\le 3\\sigma$? |",
-        "| :--- | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |",
+        "| Scheme | Evaluation Profile | $z_{\\tau_1}$ | $z_{\\tau_2}$ | $z_{\\tau_3}$ | $z_{a_1}$ | $z_{a_2}$ | $z_{a_3}$ | $\\sqrt{\\chi^2_a}$ | $z_{\\text{EC50}}$ | $z_{n_H}$ | $z_{pp}$ (Recovery) | $P_{o,max}$ ($z_{po}$) | CRC RMSE Ratio (Rep.) | Max Viol / $3\\sigma$ | Satisfies All 4 $\\le 3\\sigma$? |",
+        "| :--- | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |",
     ]
 
     for scheme, r in results.items():
@@ -323,9 +368,11 @@ def format_joint_results_table(results: dict[str, dict[str, Any]]) -> str:
             zt = ev["z_taus"]
             za = ev["z_areas"]
             sq_c2a = np.sqrt(max(ev["chi2_areas"], 0.0))
+            zec50 = ev["z_ec50"]
+            znh = ev["z_hill"]
             zpp = ev["z_pp"]
             zpp_str = f"{zpp:+.2f}$\\sigma$" if np.isfinite(zpp) else "N/A"
-            crc_str = f"{ev['crc_ratio']:.2f}$\\times$"
+            crc_str = f"{ev['crc_ratio']:.2f}$\\times$" if np.isfinite(ev["crc_ratio"]) else "N/A"
             po_str = f"{ev['po_max']:.3f} ({ev['z_po']:+.2f}$\\sigma$)"
             viol = ev["max_violation"]
             sat_str = "**YES**" if viol <= 1.0 else "**NO**"
@@ -333,7 +380,8 @@ def format_joint_results_table(results: dict[str, dict[str, Any]]) -> str:
             lines.append(
                 f"| `{scheme}` | {prof_name} | {zt[0]:+.2f}$\\sigma$ | {zt[1]:+.2f}$\\sigma$ | {zt[2]:+.2f}$\\sigma$ | "
                 f"{za[0]:+.2f}$\\sigma$ | {za[1]:+.2f}$\\sigma$ | {za[2]:+.2f}$\\sigma$ | {sq_c2a:.2f}$\\sigma$ | "
-                f"{zpp_str} | {crc_str} | {po_str} | **{viol:.2f}** | {sat_str} |"
+                f"{zec50:+.2f}$\\sigma$ | {znh:+.2f}$\\sigma$ | "
+                f"{zpp_str} | {po_str} | {crc_str} | **{viol:.2f}** | {sat_str} |"
             )
 
     return "\n".join(lines)
@@ -358,7 +406,7 @@ def format_parameters_table(results: dict[str, dict[str, Any]]) -> str:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Joint four-way fit evaluation (Brief 11 Task 3).")
+    parser = argparse.ArgumentParser(description="Symmetric Joint four-way fit evaluation (Brief 12 Tasks 2 & 3).")
     parser.add_argument("--samples", type=int, default=2000, help="Number of LHS samples (default: 2000).")
     parser.add_argument("--polish", type=int, default=12, help="Number of polished starts (default: 12).")
     parser.add_argument("--seed", type=int, default=42, help="Random seed (default: 42).")
@@ -371,15 +419,24 @@ def main():
     args = parser.parse_args()
 
     print("=" * 80)
-    print("JOINT FOUR-WAY FIT EVALUATION (Agent Brief 11 Task 3)")
+    print("SYMMETRIC JOINT FOUR-WAY FIT EVALUATION (Agent Brief 12 Tasks 2 & 3)")
     print("=" * 80)
     print(f"Schemes: {args.schemes}")
     print(f"Budget per scheme: {args.samples} LHS samples, top {args.polish} polished starts")
     print("Target 1: Deactivation components (6 published parameters at published errors, L1 <= 1.5)")
-    print("Target 2: Paired-pulse recovery (0.33 +/- 0.03)")
-    print("Target 3: Jahn 1997 peak CRC (baseline RMSE 0.004917, threshold <= 3x baseline)")
+    print("Target 2: Sourced Peak CRC (EC50 = 11.6 +/- 0.9 uM, nH = 2.2 +/- 0.4 over 1-10 uM)")
+    print("Target 3: Paired-pulse recovery (0.33 +/- 0.03)")
     print("Target 4: P_o,max gating anchor (band [0.70, 0.80], target 0.75 +/- 0.05)")
     print("NO INVENTED WEIGHTING: reporting per-dataset residuals in sigma.")
+    print("-" * 80, flush=True)
+
+    # Discrepancy report
+    disc = surface_ec50_discrepancy()
+    print("EC50 DISCREPANCY REGISTER (UNRESOLVED):")
+    print(f"  * FIT_TARGETS['ec50_um']: {disc['fit_targets_ec50_um']:.1f} uM ({disc['fit_targets_source']})")
+    print(f"  * Jahn 1997 sourced:      {disc['jahn_sourced_ec50_um']:.1f} +/- {disc['jahn_sourced_ec50_sem']:.1f} uM ({disc['jahn_source']})")
+    print(f"  * Discrepancy:            {disc['discrepancy_um']:.1f} uM ({disc['discrepancy_sigma']:+.2f} sigma)")
+    print(f"  * Resolution:             {disc['resolution']}")
     print("-" * 80, flush=True)
 
     results = {}
@@ -402,9 +459,9 @@ def main():
     print(tbl_params)
     print("\n")
 
-    # Definitive Task 3 Verdict
+    # Definitive Verdict
     print("=" * 80)
-    print("TASK 3 DEFINITIVE VERDICT")
+    print("BRIEF 12 DEFINITIVE VERDICT")
     print("=" * 80)
     for scheme, r in results.items():
         ev_joint = r["joint_opt"]
@@ -412,17 +469,14 @@ def main():
         min_viol = min(ev_joint["max_violation"], ev_pair["max_violation"])
         print(f"\nScheme `{scheme}`:")
         if min_viol <= 1.0:
-            print("  * Satisfies all four observables simultaneously within 3-sigma (and CRC <= 3x baseline): YES")
+            print("  * Satisfies all four observables simultaneously within 3-sigma: YES")
             print(f"  * Optimal vector: {ev_joint['vector']}")
             print(f"  * Pinned parameters: {ev_joint['pinned']}")
             print(f"  * Effective free parameters (k_eff): {ev_joint['k_eff']}")
         else:
-            print("  * Satisfies all four observables simultaneously within 3-sigma (and CRC <= 3x baseline): NO")
+            print("  * Satisfies all four observables simultaneously within 3-sigma: NO")
             print(f"  * Minimum minimax violation factor: {min_viol:.2f}x beyond 3-sigma threshold")
-            print("  * Irreconcilable pair: Deactivation (relaxation timescales/amplitudes) vs Jahn 1997 peak CRC (dose-response)")
-            print(f"    - At Deact optimum: Deact chi2 = {r['deact_opt']['chi2_deact']:.2f}, but CRC RMSE is {r['deact_opt']['crc_ratio']:.2f}x baseline (margin: {r['deact_opt']['crc_ratio'] - 3.0:.2f}x above 3x threshold)")
-            print(f"    - At CRC optimum: CRC RMSE is {r['crc_opt']['crc_ratio']:.2f}x baseline, but Deact chi2 is {r['crc_opt']['chi2_deact']:.1f} (margin: {r['crc_opt']['chi2_deact'] - 9.0:.1f} above 3-sigma threshold)")
-            print(f"    - At best compromise: Deact max z = {ev_pair['z_taus'][2]:.2f} sigma (area sqrt(chi2_a) = {np.sqrt(ev_pair['chi2_areas']):.2f} sigma) and CRC is {ev_pair['crc_ratio']:.2f}x baseline")
+            print(f"  * At best compromise: max residual = {min_viol * 3.0:.2f} sigma")
     print("=" * 80 + "\n")
 
 

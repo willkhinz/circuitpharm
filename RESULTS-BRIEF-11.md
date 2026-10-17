@@ -159,3 +159,10 @@ Both test tiers were executed in the worktree using interpreter `/Users/whinz/Bi
 ```
 
 Both tiers passed with 0 failures and 0 skipped tests.
+
+---
+
+## 5. Brief 12 Postscript (2026-10-17)
+
+Under Agent Brief 12, the concentration-response curve was converted to weighting (iv) and scored symmetrically against its two published parameters ($EC_{50} = 11.6 \pm 0.9\ \mu\text{M}$, $n_H = 2.2 \pm 0.4$) without invented weighting. **The "no" verdict was tested and affirmed**: neither `kinetic_two_open` nor `kinetic_jw95_free_rates` can reconcile all four datasets within $3\sigma$. See `RESULTS-BRIEF-12.md` for full results.
+
