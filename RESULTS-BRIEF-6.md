@@ -127,3 +127,51 @@ Neither weighting is declared as the one "correct" default in this brief:
 * **Assumption (iii) [Equal observable weighting]:** Treats each experimental dataset / assay as an equal contributor ($1/n$), standard in multi-objective inverse problems where heterogeneous datasets have disparate sampling densities.
 
 Which weighting should serve as the canonical objective for multi-dataset fitting is a methodological decision for the user and project lead to decide.
+
+---
+
+## 6. Verification note (Claude Opus 5, 2026-10-16) — §4's scope is narrower than stated
+
+Verified independently and standing: weighting (i) reproduces `89d070c` **exactly** (diff
+`0.000e+00` at three separate parameter vectors, so the as-is baseline genuinely is the status
+quo); no convention literal remains in `src/` or `scripts/`; 524 fast / 596 full, zero
+failures.
+
+**But §4 claims more than was measured.** It states *"The datasets are **not** fundamentally
+incompatible"*. The sweep fitted **Deact + Recovery only** — the Jahn CRC was excluded, as
+`AGENT-BRIEF-6B.md` specified. Evaluating the two reconciling vectors against that excluded
+dataset:
+
+| candidate | `at_bound` | Deact RMSE | Recovery | **Jahn CRC RMSE (not in the fit)** |
+|---|---|---|---|---|
+| (ii) fixed deact σ | **`log10_D` pinned at upper bound** | 0.0367 (0.39×) | +2.71σ | **0.6119 (124.4× baseline)** |
+| (iii) equal per dataset | none (interior) | 0.0763 (0.80×) | −0.03σ | **0.4798 (97.6× baseline)** |
+
+Both reconcile the two Barberis observables by **abandoning the concentration–response
+curve**, missing it by two orders of magnitude relative to its own baseline RMSE of 0.004917.
+
+**What is established:** brief 5's stated conclusion — that no topology and no freeing of the
+rate conventions can reconcile the **two Barberis observables** — is correctly **withdrawn**.
+Weighting (iii)'s 6-parameter solution is a clean counterexample: interior optimum, no bound
+pinning, recovery at −0.03σ, deactivation *better* than the single-dataset baseline, and
+`po_max` = 0.7624 mid-range.
+
+**What is NOT established:** that the project's three datasets are mutually consistent. The
+evidence above points the other way. That question is open, and goes to brief 7.
+
+**Two further caveats on the reconciling vectors:**
+
+1. The (ii) solution is **discounted by bound pinning** — `log10_D` sits on its upper bound of
+   3.0, so that value is the edge of the search box, not an estimate (`at_bound` reports it;
+   the "Satisfies Both: YES" column does not discount for it). Only (iii)'s 6-parameter
+   solution is interior.
+2. Both need `koff` at **13–30× the convention** — 2.3502 and 5.3740 /ms against
+   `FIT_CONVENTIONS["koff"]` = 0.180415. The convention is itself a fit (`gabaa_kinetics.fit_scheme`'s
+   three-anchor result), not a measurement, so this is not disqualifying — but it must be
+   checked against `scripts/koff_identifiability.py`'s propagated interval before any of these
+   vectors is treated as physically admissible. That interval is computed, not stored as a
+   literal, so it has to be re-derived by running that script rather than quoted.
+
+Numbers in this section were printed by the inline evaluation recorded in the brief-7 handoff;
+the fit vectors and `at_bound` flags were read from
+`.trace-cache/weighting_sensitivity/*free_rates*.json`.
