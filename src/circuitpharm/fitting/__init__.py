@@ -107,6 +107,15 @@ from .diagnostic import (
     diagnostic_log_likelihood,
     fit_diagnostic_consistency,
 )
+from .deact_components import (
+    DeactComponentsDiagnostic,
+    deact_components_diagnostic_score,
+    deact_components_log_likelihood,
+    predict_components_eigen,
+    predict_components_eigen_all,
+    reconstruct_deactivation_waveform,
+    verify_eigen_reconstruction,
+)
 
 __all__ = [
     # data
@@ -204,4 +213,12 @@ __all__ = [
     "DiagnosticFitResult",
     "diagnostic_log_likelihood",
     "fit_diagnostic_consistency",
+    # deactivation components (Weighting iv)
+    "DeactComponentsDiagnostic",
+    "deact_components_diagnostic_score",
+    "deact_components_log_likelihood",
+    "predict_components_eigen",
+    "predict_components_eigen_all",
+    "reconstruct_deactivation_waveform",
+    "verify_eigen_reconstruction",
 ]
