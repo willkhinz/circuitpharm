@@ -105,3 +105,56 @@ It is still provisional, for these reasons:
 Numbers produced by `scripts/deact_obstruction_decomposition.py` (agent 10) and by the
 admissibility scan that brief 11 is tasked with committing as
 `scripts/amplitude_admissibility.py`.
+
+---
+
+## Addendum, 2026-10-17 — brief 14's four-way result, and a literature check on the cooperativity
+
+Brief 14 put paired-pulse recovery into the objective for the first time (it had been evaluated
+only downstream — see `FINDING-minimax-conflict.md`, withdrawn). The true four-way minimax, with
+the nesting assertion armed and passing (`coop 2.386095 ≤ two_open 3.099302`):
+
+| scheme | params | n_data | residual dof | old minimax | **true four-way** | was omission |
+|---|---|---|---|---|---|---|
+| `kinetic_jw95_free_rates` | 6 | 9 | +3 | 14.25σ | **14.25σ** | 0.0% |
+| `kinetic_two_open` | 8 | 9 | +1 | 4.34σ | **3.10σ** | 28.6% |
+| `kinetic_coop` | 9 | 9 | **0** | 17.69σ | **2.39σ** | **86.5%** |
+
+So a scheme **does** satisfy all four observables: `kinetic_coop` at ≤2.39σ (deactivation 2.39σ,
+EC50 2.39σ, nH −2.39σ, recovery +1.02σ, `po_max` 0.721, all parameters interior). `kinetic_two_open`
+alone sits at 3.10σ — 1.03× the threshold, missing by 0.10σ.
+
+**Two reasons this is not yet a receptor model.**
+
+**1. Residual dof = 0.** Nine free parameters against nine independent data. The fit is exactly
+saturated, so it is an *existence* statement and carries no test. The remedy is to **add an
+observable**, not to remove parameters.
+
+**2. The cooperativity it requires is far outside published estimates.** The fit needs
+`c = koff/koff2 = 815.94` — `koff` = 75.55 ms⁻¹ (a 13 µs dwell time for singly-bound GABA)
+against `koff2` = 0.0926 ms⁻¹. Because the scheme shares `kon` between the two sites, `c` is
+directly a **ratio of dissociation constants**, which makes it comparable to published binding
+data. Checked against the literature (**abstracts only, not full text** — flagged per the
+project's reading rules):
+
+* Positive cooperativity between GABA-A agonist binding sites **is** documented. Mozrzymas et
+  al. 2003, *J Neurophysiol* — "the concentration dependence of the rising phase of the
+  GABA-elicited current indicates positive cooperativity between agonist binding sites".
+  So the **direction** the model needs is real.
+* The **magnitude** is not. Olsen et al. 1981, *Mol Pharmacol*, report two GABA affinity classes
+  at K_D 13 ± 6 nM and 300 ± 150 nM — a ratio of roughly **23×**. Agey et al. 1989,
+  *Biochemistry*, report two monoliganded [³H]muscimol forms with dissociation constants of 16
+  and 82 nM — roughly **5×**.
+* **The fit therefore needs a site-to-site affinity ratio 35–160× larger than published
+  estimates.**
+
+Two caveats on that comparison, both real: Olsen interprets the two affinity classes as distinct
+receptor *populations* rather than intramolecular cooperativity, and neither study is on
+α1β2γ2S or at the Barberis temperature. It is an order-of-magnitude check, not a measurement.
+**No published GABA-A `koff` exists in this project's literature records at all** — the
+convention of 0.180415 ms⁻¹ is itself a fit, and the coop value is **419× it**.
+
+**Status: the all-four claim stands as an existence result at zero degrees of freedom, with a
+cooperativity 1.5–2 orders of magnitude beyond anything published.** Brief 15 adds a fifth
+observable to recover a testable degree of freedom, and gates `koff` against the interval this
+project already propagates from the Jahn CRC.
