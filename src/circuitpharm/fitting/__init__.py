@@ -125,6 +125,22 @@ from .deact_components import (
     reconstruct_deactivation_waveform,
     verify_eigen_reconstruction,
 )
+from .crc_components import (
+    CRC_BASELINE_RMSE,
+    CrcComponentsLogLikelihood,
+    CrcParameters,
+    crc_components_log_likelihood,
+    extract_crc_parameters,
+    get_jahn_published_records,
+    surface_ec50_discrepancy,
+)
+from .data import (
+    JAHN_EC50_SEM,
+    JAHN_EC50_UM,
+    JAHN_HILL,
+    JAHN_HILL_SEM,
+    JAHN_SLOPE_WINDOW_UM,
+)
 
 __all__ = [
     # data
@@ -239,4 +255,17 @@ __all__ = [
     "predict_components_fit",
     "reconstruct_deactivation_waveform",
     "verify_eigen_reconstruction",
+    # CRC components (Brief 12: Weighting iv for parametric CRC)
+    "CrcParameters",
+    "CrcComponentsLogLikelihood",
+    "extract_crc_parameters",
+    "crc_components_log_likelihood",
+    "get_jahn_published_records",
+    "surface_ec50_discrepancy",
+    "JAHN_EC50_UM",
+    "JAHN_EC50_SEM",
+    "JAHN_HILL",
+    "JAHN_HILL_SEM",
+    "JAHN_SLOPE_WINDOW_UM",
+    "CRC_BASELINE_RMSE",
 ]

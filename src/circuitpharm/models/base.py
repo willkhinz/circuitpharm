@@ -419,8 +419,8 @@ def peak_open_probability_constant(
 JAHN1997_SLOPE_WINDOW_REL = (1.0 / 11.6, 10.0 / 11.6)
 
 
-def hill_slope(concs_um, response, *, window_rel=None, band=(0.02, 0.98),
-               n_points: int = 25) -> float:
+def hill_slope(concs_um, response, *, window_um=None, window_rel=None,
+               band=(0.02, 0.98), n_points: int = 25) -> float:
     """Logit-space slope of a response curve, measured over a STATED range.
 
     THE RANGE IS PART OF THE MEASUREMENT. A Hill curve is a straight line in logit-log
@@ -436,9 +436,12 @@ def hill_slope(concs_um, response, *, window_rel=None, band=(0.02, 0.98),
     a rising-phase Hill fit (theirs) against a whole-curve regression (ours). See
     `knowledge/12-inference.md` Section 2.
 
-    `window_rel` is (lo, hi) in MULTIPLES OF THE CURVE'S OWN EC50 -- use it to reproduce a
-    paper's restricted fit, e.g. `JAHN1997_SLOPE_WINDOW_REL`. `band` is the fraction-of-max
-    range for a whole-curve regression, used when `window_rel` is None.
+    `window_um` is (lo, hi) in ABSOLUTE micromolar concentrations -- use it to match an
+    experimental protocol directly, e.g. (1.0, 10.0) for Jahn 1997 ("between 0.001 and
+    0.01 mM GABA", verbatim). `window_rel` is (lo, hi) in MULTIPLES OF THE CURVE'S OWN
+    EC50 -- use it to reproduce a paper's restricted fit relative to EC50, e.g.
+    `JAHN1997_SLOPE_WINDOW_REL`. `band` is the fraction-of-max range for a whole-curve
+    regression, used when both `window_um` and `window_rel` are None.
 
     `response` need not be normalised; it is divided by its own maximum here. It must be
     rising and single-valued in the region used, which a peak or equilibrium
@@ -454,7 +457,14 @@ def hill_slope(concs_um, response, *, window_rel=None, band=(0.02, 0.98),
         raise ValueError(f"response has no positive finite maximum (max = {mx!r})")
     yn = y / mx
 
-    if window_rel is not None:
+    if window_um is not None:
+        lo_um, hi_um = (float(v) for v in window_um)
+        if not 0 < lo_um < hi_um:
+            raise ValueError(f"window_um must satisfy 0 < lo < hi, got {window_um!r}")
+        grid = np.logspace(np.log10(lo_um), np.log10(hi_um), n_points)
+        use_c = grid
+        use_y = np.interp(grid, c, yn)
+    elif window_rel is not None:
         lo_rel, hi_rel = (float(v) for v in window_rel)
         if not 0 < lo_rel < hi_rel:
             raise ValueError(f"window_rel must satisfy 0 < lo < hi, got {window_rel!r}")
