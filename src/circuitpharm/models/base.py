@@ -29,6 +29,10 @@ DEFAULT_V_HOLD_MV = -60.0
 #: must not be shortened.
 PEAK_APPLICATION_MS = 300.0
 
+#: Index of the open state in both the 5- and 6-state schemes (A2O). Asserted in each
+#: model module against its own STATES tuple, so a reordering cannot desynchronise them.
+OPEN_STATE_INDEX = 3
+
 
 class Observable(str, Enum):
     """What a number is a number OF.
@@ -208,7 +212,8 @@ class DecayFit:
         return bool(np.isfinite(self.tau_weighted_ms))
 
 
-def resolve_initial_state(initial_state, n_states: int, resting: np.ndarray) -> np.ndarray:
+def resolve_initial_state(initial_state, n_states: int, resting: np.ndarray,
+                          open_index: int = OPEN_STATE_INDEX) -> np.ndarray:
     """Coerce a caller's initial condition into a full state vector on the simplex.
 
     Accepts:
@@ -225,8 +230,9 @@ def resolve_initial_state(initial_state, n_states: int, resting: np.ndarray) -> 
     crash: `kinetic_jw95.py` silently substituted the resting distribution, discarding the
     caller's instruction without a word (roadmap P0-1).
 
-    `open_index` is taken as the index of `resting`'s own open state by convention: both
-    schemes put A2O at index 3, which is asserted in the model modules.
+    `open_index` is taken as the index of `resting`'s own open state by convention (default
+    `OPEN_STATE_INDEX` = 3), or explicitly specified for schemes with different open-state
+    indices (e.g. 6-state pre-open kinetic_flip with open_index = 4).
     """
     resting = np.asarray(resting, dtype=float)
     if resting.shape != (n_states,):
@@ -246,8 +252,8 @@ def resolve_initial_state(initial_state, n_states: int, resting: np.ndarray) -> 
                 f"got {p_open}. Pass a length-{n_states} state vector to set the full "
                 f"distribution.")
         out = np.zeros(n_states, dtype=float)
-        out[OPEN_STATE_INDEX] = p_open
-        others = [i for i in range(n_states) if i != OPEN_STATE_INDEX]
+        out[open_index] = p_open
+        others = [i for i in range(n_states) if i != open_index]
         mass = float(resting[others].sum())
         if mass > 1e-12:
             out[others] = resting[others] * ((1.0 - p_open) / mass)

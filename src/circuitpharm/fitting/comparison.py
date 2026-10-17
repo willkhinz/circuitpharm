@@ -167,6 +167,22 @@ def _model_open_desens_free_rates(v: np.ndarray) -> ReceptorModel:
                                   d=r * d, r=r)
 
 
+def _model_flip(v: np.ndarray) -> ReceptorModel:
+    from ..models.kinetic_flip import KineticFlipModel
+
+    kd, e, d, r, koff, alpha, delta, gamma = (10.0 ** float(x) for x in v)
+    return KineticFlipModel(
+        kon=koff / kd,
+        koff=koff,
+        delta=delta,
+        gamma=gamma,
+        beta=alpha * e,
+        alpha=alpha,
+        d=r * d,
+        r=r,
+    )
+
+
 def _model_c(v: np.ndarray) -> ReceptorModel:
     from ..models.extended_desens import ExtendedDesensitizationModel
 
@@ -248,6 +264,27 @@ MODEL_SPECS = {
               "on the search bound (log10_D_slow = -4.0), and conventions differ "
               "(r_fast=0.0050 vs r=0.0020). Measured discrepancy at D_slow=-4: 16.66 nats "
               "on Deact+Recovery and 0.28 nats on Jahn peak. Excluded from nests tuple."),
+    ),
+    "kinetic_flip": ModelSpec(
+        name="kinetic_flip",
+        param_names=(
+            "log10_kd", "log10_E", "log10_D", "log10_r",
+            "log10_koff", "log10_alpha", "log10_delta", "log10_gamma",
+        ),
+        bounds=(
+            (-1.0, 4.0), (-2.0, 3.0), (-3.0, 3.0), (-5.0, 1.0),
+            (-3.0, 2.0), (-2.0, 2.0), (-3.0, 3.0), (-3.0, 3.0),
+        ),
+        factory=_model_flip,
+        conventions=(),
+        nests=(),
+        note=(
+            "6-state model with pre-open 'flip' state A2F (R <-> AR <-> A2R <-> A2F <-> A2O, "
+            "A2R <-> A2D; Brief 8B). Does NOT strictly nest kinetic_jw95 in practice: "
+            "the theoretical limit delta -> inf sits on the search bound (log10_delta = 3.0), "
+            "and at delta=10000, gamma=1 the measured discrepancy on Deact+Recovery is 32.36 nats "
+            "because rapid flipping bypasses desensitisation from A2R. Excluded from nests tuple."
+        ),
     ),
 }
 

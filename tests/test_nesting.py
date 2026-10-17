@@ -28,6 +28,7 @@ def test_declared_nesting_topology():
     assert MODEL_SPECS["operational"].nests == ()
     assert MODEL_SPECS["kinetic_open_desens"].nests == ()
     assert MODEL_SPECS["extended_desens"].nests == ()
+    assert MODEL_SPECS["kinetic_flip"].nests == ()
 
 
 def test_extended_desens_exclusion_with_measured_discrepancy():
@@ -58,6 +59,47 @@ def test_extended_desens_exclusion_with_measured_discrepancy():
     assert discrepancy_dr > 10.0, f"Discrepancy on Deact+Recovery should be substantial (~16.66 nats), got {discrepancy_dr:.2f}"
     assert discrepancy_j > 0.1, f"Discrepancy on Jahn peak should be non-zero (~0.28 nats), got {discrepancy_j:.2f}"
     assert MODEL_SPECS["extended_desens"].nests == ()
+
+
+def test_kinetic_flip_exclusion_with_measured_discrepancy():
+    """Verify kinetic_flip is excluded from nesting kinetic_jw95 with measured discrepancy.
+
+    Per AGENT-BRIEF-8B Task 2: kinetic_flip does NOT strictly nest kinetic_jw95 under
+    finite parameter bounds because:
+      1. The theoretical limit collapsing A2F onto A2R requires delta -> inf with gamma fixed.
+         In any bounded parameter box (e.g. log10_delta <= 3.0), delta sits on the upper bound.
+      2. Rapid flipping (delta >> gamma) shifts occupancy to A2F, bypassing desensitisation
+         from A2R. At delta=1000, gamma=1 (log10_delta=3.0, log10_gamma=0.0) with conventions
+         r=0.002, koff=0.180415, alpha=0.30, the measured discrepancy is ~161.60 nats on
+         Deact+Recovery and ~3.37 nats on Jahn peak.
+    The measured discrepancy is recorded here and verified to be non-zero.
+    """
+    v3 = np.array([-0.428, 0.104, 1.9721])
+    m3 = MODEL_SPECS["kinetic_jw95"].factory(v3)
+
+    v_flip = np.array([
+        -0.428, 0.104, 1.9721,
+        float(np.log10(FIT_CONVENTIONS["r"][0])),
+        float(np.log10(FIT_CONVENTIONS["koff"][0])),
+        float(np.log10(FIT_CONVENTIONS["alpha"][0])),
+        3.0, 0.0,
+    ])
+    mf = MODEL_SPECS["kinetic_flip"].factory(v_flip)
+
+    dsets_dr = [BARBERIS2007_DEACT, BARBERIS2007_PAIRED_PULSE]
+    ll3_dr = diagnostic_log_likelihood(m3, dsets_dr, n_params=3, anchor_po_max=True).total_log_likelihood
+    llf_dr = diagnostic_log_likelihood(mf, dsets_dr, n_params=8, anchor_po_max=True).total_log_likelihood
+    discrepancy_dr = abs(ll3_dr - llf_dr)
+
+    dsets_j = [JAHN1997_PEAK_CRC]
+    ll3_j = diagnostic_log_likelihood(m3, dsets_j, n_params=3).total_log_likelihood
+    llf_j = diagnostic_log_likelihood(mf, dsets_j, n_params=8).total_log_likelihood
+    discrepancy_j = abs(ll3_j - llf_j)
+
+    # Record measured discrepancies
+    assert discrepancy_dr > 10.0, f"Discrepancy on Deact+Recovery should be substantial (~161.60 nats), got {discrepancy_dr:.2f}"
+    assert discrepancy_j > 0.1, f"Discrepancy on Jahn peak should be non-zero (~3.37 nats), got {discrepancy_j:.2f}"
+    assert MODEL_SPECS["kinetic_flip"].nests == ()
 
 
 def test_nesting_embedding_derives_conventions_by_name():

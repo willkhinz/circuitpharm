@@ -5,6 +5,7 @@ from .operational import OperationalScalarModel
 from .kinetic_jw95 import KineticAllosteryModel
 from .kinetic_open_desens import KineticOpenDesensModel
 from .extended_desens import ExtendedDesensitizationModel
+from .kinetic_flip import KineticFlipModel
 
 __all__ = [
     "JAHN1997_SLOPE_WINDOW_REL",
@@ -15,4 +16,5 @@ __all__ = [
     "KineticAllosteryModel",
     "KineticOpenDesensModel",
     "ExtendedDesensitizationModel",
+    "KineticFlipModel",
 ]
