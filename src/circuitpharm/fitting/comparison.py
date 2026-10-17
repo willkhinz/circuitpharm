@@ -75,10 +75,48 @@ class ModelSpec:
     #: What is held fixed, and why. Keys index `FIT_CONVENTIONS`.
     conventions: tuple[str, ...]
     note: str
+    #: Specs this one strictly contains. An enlarged spec must not score worse in TOTAL
+    #: log-likelihood than any spec listed here, on the same data. It MAY score worse on
+    #: any single dataset -- see AGENT-BRIEF-6 section 2.
+    nests: tuple[str, ...] = ()
 
     @property
     def n_free(self) -> int:
         return len(self.param_names)
+
+
+def nesting_embedding(sub: ModelSpec, big: ModelSpec, v_sub: np.ndarray) -> np.ndarray:
+    """Map `sub`'s parameter vector into `big`'s coordinates.
+
+    Derives every rate slot from `FIT_CONVENTIONS` by name, never from a literal.
+    """
+    v_sub_arr = np.asarray(v_sub, dtype=float)
+    if v_sub_arr.shape != (len(sub.param_names),):
+        raise ValueError(
+            f"v_sub shape {v_sub_arr.shape} does not match {sub.name} param count {len(sub.param_names)}"
+        )
+    sub_map = dict(zip(sub.param_names, v_sub_arr))
+    v_big = []
+    for i, name in enumerate(big.param_names):
+        if name in sub_map:
+            val = float(sub_map[name])
+        else:
+            conv_key = name[len("log10_"):] if name.startswith("log10_") else name
+            if conv_key not in FIT_CONVENTIONS:
+                raise ValueError(
+                    f"Cannot resolve parameter {name!r} (convention key {conv_key!r}) "
+                    f"when embedding {sub.name} into {big.name}"
+                )
+            conv_val = float(FIT_CONVENTIONS[conv_key][0])
+            val = float(np.log10(conv_val))
+
+        lo, hi = big.bounds[i]
+        if not (lo <= val <= hi):
+            raise ValueError(
+                f"Embedded value {name}={val} lies outside {big.name} bounds ({lo}, {hi})"
+            )
+        v_big.append(val)
+    return np.asarray(v_big, dtype=float)
 
 
 def _model_b(v: np.ndarray) -> ReceptorModel:
@@ -176,6 +214,7 @@ MODEL_SPECS = {
         bounds=((-1.0, 4.0), (-2.0, 3.0), (-3.0, 3.0), (-5.0, 1.0)),
         factory=_model_b_free_r,
         conventions=("koff", "alpha"),
+        nests=("kinetic_jw95",),
         note=("Model B with resensitisation rate r freed. koff and alpha held at conventions."),
     ),
     "kinetic_jw95_free_rates": ModelSpec(
@@ -184,6 +223,7 @@ MODEL_SPECS = {
         bounds=((-1.0, 4.0), (-2.0, 3.0), (-3.0, 3.0), (-5.0, 1.0), (-3.0, 2.0), (-2.0, 2.0)),
         factory=_model_b_free_rates,
         conventions=(),
+        nests=("kinetic_jw95", "kinetic_jw95_free_r"),
         note=("Model B with all microscopic rates freed (r, koff, alpha). "
               "Used for consistency diagnostics across kinetic observables."),
     ),
@@ -193,6 +233,7 @@ MODEL_SPECS = {
         bounds=((-1.0, 4.0), (-2.0, 3.0), (-3.0, 3.0)),
         factory=_model_open_desens,
         conventions=("koff", "alpha", "r"),
+        nests=(),
         note=("Alternative 5-state model where desensitisation connects strictly to open state A2O "
               "(A2R <-> A2O <-> A2D). Used in Brief 5 Task C as topological diagnostic."),
     ),
@@ -202,9 +243,11 @@ MODEL_SPECS = {
         bounds=((-1.0, 4.0), (-2.0, 3.0), (-3.0, 3.0), (-4.0, 3.0)),
         factory=_model_c,
         conventions=("koff", "alpha", "r_fast", "r_slow"),
-        note=("Model C. NESTS MODEL B: at D_slow -> 0 the sixth state empties and the "
-              "schemes coincide, so C cannot fit worse than B at its own optimum and the "
-              "whole question is whether the improvement pays for the extra parameter."),
+        nests=(),
+        note=("Model C. Does NOT strictly nest kinetic_jw95 in practice: D_slow -> 0 sits "
+              "on the search bound (log10_D_slow = -4.0), and conventions differ "
+              "(r_fast=0.0050 vs r=0.0020). Measured discrepancy at D_slow=-4: 16.66 nats "
+              "on Deact+Recovery and 0.28 nats on Jahn peak. Excluded from nests tuple."),
     ),
 }
 
@@ -267,13 +310,30 @@ def _information_criteria(log_lik: float, k: int, n: int) -> tuple[float, float,
 
 
 def fit_one(spec: ModelSpec, datasets, *, n_starts: int = 8, seed: int = 0,
-            anchor_po_max: bool = True) -> ModelFit:
+            anchor_po_max: bool = True,
+            _cache: dict[str, ModelFit] | None = None) -> ModelFit:
     """Fit one model to its MLE and compute its information criteria."""
+    if _cache is None:
+        _cache = {}
+    if spec.name in _cache:
+        return _cache[spec.name]
+
     datasets = list(datasets)
+    extra_starts = []
+    if spec.nests:
+        for sub_name in spec.nests:
+            sub_spec = MODEL_SPECS[sub_name]
+            sub_fit = fit_one(sub_spec, datasets, n_starts=n_starts, seed=seed,
+                              anchor_po_max=anchor_po_max, _cache=_cache)
+            v_sub = np.array([sub_fit.values[n] for n in sub_spec.param_names])
+            v_embedded = nesting_embedding(sub_spec, spec, v_sub)
+            extra_starts.append(v_embedded)
+
     fit = fit_mle_vector(spec.factory, datasets, param_names=spec.param_names,
                          bounds=spec.bounds, n_starts=n_starts, seed=seed,
                          anchor_po_max=anchor_po_max,
-                         caller=f"compare_models/{spec.name}")
+                         caller=f"compare_models/{spec.name}",
+                         extra_starts=extra_starts if extra_starts else None)
     n_data = int(sum(f.n for f in fit.per_dataset))
     n_sigma = sum(1 for f in fit.per_dataset if f.noise_model == "estimated")
     k = spec.n_free + n_sigma
@@ -297,11 +357,13 @@ def fit_one(spec: ModelSpec, datasets, *, n_starts: int = 8, seed: int = 0,
         )
     note = "; ".join(note_parts)
 
-    return ModelFit(name=spec.name, values=fit.values,
+    res = ModelFit(name=spec.name, values=fit.values,
                     log_likelihood=fit.log_likelihood, n_free=spec.n_free,
                     n_sigma=n_sigma, n_data=n_data, aic=aic, aicc=aicc, bic=bic,
                     at_bound=at_bound, converged_uniquely=fit.converged_uniquely,
                     note=note, po_max=po_max, po_max_in_range=po_max_in_range)
+    _cache[spec.name] = res
+    return res
 
 
 # ------------------------------------------------------------------ blocked CV

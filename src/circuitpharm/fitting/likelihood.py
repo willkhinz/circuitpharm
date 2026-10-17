@@ -495,7 +495,8 @@ def fit_mle(model_factory, datasets, *, n_starts: int = 32, seed: int = 0,
 def fit_mle_vector(model_factory, datasets, *, param_names, bounds,
                    n_starts: int = 32, seed: int = 0, spread_tol: float = 0.05,
                    anchor_po_max: bool = False,
-                   caller: str = "fit_mle_vector") -> MLEResult:
+                   caller: str = "fit_mle_vector",
+                   extra_starts: Sequence[np.ndarray] | None = None) -> MLEResult:
     """Multi-start MLE over an arbitrary parameter vector, reporting the top-5 spread.
 
     `model_factory` takes a plain `np.ndarray` in the order of `param_names` and returns a
@@ -531,6 +532,9 @@ def fit_mle_vector(model_factory, datasets, *, param_names, bounds,
     lo = np.array([b[0] for b in bnds])
     hi = np.array([b[1] for b in bnds])
     starts = lo + sampler.random(n_starts) * (hi - lo)
+    if extra_starts:
+        clamped_extra = [np.clip(np.asarray(s, dtype=float), lo, hi) for s in extra_starts]
+        starts = np.vstack([starts, clamped_extra])
 
     results = []
     for s in starts:
@@ -555,9 +559,10 @@ def fit_mle_vector(model_factory, datasets, *, param_names, bounds,
         if r.success and np.isfinite(r.fun) and r.fun < 1e11:
             results.append((float(r.fun), np.asarray(r.x, dtype=float)))
 
+    total_starts = len(starts)
     if not results:
         raise RuntimeError(
-            f"none of {n_starts} starts converged. A failed optimisation is not a result "
+            f"none of {total_starts} starts converged. A failed optimisation is not a result "
             f"and is not reported as one; check the model factory and the bounds.")
 
     results.sort(key=lambda t: t[0])
@@ -610,13 +615,13 @@ def fit_mle_vector(model_factory, datasets, *, param_names, bounds,
         parts.append("{} sit(s) ON a bound, so that value is the edge of the search space "
                      "and not an estimate -- the data does not constrain it"
                      .format(", ".join(pinned)))
-    if len(results) < n_starts:
-        parts.append(f"{n_starts - len(results)} of {n_starts} starts did not converge and "
+    if len(results) < total_starts:
+        parts.append(f"{total_starts - len(results)} of {total_starts} starts did not converge and "
                      f"are not scored")
 
     return MLEResult(values=values, params=params,
                      log_likelihood=total_ll,
-                     n_starts=n_starts, n_converged=len(results), top_spread=spread,
+                     n_starts=total_starts, n_converged=len(results), top_spread=spread,
                      per_dataset=tuple(per_dataset), converged_uniquely=unique,
                      at_bound=at_bound,
                      bounds={n: (float(lo[i]), float(hi[i])) for i, n in enumerate(names)},
