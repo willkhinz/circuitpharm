@@ -524,6 +524,191 @@ def test_kinetic_two_open_model_protocol_and_behavior():
     assert np.allclose(res.p_open, res.states[:, 3] + res.states[:, 4], atol=1e-12)
 
 
+def test_kinetic_coop_connectivity_and_zeros():
+    """Assert strictly verified connectivity for KineticCoopModel with explicit negative assertions.
+
+    Topology:
+        R (0) <--(2 kon g, koff)--> AR (1) <--(kon g, 2 koff2)--> A2R (2) <--(beta, alpha)--> A2O (3) <--(delta, gamma)--> A2O' (4)
+                                                                    |
+                                                                  (d, r)
+                                                                    v
+                                                                  A2D (5)
+
+    Explicit negative assertions required by Agent Brief 13 Task 1:
+      1. A2O' (state 4) connects strictly to A2O (3), and nowhere else.
+      2. A2D (state 5) connects strictly to A2R (2), and nowhere else.
+      3. A2O (state 3) connects strictly to A2R (2) and A2O' (4), and nowhere else.
+      4. A2R (state 2) connects strictly to AR (1), A2O (3), and A2D (5), and nowhere else.
+      5. AR (state 1) connects strictly to R (0) and A2R (2), and nowhere else.
+      6. R (state 0) connects strictly to AR (1), and nowhere else.
+    Assert all zeros, not just the non-zeros.
+    Microscopic reversibility: graph is an acyclic tree (6 states, 5 edges, loop-free),
+    so detailed balance holds unconditionally with zero algebraic loop constraints.
+    """
+    from circuitpharm.models.kinetic_coop import KineticCoopModel, OPEN_INDICES_6, STATES_6
+
+    assert OPEN_INDICES_6 == (3, 4)
+    assert STATES_6 == ("R", "AR", "A2R", "A2O", "A2O'", "A2D")
+
+    model = KineticCoopModel(kon=0.012, koff=0.35, koff2=0.07)  # c = 5.0 (positive cooperativity)
+    assert model.c == pytest.approx(5.0)
+    q = model.q_matrix(gaba_um=100.0)
+
+    # 1. Generator rows sum to zero
+    assert np.allclose(q.sum(axis=1), 0.0, atol=1e-12)
+
+    # 2. A2D (state 5): connects only to A2R (state 2)
+    for col in range(6):
+        if col == 5:
+            assert q[5, col] == -model.r, f"A2D diagonal should be -r, got {q[5, col]}"
+        elif col == 2:
+            assert q[5, col] == model.r, f"A2D -> A2R rate should be r, got {q[5, col]}"
+        else:
+            assert q[5, col] == 0.0, f"A2D transition to state {col} ({STATES_6[col]}) must be 0, got {q[5, col]}"
+
+    for row in range(6):
+        if row == 5:
+            continue
+        elif row == 2:
+            assert q[row, 5] == model.d, f"A2R -> A2D rate should be d, got {q[row, 5]}"
+        else:
+            assert q[row, 5] == 0.0, f"Transition from state {row} ({STATES_6[row]}) to A2D must be 0, got {q[row, 5]}"
+
+    # Explicit negative assertions for A2D:
+    assert q[5, 4] == 0.0, "A2D must not transition to A2O' (second open state)"
+    assert q[4, 5] == 0.0, "A2O' must not transition to A2D"
+    assert q[5, 3] == 0.0, "A2D must not transition to A2O (first open state)"
+    assert q[3, 5] == 0.0, "A2O must not transition to A2D"
+    assert q[5, 1] == 0.0, "A2D must not transition to AR"
+    assert q[1, 5] == 0.0, "AR must not transition to A2D"
+    assert q[5, 0] == 0.0, "A2D must not transition to R"
+    assert q[0, 5] == 0.0, "R must not transition to A2D"
+
+    # 3. A2O' (state 4): connects strictly to A2O (state 3)
+    for col in range(6):
+        if col == 4:
+            assert q[4, col] == -model.gamma, f"A2O' diagonal should be -gamma, got {q[4, col]}"
+        elif col == 3:
+            assert q[4, col] == model.gamma, f"A2O' -> A2O rate should be gamma, got {q[4, col]}"
+        else:
+            assert q[4, col] == 0.0, f"A2O' transition to state {col} ({STATES_6[col]}) must be 0, got {q[4, col]}"
+
+    for row in range(6):
+        if row == 4:
+            continue
+        elif row == 3:
+            assert q[row, 4] == model.delta, f"A2O -> A2O' rate should be delta, got {q[row, 4]}"
+        else:
+            assert q[row, 4] == 0.0, f"Transition from state {row} ({STATES_6[row]}) to A2O' must be 0, got {q[row, 4]}"
+
+    # Explicit negative assertions for A2O':
+    assert q[4, 0] == 0.0, "A2O' must not transition to R"
+    assert q[0, 4] == 0.0, "R must not transition to A2O'"
+    assert q[4, 1] == 0.0, "A2O' must not transition to AR"
+    assert q[1, 4] == 0.0, "AR must not transition to A2O'"
+    assert q[4, 2] == 0.0, "A2O' must not transition to A2R directly"
+    assert q[2, 4] == 0.0, "A2R must not transition to A2O' directly"
+    assert q[4, 5] == 0.0, "A2O' must not transition to A2D"
+    assert q[5, 4] == 0.0, "A2D must not transition to A2O'"
+
+    # 4. A2O (state 3): connects strictly to A2R (state 2) and A2O' (state 4)
+    for col in range(6):
+        if col == 3:
+            assert q[3, col] == -(model.alpha + model.delta), f"A2O diagonal should be -(alpha+delta), got {q[3, col]}"
+        elif col == 2:
+            assert q[3, col] == model.alpha, f"A2O -> A2R rate should be alpha, got {q[3, col]}"
+        elif col == 4:
+            assert q[3, col] == model.delta, f"A2O -> A2O' rate should be delta, got {q[3, col]}"
+        else:
+            assert q[3, col] == 0.0, f"A2O transition to state {col} ({STATES_6[col]}) must be 0, got {q[3, col]}"
+
+    for row in range(6):
+        if row == 3:
+            continue
+        elif row == 2:
+            assert q[row, 3] == model.beta, f"A2R -> A2O rate should be beta, got {q[row, 3]}"
+        elif row == 4:
+            assert q[row, 3] == model.gamma, f"A2O' -> A2O rate should be gamma, got {q[row, 3]}"
+        else:
+            assert q[row, 3] == 0.0, f"Transition from state {row} ({STATES_6[row]}) to A2O must be 0, got {q[row, 3]}"
+
+    # Explicit negative assertions for A2O:
+    assert q[3, 0] == 0.0, "A2O must not transition to R"
+    assert q[0, 3] == 0.0, "R must not transition to A2O"
+    assert q[3, 1] == 0.0, "A2O must not transition to AR"
+    assert q[1, 3] == 0.0, "AR must not transition to A2O"
+    assert q[3, 5] == 0.0, "A2O must not transition to A2D"
+    assert q[5, 3] == 0.0, "A2D must not transition to A2O"
+
+    # 5. A2R (state 2): connects to AR (1), A2O (3), A2D (5)
+    # Check rate to AR uses koff2 with statistical factor 2:
+    assert q[2, 1] == 2.0 * model.koff2
+    assert q[2, 0] == 0.0, "A2R must not transition directly to R"
+    assert q[2, 4] == 0.0, "A2R must not transition directly to A2O'"
+
+    # 6. Detailed balance check: stationary distribution P @ Q == 0
+    for gaba in [0.0, 0.1, 1.0, 10.0, 100.0, 1000.0, 10000.0]:
+        dist = model.state_distribution(gaba)
+        assert np.isclose(np.sum(dist), 1.0, atol=1e-12)
+        assert np.all(dist >= 0.0)
+        q_g = model.q_matrix(gaba)
+        assert np.allclose(dist @ q_g, 0.0, atol=1e-12)
+
+
+def test_kinetic_coop_model_protocol_and_behavior():
+    """Verify protocol conformance, reduction to KineticTwoOpen at c=1, po_max, and waveform."""
+    from circuitpharm.models.kinetic_coop import KineticCoopModel, OPEN_INDICES_6
+    from circuitpharm.models.kinetic_two_open import KineticTwoOpenModel
+
+    model = KineticCoopModel()
+    assert isinstance(model, ReceptorModel)
+    assert model.name == "KineticCoop"
+    assert model.open_indices == OPEN_INDICES_6 == (3, 4)
+    assert len(model.param_names) == 9
+    assert model.koff2 == model.koff
+    assert model.c == pytest.approx(1.0)
+
+    # Exact reduction to KineticTwoOpen at c = 1:
+    m_two = KineticTwoOpenModel(
+        kon=model.kon, koff=model.koff, beta=model.beta, alpha=model.alpha,
+        delta=model.delta, gamma=model.gamma, d=model.d, r=model.r,
+    )
+    for g in [0.0, 0.5, 5.0, 50.0, 500.0]:
+        assert np.allclose(model.q_matrix(g), m_two.q_matrix(g), atol=1e-14)
+        assert np.allclose(model.state_distribution(g), m_two.state_distribution(g), atol=1e-14)
+        assert model.steady_state(g) == pytest.approx(m_two.steady_state(g), abs=1e-14)
+
+    concs = np.logspace(-1, 3, 25)
+    assert np.allclose(model.dose_response(concs), m_two.dose_response(concs), atol=1e-14)
+    assert model.po_max == pytest.approx(m_two.po_max, abs=1e-14)
+    assert model.po_inf == pytest.approx(m_two.po_inf, abs=1e-14)
+
+    # Positive cooperativity c > 1 behavior (koff2 < koff):
+    coop_pos = model.with_params(koff2=model.koff / 10.0)
+    assert coop_pos.c == pytest.approx(10.0)
+    assert coop_pos.kd2_um < coop_pos.kd_um
+
+    # Zero agonist -> open prob 0 at resting
+    assert np.isclose(coop_pos.steady_state(0.0), 0.0, atol=1e-12)
+
+    # State distribution simplex constraint (6 states)
+    dist = coop_pos.state_distribution(10.0)
+    assert len(dist) == 6
+    assert np.isclose(np.sum(dist), 1.0, atol=1e-12)
+    assert np.all(dist >= 0.0)
+    assert np.isclose(coop_pos.steady_state(10.0), dist[3] + dist[4])
+
+    # Transient waveform simulation
+    t = np.linspace(0.0, 50.0, 100)
+    gaba = synaptic_transient(t, peak_um=2000.0, rise_ms=0.1, clear_ms=1.0)
+    res = coop_pos.simulate_waveform(t, gaba)
+    assert res.peak_p_open > 0.0
+    assert res.states is not None
+    assert res.states.shape == (100, 6)
+    assert np.all(np.abs(np.sum(res.states, axis=1) - 1.0) < 1e-4)
+    assert np.allclose(res.p_open, res.states[:, 3] + res.states[:, 4], atol=1e-12)
+
+
 def test_extended_desensitization_model_protocol_and_behavior():
     model = ExtendedDesensitizationModel()
     assert isinstance(model, ReceptorModel)

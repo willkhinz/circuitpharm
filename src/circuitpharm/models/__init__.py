@@ -7,6 +7,7 @@ from .kinetic_open_desens import KineticOpenDesensModel
 from .extended_desens import ExtendedDesensitizationModel
 from .kinetic_flip import KineticFlipModel
 from .kinetic_two_open import KineticTwoOpenModel
+from .kinetic_coop import KineticCoopModel
 
 __all__ = [
     "JAHN1997_SLOPE_WINDOW_REL",
@@ -19,4 +20,6 @@ __all__ = [
     "ExtendedDesensitizationModel",
     "KineticFlipModel",
     "KineticTwoOpenModel",
+    "KineticCoopModel",
 ]
+

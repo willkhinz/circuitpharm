@@ -59,7 +59,9 @@ FIT_CONVENTIONS = {
     "r": (0.002, "Model B's own default; no recorded origin (P0-13)"),
     "r_fast": (0.0050, "Model C's own default; no recorded origin (P0-13)"),
     "r_slow": (0.0004, "Model C's own default; no recorded origin (P0-13)"),
+    "c": (1.0, "neutral binding cooperativity convention (koff2 = koff, c = 1.0)"),
 }
+
 
 
 @dataclass(frozen=True)
@@ -199,6 +201,25 @@ def _model_two_open(v: np.ndarray) -> ReceptorModel:
     )
 
 
+def _model_coop(v: np.ndarray) -> ReceptorModel:
+    from ..models.kinetic_coop import KineticCoopModel
+
+    kd, e, d, r, koff, alpha, delta, gamma, c = (10.0 ** float(x) for x in v)
+    koff2 = koff / c
+    return KineticCoopModel(
+        kon=koff / kd,
+        koff=koff,
+        koff2=koff2,
+        beta=alpha * e,
+        alpha=alpha,
+        delta=delta,
+        gamma=gamma,
+        d=r * d,
+        r=r,
+    )
+
+
+
 def _model_c(v: np.ndarray) -> ReceptorModel:
     from ..models.extended_desens import ExtendedDesensitizationModel
 
@@ -334,7 +355,28 @@ MODEL_SPECS = {
             "Excluded from nests tuple."
         ),
     ),
+    "kinetic_coop": ModelSpec(
+        name="kinetic_coop",
+        param_names=(
+            "log10_kd", "log10_E", "log10_D", "log10_r",
+            "log10_koff", "log10_alpha", "log10_delta", "log10_gamma", "log10_c",
+        ),
+        bounds=(
+            (-1.0, 4.0), (-2.0, 3.0), (-3.0, 3.0), (-5.0, 1.0),
+            (-3.0, 2.0), (-2.0, 2.0), (-3.0, 3.0), (-3.0, 3.0), (-3.0, 3.0),
+        ),
+        factory=_model_coop,
+        conventions=(),
+        nests=("kinetic_two_open",),
+        note=(
+            "6-state model with binding cooperativity and two open conducting states "
+            "(R <-> AR <-> A2R <-> A2O <-> A2O', A2R <-> A2D; Brief 13 Task 1). "
+            "Cooperativity factor c = koff / koff2. At c = 1 (log10_c = 0), reduces exactly "
+            "to kinetic_two_open. Strictly nests kinetic_two_open."
+        ),
+    ),
 }
+
 
 
 @dataclass(frozen=True)

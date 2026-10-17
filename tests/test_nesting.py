@@ -31,6 +31,8 @@ def test_declared_nesting_topology():
     assert MODEL_SPECS["extended_desens"].nests == ()
     assert MODEL_SPECS["kinetic_flip"].nests == ()
     assert MODEL_SPECS["kinetic_two_open"].nests == ()
+    assert MODEL_SPECS["kinetic_coop"].nests == ("kinetic_two_open",)
+
 
 
 def test_extended_desens_exclusion_with_measured_discrepancy():
@@ -172,15 +174,55 @@ def test_nesting_embedding_derives_conventions_by_name():
     assert v_big_od[4] == pytest.approx(float(np.log10(FIT_CONVENTIONS["koff"][0])))
     assert v_big_od[5] == pytest.approx(float(np.log10(FIT_CONVENTIONS["alpha"][0])))
 
+    # Check kinetic_two_open into kinetic_coop
+    sub_2o = MODEL_SPECS["kinetic_two_open"]
+    big_coop = MODEL_SPECS["kinetic_coop"]
+    v_2o = np.array([-0.4, 0.1, 1.9, -2.7, -0.7, -0.5, 0.5, -0.2])
+    v_coop = nesting_embedding(sub_2o, big_coop, v_2o)
+    assert v_coop.shape == (9,)
+    assert np.allclose(v_coop[:8], v_2o)
+    assert v_coop[8] == pytest.approx(float(np.log10(FIT_CONVENTIONS["c"][0]))) == 0.0
+
+
+def test_kinetic_coop_embedding_reproduces_kinetic_two_open_likelihood():
+    """Verify kinetic_coop embedding reproduces kinetic_two_open's likelihood to numerical tolerance.
+
+    Agent Brief 13 Task 1 requirement:
+    Declare nesting: at c = 1 (koff2 = koff) the scheme must reduce exactly to kinetic_two_open.
+    Use nests / nesting_embedding and assert the embedding reproduces the sub-model's
+    likelihood to numerical tolerance.
+    """
+    sub = MODEL_SPECS["kinetic_two_open"]
+    big = MODEL_SPECS["kinetic_coop"]
+
+    v_sub = np.array([-0.428, 0.104, 1.9721, -2.699, -0.744, -0.523, 0.0, 0.0])
+    m_sub = sub.factory(v_sub)
+    v_emb = nesting_embedding(sub, big, v_sub)
+    m_emb = big.factory(v_emb)
+
+    # 1. Parameter reductions: c = 1.0, koff2 = koff
+    assert m_emb.c == pytest.approx(1.0, abs=1e-12)
+    assert m_emb.koff2 == pytest.approx(m_emb.koff, abs=1e-12)
+    assert m_emb.po_max == pytest.approx(m_sub.po_max, abs=1e-12)
+
+    # 2. Total log-likelihood across all three datasets matches to numerical tolerance
+    dsets = [JAHN1997_PEAK_CRC, BARBERIS2007_DEACT, BARBERIS2007_PAIRED_PULSE]
+    ll_sub = float(diagnostic_log_likelihood(m_sub, dsets, n_params=sub.n_free, anchor_po_max=True).total_log_likelihood)
+    ll_emb = float(diagnostic_log_likelihood(m_emb, dsets, n_params=big.n_free, anchor_po_max=True).total_log_likelihood)
+
+    assert ll_emb == pytest.approx(ll_sub, abs=1e-5, rel=1e-5)
+
 
 @pytest.mark.slow
 @pytest.mark.parametrize("sub_name,big_name", [
     ("kinetic_jw95", "kinetic_jw95_free_r"),
     ("kinetic_jw95", "kinetic_jw95_free_rates"),
     ("kinetic_jw95_free_r", "kinetic_jw95_free_rates"),
+    ("kinetic_two_open", "kinetic_coop"),
 ])
 @pytest.mark.parametrize("dset_name,dsets", [
     ("deact_recovery", [BARBERIS2007_DEACT, BARBERIS2007_PAIRED_PULSE]),
+
     ("joint_all_three", [JAHN1997_PEAK_CRC, BARBERIS2007_DEACT, BARBERIS2007_PAIRED_PULSE]),
 ])
 def test_nesting_on_total_objective(sub_name, big_name, dset_name, dsets):
@@ -204,6 +246,8 @@ def test_nesting_on_total_objective(sub_name, big_name, dset_name, dsets):
         v_sub = v3
     elif sub_name == "kinetic_jw95_free_r":
         v_sub = nesting_embedding(spec_jw95, spec_free_r, v3)
+    elif sub_name == "kinetic_two_open":
+        v_sub = np.array([-0.428, 0.104, 1.9721, -2.699, -0.744, -0.523, 0.0, 0.0])
     else:
         raise ValueError(f"Unexpected sub_name: {sub_name}")
 

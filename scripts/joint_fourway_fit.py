@@ -413,13 +413,13 @@ def main():
     parser.add_argument(
         "--schemes",
         nargs="+",
-        default=["kinetic_jw95_free_rates", "kinetic_two_open"],
-        help="Schemes to evaluate (default: kinetic_jw95_free_rates kinetic_two_open).",
+        default=["kinetic_coop", "kinetic_two_open", "kinetic_jw95_free_rates"],
+        help="Schemes to evaluate (default: kinetic_coop kinetic_two_open kinetic_jw95_free_rates).",
     )
     args = parser.parse_args()
 
     print("=" * 80)
-    print("SYMMETRIC JOINT FOUR-WAY FIT EVALUATION (Agent Brief 12 Tasks 2 & 3)")
+    print("SYMMETRIC JOINT FOUR-WAY FIT EVALUATION (Agent Brief 12 & 13)")
     print("=" * 80)
     print(f"Schemes: {args.schemes}")
     print(f"Budget per scheme: {args.samples} LHS samples, top {args.polish} polished starts")
@@ -432,7 +432,7 @@ def main():
 
     # Discrepancy report
     disc = surface_ec50_discrepancy()
-    print("EC50 DISCREPANCY REGISTER (UNRESOLVED):")
+    print("EC50 DISCREPANCY REGISTER:")
     print(f"  * FIT_TARGETS['ec50_um']: {disc['fit_targets_ec50_um']:.1f} uM ({disc['fit_targets_source']})")
     print(f"  * Jahn 1997 sourced:      {disc['jahn_sourced_ec50_um']:.1f} +/- {disc['jahn_sourced_ec50_sem']:.1f} uM ({disc['jahn_source']})")
     print(f"  * Discrepancy:            {disc['discrepancy_um']:.1f} uM ({disc['discrepancy_sigma']:+.2f} sigma)")
@@ -461,23 +461,36 @@ def main():
 
     # Definitive Verdict
     print("=" * 80)
-    print("BRIEF 12 DEFINITIVE VERDICT")
+    print("DEFINITIVE VERDICT")
     print("=" * 80)
     for scheme, r in results.items():
+        spec = MODEL_SPECS[scheme]
         ev_joint = r["joint_opt"]
         ev_pair = r["pair_tradeoff"]
         min_viol = min(ev_joint["max_violation"], ev_pair["max_violation"])
+        k_fit = len(spec.param_names)
+        n_data = 9  # 3 taus + 2 independent amplitudes + EC50 + nH + recovery + po_max
+        res_dof = n_data - k_fit
         print(f"\nScheme `{scheme}`:")
+        print(f"  * n_data = {n_data}, k_fitted = {k_fit}, residual dof = {res_dof}")
+        if res_dof == 0:
+            print("  * NOTE: Fit is EXACTLY SATURATED (residual dof = 0). This is an existence result, not a test.")
         if min_viol <= 1.0:
             print("  * Satisfies all four observables simultaneously within 3-sigma: YES")
             print(f"  * Optimal vector: {ev_joint['vector']}")
             print(f"  * Pinned parameters: {ev_joint['pinned']}")
             print(f"  * Effective free parameters (k_eff): {ev_joint['k_eff']}")
+            print(f"  * Minimax residual: {min_viol * 3.0:.2f} sigma")
         else:
             print("  * Satisfies all four observables simultaneously within 3-sigma: NO")
             print(f"  * Minimum minimax violation factor: {min_viol:.2f}x beyond 3-sigma threshold")
             print(f"  * At best compromise: max residual = {min_viol * 3.0:.2f} sigma")
+        if scheme == "kinetic_coop":
+            m_opt = spec.factory(ev_joint["vector"])
+            print(f"  * Cooperativity factor c: {m_opt.c:.4f} (log10_c = {np.log10(m_opt.c):.4f})")
+            print(f"  * koff: {m_opt.koff:.6f} ms^-1, koff2: {m_opt.koff2:.6f} ms^-1")
     print("=" * 80 + "\n")
+
 
 
 if __name__ == "__main__":
