@@ -54,7 +54,31 @@ across schemes conceals that for the reference scheme the amplitude number is th
 That verdict is rejected, as 7A's was, and for the same reason: a conclusion read off a
 favourable presentation of the objective rather than off the objective.
 
-## What survives
+## Correction to "What survives" — it survives less than I first said
+
+Written an hour after the withdrawal, having followed the arithmetic one step further.
+
+**The amplitude floor dominates the headline χ² as well.** Of the all-six eigen-route figure of
+527.86 for `kinetic_jw95_free_rates`, **452.99 is the arithmetic floor** and only **74.87** is
+attributable to anything else. So "χ² in the hundreds against ~6 for a genuine fit" is mostly a
+restatement of the floor, not evidence about the model.
+
+**And the amplitude term is misspecified at a more basic level.** The published fractional
+amplitudes are 0.57, 0.23, 0.20 — they **sum to exactly 1.0**. They therefore carry **two**
+independent degrees of freedom, not three, and the objective scores all three as independent
+measurements with independent errors. Their published errors (0.04, 0.02, 0.03) cannot all be
+independent either, for the same reason. Scoring a constrained composition as if unconstrained
+double-counts and inflates χ², which is precisely the effect seen.
+
+So the claim that **no scheme reproduces the published three-component deactivation** is no
+longer established either. It may well be true — 74.87 on a handful of effective degrees of
+freedom is still poor — but the number that was supposed to demonstrate it is contaminated by
+the same flaw. Brief 10 re-derives it with the composition handled properly.
+
+What is left standing, and it is the only thing in this episode that has survived every test:
+the methodological result below about pseudo-data leverage.
+
+## What survives (as originally written — now qualified by the correction above)
 
 * **No scheme tested reproduces the published three-component deactivation of α1β2γ2**, under
   either route: χ² in the hundreds against ~6 for a genuine fit. That is a real model-adequacy
