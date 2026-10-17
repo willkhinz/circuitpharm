@@ -15,50 +15,72 @@
 
 ### Question 1: Under the corrected amplitude objective, does any scheme reproduce the published three-component deactivation?
 > **YES: `kinetic_two_open` reproduces the published three-component deactivation.**  
-> Under the analytic eigen route, `kinetic_two_open` achieves $\chi^2 = 0.00$ on all six published parameters against **5 degrees of freedom** (3 for time constants, 2 for constrained amplitudes; $p = 1.000$). Under the canonical fit route, it achieves $\chi^2 = 153.88$ on all six ($\chi^2 = 0.00$ on time constants, $\chi^2 = 17.15$ on amplitudes against 2 DOF).  
+> Under the analytic eigen route, `kinetic_two_open` achieves $\chi^2 = 0.00$ on all six published parameters. Under the canonical fit route, it achieves $\chi^2 = 153.88$ on all six ($\chi^2 = 0.00$ on time constants, $\chi^2 = 17.15$ on amplitudes).  
 > **All single-open schemes fail completely.**  
 >
-> **Degrees of freedom:**  
-> - `all_six`: **5 DOF** (3 independent time constants + 2 independent amplitude coordinates on the 2-simplex).  
-> - `taus_only`: **3 DOF** ($\tau_1, \tau_2, \tau_3$).  
-> - `amplitudes_only`: **2 DOF** (due to the composition constraint $\sum_{i=1}^3 a_i = 1$).  
+> **Degrees of Freedom Accounting (Brief 11 Task 1):**  
+> An exact fit ($\chi^2 = 0.00$) by a model with $k_{fitted} = 8$ free parameters to $n_{data} = 5$ independent data points (3 time constants + 2 independent amplitudes on the 2-simplex) leaves residual degrees of freedom = $n_{data} - k = 5 - 8 = -3$. Because $k \ge n$, an exact fit is guaranteed by parameter count if the manifold passes through the target point, and **cannot be a statistical hypothesis test**; quoting a p-value ($p = 1.000$) where residual dof $\le 0$ is meaningless.  
+> 
+> **The real evidence is the contrast, not the zero:**  
+> `kinetic_flip` has the exact same $k=8$ free parameters ($k_{eff} = 8$) and fits to the exact same $n_{data} = 5$ independent observations, yet it still fails decisively ($\chi^2 = \mathbf{273.86}$ on the eigen route, and $\mathbf{1118.95}$ on the canonical fit route). The contrast between `kinetic_flip` (8 params, fails completely) and `kinetic_two_open` (8 params, fits exactly) proves that the amplitude obstruction is geometric and topological, not an artifact of parameter deficit.  
 >
-> **Per-scheme results (All Six $\chi^2$ against 5 DOF):**  
-> 1. `kinetic_two_open`: $\chi^2 = \mathbf{0.00}$ (Eigen route, 5 DOF) / $\chi^2 = \mathbf{153.88}$ (Fit route, 5 DOF). **PASSES.**  
-> 2. `kinetic_jw95_free_rates`: $\chi^2 = \mathbf{273.92}$ (Eigen route, 5 DOF) / $\chi^2 = \mathbf{910.73}$ (Fit route, 5 DOF). **FAILS.**  
-> 3. `kinetic_open_desens_free_rates`: $\chi^2 = \mathbf{273.95}$ (Eigen route, 5 DOF) / $\chi^2 = \mathbf{972.80}$ (Fit route, 5 DOF). **FAILS.**  
-> 4. `kinetic_flip`: $\chi^2 = \mathbf{273.86}$ (Eigen route, 5 DOF) / $\chi^2 = \mathbf{1118.95}$ (Fit route, 5 DOF). **FAILS.**  
-> 5. `extended_desens`: $\chi^2 = \mathbf{867.78}$ (Eigen route, 5 DOF) / $\chi^2 = \mathbf{994.84}$ (Fit route, 5 DOF). **FAILS.**  
+> **Data counts ($n_{data}$):**  
+> - `all_six`: **$n_{data} = 5$** (3 independent time constants + 2 independent amplitude coordinates on the 2-simplex under $\sum a_i = 1$).  
+> - `taus_only`: **$n_{data} = 3$** ($\tau_1, \tau_2, \tau_3$).  
+> - `amplitudes_only`: **$n_{data} = 2$** ($a_1, a_2$ on the 2-simplex).  
+>
+> **Degrees-of-Freedom & Testability Accounting Table:**  
+>
+> | Scheme | $k_{fitted}$ | $k_{eff}$ | Objective | $n_{data}$ | Residual DOF | $\chi^2$ (Eigen) | $\chi^2$ (Fit) | Testability / $p$-value |
+> |---|:---:|:---:|---|:---:|:---:|:---:|:---:|---|
+> | `kinetic_two_open` | 8 | 8 | `all_six` | 5 | -3 | **0.00** | 153.88 | not testable — $k \ge n$ |
+> | `kinetic_two_open` | 8 | 8 | `taus_only` | 3 | -5 | **0.00** | 0.00 | not testable — $k \ge n$ |
+> | `kinetic_two_open` | 8 | 8 | `amplitudes_only` | 2 | -6 | **0.00** | 17.15 | not testable — $k \ge n$ |
+> | `kinetic_flip` | 8 | 8 | `all_six` | 5 | -3 | **273.86** | 1118.95 | not testable — $k \ge n$ (FAILS) |
+> | `kinetic_flip` | 8 | 8 | `taus_only` | 3 | -5 | **0.00** | 137.74 | not testable — $k \ge n$ |
+> | `kinetic_flip` | 8 | 8 | `amplitudes_only` | 2 | -6 | **203.06** | 711.12 | not testable — $k \ge n$ (FAILS) |
+> | `kinetic_jw95_free_rates` | 6 | 6 | `all_six` | 5 | -1 | **273.92** | 910.73 | not testable — $k \ge n$ (FAILS) |
+> | `kinetic_jw95_free_rates` | 6 | 6 | `taus_only` | 3 | -3 | **0.00** | 14.33 | not testable — $k \ge n$ |
+> | `kinetic_jw95_free_rates` | 6 | 6 | `amplitudes_only` | 2 | -4 | **203.06** | 711.11 | not testable — $k \ge n$ (FAILS) |
+> | `kinetic_open_desens_free_rates` | 6 | 6 | `all_six` | 5 | -1 | **273.95** | 972.80 | not testable — $k \ge n$ (FAILS) |
+> | `kinetic_open_desens_free_rates` | 6 | 6 | `taus_only` | 3 | -3 | **0.00** | 20.28 | not testable — $k \ge n$ |
+> | `kinetic_open_desens_free_rates` | 6 | 6 | `amplitudes_only` | 2 | -4 | **203.06** | 268.33 | not testable — $k \ge n$ (FAILS) |
+> | `extended_desens` | 4 | 4 | `all_six` | 5 | +1 | **867.78** | 994.84 | **$p = 0.0000$ (FAILS, DOF=1)** |
+> | `extended_desens` | 4 | 4 | `taus_only` | 3 | -1 | **43.59** | 211.86 | not testable — $k \ge n$ (FAILS) |
+> | `extended_desens` | 4 | 4 | `amplitudes_only` | 2 | -2 | **0.00** | 0.15 | not testable — $k \ge n$ |
+>
+> *(Note: Bound pinning was checked for all optima via `check_at_bound`; all optima lie strictly in the interior so $k_{eff} = k_{fitted}$. Only `extended_desens` under `all_six` has residual DOF $> 0$).*  
 
 ---
 
 ### Question 2: Is the failure, where it occurs, in the time constants or the amplitudes? (Reported per scheme)
 > **The locus of failure is per-scheme:**  
 >
-> 1. **`kinetic_jw95_free_rates`:**  
+> 1. **`kinetic_jw95_free_rates` ($k=6$):**  
 >    - **Failure is strictly in the amplitudes.**  
->    - Time constants alone match perfectly on the eigen route ($\chi^2 = \mathbf{0.00}$ against 3 DOF) and reach $\chi^2 = \mathbf{14.33}$ on the fit route.  
->    - Amplitudes alone fail severely: $\chi^2 = \mathbf{203.06}$ on the eigen route (against 2 DOF) and $\chi^2 = \mathbf{711.11}$ on the fit route.  
+>    - Time constants alone match perfectly on the eigen route ($\chi^2 = \mathbf{0.00}$, $n=3$, res dof = -3, not testable — $k \ge n$) and reach $\chi^2 = \mathbf{14.33}$ on the fit route.  
+>    - Amplitudes alone fail severely: $\chi^2 = \mathbf{203.06}$ on the eigen route ($n=2$, res dof = -4, not testable — $k \ge n$) and $\chi^2 = \mathbf{711.11}$ on the fit route.  
 >
-> 2. **`kinetic_open_desens_free_rates`:**  
+> 2. **`kinetic_open_desens_free_rates` ($k=6$):**  
 >    - **Failure is strictly in the amplitudes.**  
->    - Time constants alone match perfectly on the eigen route ($\chi^2 = \mathbf{0.00}$ against 3 DOF) and reach $\chi^2 = \mathbf{20.28}$ on the fit route.  
->    - Amplitudes alone fail severely: $\chi^2 = \mathbf{203.06}$ on the eigen route (against 2 DOF) and $\chi^2 = \mathbf{268.33}$ on the fit route.  
+>    - Time constants alone match perfectly on the eigen route ($\chi^2 = \mathbf{0.00}$, $n=3$, res dof = -3, not testable — $k \ge n$) and reach $\chi^2 = \mathbf{20.28}$ on the fit route.  
+>    - Amplitudes alone fail severely: $\chi^2 = \mathbf{203.06}$ on the eigen route ($n=2$, res dof = -4, not testable — $k \ge n$) and $\chi^2 = \mathbf{268.33}$ on the fit route.  
 >
-> 3. **`kinetic_flip`:**  
+> 3. **`kinetic_flip` ($k=8$):**  
 >    - **Failure is strictly in the amplitudes.**  
->    - Time constants alone match perfectly on the eigen route ($\chi^2 = \mathbf{0.00}$ against 3 DOF) and reach $\chi^2 = \mathbf{137.74}$ on the fit route.  
->    - Amplitudes alone fail severely: $\chi^2 = \mathbf{203.06}$ on the eigen route (against 2 DOF) and $\chi^2 = \mathbf{711.12}$ on the fit route.  
+>    - Time constants alone match perfectly on the eigen route ($\chi^2 = \mathbf{0.00}$, $n=3$, res dof = -5, not testable — $k \ge n$) and reach $\chi^2 = \mathbf{137.74}$ on the fit route.  
+>    - Amplitudes alone fail severely: $\chi^2 = \mathbf{203.06}$ on the eigen route ($n=2$, res dof = -6, not testable — $k \ge n$) and $\chi^2 = \mathbf{711.12}$ on the fit route.  
 >
-> 4. **`kinetic_two_open`:**  
->    - **Neither fails on the analytic eigen route** ($\chi^2 = \mathbf{0.00}$ for time constants, $\chi^2 = \mathbf{0.00}$ for amplitudes).  
->    - On the fit route, time constants alone match perfectly ($\chi^2 = \mathbf{0.00}$ against 3 DOF), while amplitudes alone reach $\chi^2 = \mathbf{17.15}$ against 2 DOF.  
+> 4. **`kinetic_two_open` ($k=8$):**  
+>    - **Neither fails on the analytic eigen route** ($\chi^2 = \mathbf{0.00}$ for time constants, $\chi^2 = \mathbf{0.00}$ for amplitudes; res dof $\le 0$, not testable — $k \ge n$).  
+>    - On the fit route, time constants alone match perfectly ($\chi^2 = \mathbf{0.00}$, res dof = -5), while amplitudes alone reach $\chi^2 = \mathbf{17.15}$ ($n=2$, res dof = -6).  
 >
-> 5. **`extended_desens`:**  
+> 5. **`extended_desens` ($k=4$):**  
 >    - **Structural coupling failure.**  
->    - Amplitudes alone can match on the eigen route ($\chi^2 = \mathbf{0.00}$ against 2 DOF) and fit route ($\chi^2 = \mathbf{0.15}$).  
->    - Time constants alone fail ($\chi^2 = \mathbf{43.59}$ on eigen route, $\chi^2 = \mathbf{211.86}$ on fit route).  
->    - Both cannot be simultaneously matched with only 4 free parameters, driving the combined all-six $\chi^2$ to $\mathbf{867.78}$ (eigen) and $\mathbf{994.84}$ (fit).  
+>    - Amplitudes alone can match on the eigen route ($\chi^2 = \mathbf{0.00}$, $n=2$, res dof = -2) and fit route ($\chi^2 = \mathbf{0.15}$).  
+>    - Time constants alone fail ($\chi^2 = \mathbf{43.59}$ on eigen route, $\chi^2 = \mathbf{211.86}$ on fit route; $n=3$, res dof = -1).  
+>    - Both cannot be simultaneously matched with only 4 free parameters, driving the combined all-six $\chi^2$ to $\mathbf{867.78}$ (eigen, res dof = +1, $p = 0.0000$) and $\mathbf{994.84}$ (fit, res dof = +1, $p = 0.0000$).
+  
 
 ---
 

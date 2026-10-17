@@ -40,7 +40,7 @@ from typing import Any, Sequence
 import numpy as np
 import scipy.linalg as la
 from scipy.optimize import minimize
-from scipy.stats import qmc
+from scipy.stats import chi2, qmc
 
 # Ensure src is on sys.path
 _ROOT = pathlib.Path(__file__).resolve().parent.parent
@@ -601,6 +601,60 @@ def format_budget_table(
     return "\n".join(lines)
 
 
+def format_dof_table(
+    schemes: list[str],
+    results_eigen: dict[tuple[str, str], dict[str, Any]],
+    results_fit: dict[tuple[str, str], dict[str, Any]],
+) -> str:
+    """Format degrees-of-freedom accounting table everywhere (Brief 11 Task 1).
+
+    Reports n_data, k_fitted, k_effective (discounting at_bound), residual dof,
+    and p-value only where residual dof > 0; where residual dof <= 0, reports
+    'not testable — k ≥ n'.
+    """
+    n_data_map = {
+        "all_six": 5,        # 3 independent taus + 2 independent amplitudes on 2-simplex
+        "taus_only": 3,      # 3 independent taus
+        "amplitudes_only": 2 # 2 independent amplitudes on 2-simplex
+    }
+
+    lines = []
+    lines.append("| Scheme | Route | Objective | $\\chi^2$ | $n_{data}$ | $k_{fitted}$ | $k_{eff}$ | Residual DOF | $p$-value / Testability |")
+    lines.append("| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |")
+
+    for scheme in schemes:
+        spec = MODEL_SPECS[scheme]
+        k_fit = len(spec.bounds)
+        for route_name, r_dict in [("Eigen", results_eigen), ("Fit", results_fit)]:
+            for obj in ["all_six", "taus_only", "amplitudes_only"]:
+                r = r_dict[(scheme, obj)]
+                c2 = r.get("best_chi2", float("nan"))
+                n_d = n_data_map[obj]
+                v = r.get("best_vec")
+                if v is not None:
+                    pinned = check_at_bound(v, spec.bounds, spec.param_names)
+                    k_eff = k_fit - len(pinned)
+                else:
+                    k_eff = k_fit
+
+                res_dof = n_d - k_eff
+                if not np.isfinite(c2):
+                    c2_str = "N/A"
+                    p_str = "N/A"
+                else:
+                    c2_str = f"{c2:.2f}"
+                    if res_dof > 0:
+                        p_val = 1.0 - chi2.cdf(c2, res_dof)
+                        p_str = f"{p_val:.4f}"
+                    else:
+                        p_str = "not testable — k ≥ n"
+
+                lines.append(
+                    f"| `{scheme}` | {route_name} | `{obj}` | {c2_str} | {n_d} | {k_fit} | {k_eff} | {res_dof} | {p_str} |"
+                )
+    return "\n".join(lines)
+
+
 def main():
     parser = argparse.ArgumentParser(description="Deactivation obstruction decomposition (Brief 10)")
     parser.add_argument("--schemes", nargs="+", default=[
@@ -697,8 +751,13 @@ def main():
     print(ws_table)
     print("\n")
 
+    dof_table = format_dof_table(schemes, results_eigen, results_fit)
+    print("## 5. Degrees-of-Freedom Accounting Everywhere (Brief 11 Task 1)\n")
+    print(dof_table)
+    print("\n")
+
     # Task 4 Check for any candidate with chi^2 < 100
-    print("## 5. Task 4 Cross-Checks for Optima with $\\chi^2 < 100$\n")
+    print("## 6. Task 4 Cross-Checks for Optima with $\\chi^2 < 100$\n")
     found_any = False
     for scheme in schemes:
         spec = MODEL_SPECS[scheme]
