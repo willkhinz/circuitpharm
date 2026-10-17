@@ -307,6 +307,7 @@ class Deactivation:
     err_kind: str
     n: str
     components: tuple = ()      # (taus, areas) where the source states them
+    component_errors: tuple = ()  # (tau_errs, area_errs) where the source states them (promoted for weighting iv)
     where: str = "full text"
     note: str = ""
 
@@ -327,6 +328,7 @@ DEACTIVATIONS = (
         receptor="alpha1beta2gamma2 (gamma2S)",
         pulse="2 ms", conc_mm=10.0, tau_w_ms=52.5, err_ms=2.9, err_kind="SEM", n="6",
         components=((2.8, 33.4, 221.35), (0.57, 0.23, 0.20)),
+        component_errors=((0.3, 4.6, 14.9), (0.04, 0.02, 0.03)),
         note=("Triple exponential; component errors are 0.3, 4.6, 14.9 ms and area errors "
               "0.04, 0.02, 0.03. Fully specified -- the only observable found that can be "
               "reconstructed from parameters the source itself fitted, with no "

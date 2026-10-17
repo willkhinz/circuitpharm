@@ -107,6 +107,15 @@ from .diagnostic import (
     diagnostic_log_likelihood,
     fit_diagnostic_consistency,
 )
+from .deact_components import (
+    DeactComponentsLikelihoodResult,
+    DeactFitResult,
+    deact_components_log_likelihood,
+    fit_triexponential_decay,
+    get_barberis_errors,
+    parse_barberis_component_errors,
+    predict_components_fit,
+)
 
 __all__ = [
     # data
@@ -204,4 +213,12 @@ __all__ = [
     "DiagnosticFitResult",
     "diagnostic_log_likelihood",
     "fit_diagnostic_consistency",
+    # deact_components (Brief 7B)
+    "DeactFitResult",
+    "DeactComponentsLikelihoodResult",
+    "predict_components_fit",
+    "fit_triexponential_decay",
+    "deact_components_log_likelihood",
+    "parse_barberis_component_errors",
+    "get_barberis_errors",
 ]
