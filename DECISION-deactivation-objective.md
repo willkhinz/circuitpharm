@@ -87,3 +87,62 @@ one mode carries ≥ 0.90. Keep both.
 * This decision governs the **deactivation** observable only. `PEAK`, `EQUILIBRIUM`, `CHARGE`,
   `MEAN_OPEN_TIME` and `PAIRED_PULSE_RECOVERY` are untouched, and nothing here changes `TRAIN`,
   `HOLDOUT` or `holdout_guard`.
+
+---
+
+## Amendment, 2026-10-17 — the decision was asymmetric and that asymmetry produced a verdict
+
+This document closes by saying *"This decision governs the **deactivation** observable only.
+`PEAK`, `EQUILIBRIUM`, `CHARGE`, `MEAN_OPEN_TIME` and `PAIRED_PULSE_RECOVERY` are untouched."*
+**That restriction was a mistake, and it has already cost a conclusion.**
+
+`JAHN1997_PEAK_CRC` has exactly the character that motivated weighting (iv) in the first place:
+
+```
+kind        : parametric
+synthetic   : True
+n points    : 9
+noise_model : estimated          <- sigma profiled out
+```
+
+Its 9 points are generated in `fitting/data.py` from **two published numbers**:
+
+```
+_JAHN_EC50_UM = 11.6   _JAHN_EC50_SEM = 0.9
+_JAHN_HILL    = 2.2    _JAHN_HILL_SEM = 0.4
+_JAHN_RESP = X / (1 + X),  X = (conc / 11.6) ** 2.2
+```
+
+Two measurements with published errors, expanded into nine pseudo-observations whose σ is then
+profiled out — the same manufacture as the deactivation curve's six-into-one-hundred-and-one,
+and the same unbounded reward for curve-matching.
+
+**Why this matters now.** Agent 11's four-way joint fit answered "no": deactivation and the
+Jahn CRC are irreconcilable, missing by at least 4.25× beyond the 3σ boundary, with any
+compromise blowing paired-pulse recovery to +14.4σ–+19.5σ. **That verdict was reached with the
+deactivation side scored against its published parameters and the CRC side scored as nine
+profiled-σ pseudo-observations.** It is a comparison between a corrected dataset and an
+uncorrected one, and the uncorrected one is the one that wins.
+
+This is the third time in this project that an undeclared asymmetry in how two datasets are
+scored has produced a verdict about whether they are compatible. The first two were briefs 5
+and 6.
+
+**The decision is therefore extended:** weighting (iv) applies to **every parametric dataset**.
+Where a dataset is generated from published parameters, the model is scored against **those
+parameters at their published errors**, not against the generated points. For the Jahn CRC that
+means EC50 = 11.6 ± 0.9 µM and nH = 2.2 ± 0.4, with whatever normalisation convention the
+reconstruction uses stated explicitly.
+
+Two complications to handle rather than paper over, both already recorded in `data.py`:
+
+1. `FIT_TARGETS['ec50_um']` is **not** the sourced value — the file says so at line 515. That
+   discrepancy must be surfaced, not silently resolved in either direction.
+2. The reconstruction spans 0.3–3000 µM while the published Hill slope statement covers
+   "between 0.001 and 0.01 mM GABA" — a measured window of 1–10 µM, with four decades
+   extrapolated beyond it. `JAHN1997_PEAK_CRC_RESTRICTED` already exists for the measured
+   window. Scoring against EC50 and nH sidesteps the extrapolation entirely, which is a further
+   argument for it.
+
+Agent 11's "no" is **suspended, not overturned**, pending the symmetric re-derivation. It may
+well survive — EC50 and nH are strong constraints — but as it stands it is not established.
