@@ -279,8 +279,14 @@ class Scheme:
 
 
 # ---------------------------------------------------------------------------- fitting
-FIT_TARGETS = dict(ec50_um=20.0, po_max=0.75, tau_ms=15.0)
+# HISTORICAL NOTE (Brief 13 Task 2):
+# FIT_TARGETS['ec50_um'] was previously 20.0 uM ("recalled literature middle from earlier legacy tuning files", UNSOURCED).
+# Resolved in Brief 13 in favour of the sourced measurement 11.6 +/- 0.9 uM for alpha1beta2gamma2L in HEK293
+# from Jahn et al. 1997 (NeuroReport 8(16):3443-6, source key 'jahn_a1b2g2_kinetics', Basis.QUANTITATIVE).
+FIT_TARGETS = dict(ec50_um=11.6, po_max=0.75, tau_ms=15.0)
+FIT_TARGET_SEMS = dict(ec50_um=0.9, po_max=0.05, tau_ms=float("nan"))
 FIT_RANGES = dict(ec50_um=(10.0, 30.0), po_max=(0.70, 0.80), tau_ms=(10.0, 30.0))
+
 
 
 def po_max_anchor_residual(po_max: float) -> float:

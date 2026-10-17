@@ -134,27 +134,33 @@ def get_jahn_published_records() -> dict[str, Any]:
 
 
 def surface_ec50_discrepancy() -> dict[str, Any]:
-    """Surface the discrepancy between FIT_TARGETS['ec50_um'] and the sourced value.
+    """Surface the discrepancy / resolution between FIT_TARGETS['ec50_um'] and the sourced value.
 
-    Per AGENT-BRIEF-12 Task 1 item 1:
-    FIT_TARGETS['ec50_um'] is 20.0 uM (the middle of a recalled 10-30 uM literature range).
+    HISTORICAL NOTE:
+    FIT_TARGETS['ec50_um'] was previously 20.0 uM (the middle of a recalled 10-30 uM literature range).
     The one sourced value for alpha1beta2gamma2L in HEK293 is 11.6 +/- 0.9 uM (Jahn 1997).
-    Both numbers are reported, unresolved.
+    Resolved in Brief 13 Task 2 in favour of the sourced 11.6 uM (Basis.QUANTITATIVE).
     """
-    recalled_target = float(FIT_TARGETS["ec50_um"])
+    current_target = float(FIT_TARGETS["ec50_um"])
     sourced_val = float(JAHN_EC50_UM)
     sourced_sem = float(JAHN_EC50_SEM)
-    diff_um = recalled_target - sourced_val
+    diff_um = current_target - sourced_val
     diff_sigma = diff_um / sourced_sem
     return {
-        "fit_targets_ec50_um": recalled_target,
-        "fit_targets_source": "circuitpharm.gabaa_kinetics.FIT_TARGETS['ec50_um'] (recalled literature middle)",
+        "fit_targets_ec50_um": current_target,
+        "fit_targets_source": (
+            "circuitpharm.gabaa_kinetics.FIT_TARGETS['ec50_um'] (sourced: Jahn et al. 1997, "
+            "11.6 +/- 0.9 uM, Basis.QUANTITATIVE; previously legacy 20.0 uM)"
+        ),
         "jahn_sourced_ec50_um": sourced_val,
         "jahn_sourced_ec50_sem": sourced_sem,
         "jahn_source": "Jahn et al. 1997 (NeuroReport 8(16):3443-6) via circuitpharm.fitting.data",
         "discrepancy_um": diff_um,
         "discrepancy_sigma": diff_sigma,
-        "resolution": "unresolved (reported explicitly, neither substituted quietly)",
+        "resolution": (
+            "resolved in Brief 13 in favour of Jahn 1997 sourced measurement (11.6 +/- 0.9 uM); "
+            "discrepancy eliminated (0.0 sigma)"
+        ),
     }
 
 
