@@ -52,6 +52,7 @@ class Record:
     basis: Basis
     source_key: str = ""      # key into the `sources` table, where one exists
     note: str = ""            # the derivation, or why none exists
+    where: str = ""           # where in source, e.g. "abstract", "Table 1"
 
     @property
     def is_sourced(self) -> bool:
@@ -359,6 +360,31 @@ WAVEFORM_PROV = {
         "600 time samples, held at the value the solve_ivp implementation used so that "
         "replacing it with an exact propagator did not move any PEAK number for a reason "
         "unrelated to the model. The peak is a maximum over these samples.")),
+}
+
+#: Cooperativity literature provenance (Brief 15 Task 3).
+#: Sources documenting evidence of positive cooperativity between GABA-A receptor
+#: agonist binding sites. Literature provenance for existence and direction only;
+#: strictly NOT used as numerical fitting constraints or Likelihood datasets.
+COOPERATIVITY_LITERATURE_PROV = {
+    "olsen1981": Record(
+        Basis.FROM_QUALITATIVE,
+        "olsen1981",
+        "Curvilinear Scatchard plots and Hill coefficients consistent with positive cooperativity in [3H]GABA equilibrium binding in mammalian brain membranes.",
+        where="abstract",
+    ),
+    "agey1989": Record(
+        Basis.FROM_QUALITATIVE,
+        "agey1989",
+        "Rapid filtration binding kinetics in rat brain membranes demonstrating multi-step association kinetics and non-first-order dissociation consistent with cooperativity between binding sites.",
+        where="abstract",
+    ),
+    "mozrzymas2003": Record(
+        Basis.FROM_QUALITATIVE,
+        "mozrzymas2003",
+        "Experimental and modeling study of recombinant alpha1beta2gamma2 receptors demonstrating non-equivalent binding sites and positive cooperativity in binding/gating steps.",
+        where="abstract",
+    ),
 }
 
 

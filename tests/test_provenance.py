@@ -225,3 +225,36 @@ def test_the_robustness_priors_carry_provenance_too():
 def test_report_renders():
     txt = report()
     assert "PARAMETER PROVENANCE" in txt and "UNSOURCED" in txt
+
+
+def test_cooperativity_literature_provenance():
+    """Verify cooperativity literature provenance records (Brief 15 Task 3).
+
+    Checks:
+      1. All three sources (olsen1981, agey1989, mozrzymas2003) are present.
+      2. All records declare where='abstract'.
+      3. All records have non-empty notes explaining qualitative basis.
+      4. All source keys exist in data/pharmacology.db.
+      5. Strict negative rule: these sources are NOT in ALL (they are not fitting
+         parameters or likelihood datasets).
+    """
+    from circuitpharm.provenance import COOPERATIVITY_LITERATURE_PROV
+    assert set(COOPERATIVITY_LITERATURE_PROV.keys()) == {"olsen1981", "agey1989", "mozrzymas2003"}
+
+    con = sqlite3.connect(f"file:{DB}?mode=ro", uri=True)
+    db_keys = {k for (k,) in con.execute("select key from sources")}
+    con.close()
+
+    for key, rec in COOPERATIVITY_LITERATURE_PROV.items():
+        assert rec.where == "abstract", f"{key} does not declare where='abstract'"
+        assert rec.source_key == key
+        assert rec.source_key in db_keys, f"{key} missing from pharmacology.db sources"
+        assert rec.note.strip(), f"{key} has empty note"
+        assert rec.basis is Basis.FROM_QUALITATIVE
+
+    # Strict negative rule: NOT in ALL
+    for name, table in ALL.items():
+        for k, rec in table.items():
+            assert rec.source_key not in {"olsen1981", "agey1989", "mozrzymas2003"}, (
+                f"{rec.source_key} was included in parameter table {name}; cooperativity "
+                f"sources are literature provenance only, not fitting parameters.")
