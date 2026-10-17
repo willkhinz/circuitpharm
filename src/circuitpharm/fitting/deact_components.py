@@ -210,6 +210,9 @@ class DeactComponentsLikelihoodResult(float):
         tau_w_pub: float,
         tau_w_err: float,
         z_tau_w: float,
+        chi2_taus: float = 0.0,
+        chi2_areas: float = 0.0,
+        chi2_total: float = 0.0,
     ):
         instance = super().__new__(cls, float(total_log_likelihood))
         instance.total_log_likelihood = float(total_log_likelihood)
@@ -227,12 +230,16 @@ class DeactComponentsLikelihoodResult(float):
         instance.tau_w_pub = float(tau_w_pub)
         instance.tau_w_err = float(tau_w_err)
         instance.z_tau_w = float(z_tau_w)
+        instance.chi2_taus = float(chi2_taus)
+        instance.chi2_areas = float(chi2_areas)
+        instance.chi2_total = float(chi2_total)
         return instance
 
     def __repr__(self) -> str:
         return (
             f"DeactComponentsLikelihoodResult(total_ll={self.total_log_likelihood:.4f}, "
             f"ll_taus={self.ll_taus:.4f}, ll_areas={self.ll_areas:.4f}, "
+            f"chi2_total={self.chi2_total:.2f}, "
             f"z_taus={tuple(round(z, 2) for z in self.z_taus)}, "
             f"z_areas={tuple(round(z, 2) for z in self.z_areas)})"
         )
@@ -254,6 +261,9 @@ class DeactComponentsDiagnostic:
     tau_w_residual_sigma: float
     reconstruction_max_deviation: float
     steady_state_reached: bool
+    chi2_taus: float = 0.0
+    chi2_areas: float = 0.0
+    chi2_total: float = 0.0
 
 
 def parse_barberis_component_errors(
@@ -301,6 +311,134 @@ def parse_deactivation_errors(
 ) -> tuple[tuple[float, ...], tuple[float, ...]]:
     """Alias for get_barberis_errors (Brief 7A name)."""
     return get_barberis_errors(record)
+
+
+def get_barberis_amplitude_covariance(
+    record: Deactivation | None = None,
+    *,
+    err_areas: Sequence[float] | None = None,
+) -> tuple[np.ndarray, np.ndarray, float]:
+    """Compute rank-2 covariance matrix, pseudo-inverse, and sub-determinant for fractional amplitudes.
+
+    Brief 10:
+    The published fractional amplitudes sum to 1.0 by construction, so their variation
+    is strictly constrained to the 2D simplex hyperplane (sum(a_i) = 1). The covariance
+    matrix Sigma must satisfy Sigma @ 1 = 0 (zero variance on the sum constraint).
+
+    Given marginal standard errors s = (s_1, s_2, s_3), the diagonal elements are
+    Sigma_ii = s_i^2. The condition that row sums equal zero uniquely determines the
+    off-diagonal covariances:
+        Sigma_ij + Sigma_ik = -s_i^2  for distinct i, j, k
+    with unique algebraic solution:
+        Sigma_ij = 0.5 * (s_k^2 - s_i^2 - s_j^2).
+
+    Parameters
+    ----------
+    record : Deactivation, optional
+        Deactivation record (defaults to DEACTIVATIONS[1], Barberis et al. 2007).
+    err_areas : Sequence[float], optional
+        Explicit component area standard errors. If None, extracted from `record`.
+
+    Returns
+    -------
+    cov : np.ndarray, shape (3, 3)
+        Singular rank-2 covariance matrix satisfying cov @ 1 = 0 and diag(cov) = s^2.
+    cov_pinv : np.ndarray, shape (3, 3)
+        Moore-Penrose pseudo-inverse of cov, satisfying cov_pinv @ 1 = 0.
+    det_sub : float
+        Determinant of any 2x2 principal submatrix Sigma_{(-k, -k)}.
+        Equal to det*(Sigma) / 3, identically across all k in {0, 1, 2}.
+    """
+    if err_areas is None:
+        if record is None:
+            record = DEACTIVATIONS[1]
+        _, err_areas = get_barberis_errors(record)
+
+    s = np.asarray(err_areas, dtype=float)
+    if s.ndim != 1 or len(s) != 3:
+        raise ValueError(
+            f"Fractional amplitude covariance requires exactly 3 components, got {len(s)}."
+        )
+
+    v = s ** 2
+    cov = np.zeros((3, 3), dtype=float)
+    cov[0, 0] = v[0]
+    cov[1, 1] = v[1]
+    cov[2, 2] = v[2]
+    cov[0, 1] = cov[1, 0] = 0.5 * (v[2] - v[0] - v[1])
+    cov[0, 2] = cov[2, 0] = 0.5 * (v[1] - v[0] - v[2])
+    cov[1, 2] = cov[2, 1] = 0.5 * (v[0] - v[1] - v[2])
+
+    cov_pinv = np.linalg.pinv(cov, hermitian=True)
+    det_sub = float(cov[0, 0] * cov[1, 1] - cov[0, 1] ** 2)
+
+    return cov, cov_pinv, det_sub
+
+
+def compute_amplitude_chi2(
+    areas_pred: Sequence[float],
+    pub_areas: Sequence[float],
+    err_areas: Sequence[float],
+    *,
+    method: str = "full_covariance",
+    dropped_index: int | None = None,
+) -> float:
+    """Compute chi^2 for constrained fractional amplitudes.
+
+    Parameters
+    ----------
+    areas_pred : Sequence[float]
+        Predicted fractional amplitudes (must sum to ~1.0).
+    pub_areas : Sequence[float]
+        Published fractional amplitudes (must sum to ~1.0).
+    err_areas : Sequence[float]
+        Published marginal standard errors (SEMs).
+    method : {"full_covariance", "drop_one", "drop_one_diagonal", "legacy_unconstrained"}
+        - "full_covariance" (default): Quadratic form d^T Sigma^+ d using the Moore-Penrose
+          pseudo-inverse of the rank-2 degenerate covariance matrix (Brief 10).
+        - "drop_one": Explicitly drops component `dropped_index` (default: 2) and evaluates
+          d_{-k}^T (Sigma_{-k, -k})^{-1} d_{-k}, which is mathematically identical to full_covariance.
+        - "drop_one_diagonal": Drops component `dropped_index` and scores remaining components
+          with naive diagonal variances (demonstrating non-invariance).
+        - "legacy_unconstrained": Naive unconstrained sum of 3 independent z-scores (Brief 9),
+          which has an arithmetic floor of 452.99 when a_1 = 0.
+    dropped_index : int, optional
+        Component index to drop for "drop_one" or "drop_one_diagonal" (0, 1, or 2).
+
+    Returns
+    -------
+    chi2 : float
+        Evaluated chi^2 metric.
+    """
+    a_pred = np.asarray(areas_pred, dtype=float)
+    a_pub = np.asarray(pub_areas, dtype=float)
+    s_pub = np.asarray(err_areas, dtype=float)
+    d = a_pred - a_pub
+
+    if method == "full_covariance":
+        _, cov_pinv, _ = get_barberis_amplitude_covariance(err_areas=s_pub)
+        return float(d @ cov_pinv @ d)
+    elif method == "drop_one":
+        k = 2 if dropped_index is None else int(dropped_index)
+        keep = [i for i in range(3) if i != k]
+        cov, _, _ = get_barberis_amplitude_covariance(err_areas=s_pub)
+        sub_cov = cov[np.ix_(keep, keep)]
+        sub_inv = np.linalg.inv(sub_cov)
+        d_sub = d[keep]
+        return float(d_sub @ sub_inv @ d_sub)
+    elif method == "drop_one_diagonal":
+        k = 2 if dropped_index is None else int(dropped_index)
+        keep = [i for i in range(3) if i != k]
+        z_sub = d[keep] / s_pub[keep]
+        return float(np.sum(z_sub ** 2))
+    elif method == "legacy_unconstrained":
+        z = d / s_pub
+        return float(np.sum(z ** 2))
+    else:
+        raise ValueError(
+            f"Unknown amplitude comparison method: {method!r}. "
+            f"Must be one of 'full_covariance', 'drop_one', 'drop_one_diagonal', 'legacy_unconstrained'."
+        )
 
 
 # -----------------------------------------------------------------------------
@@ -994,10 +1132,23 @@ def deact_components_log_likelihood(
     z_tau = (taus_pred_arr - pub_taus) / err_taus_arr
     ll_tau_points = -0.5 * (z_tau ** 2 + np.log(2.0 * np.pi * err_taus_arr ** 2))
     ll_taus = float(np.sum(ll_tau_points))
+    chi2_taus = float(np.sum(z_tau ** 2))
 
+    # Marginal z-scores for reporting
     z_area = (areas_pred_arr - pub_areas) / err_areas_arr
-    ll_area_points = -0.5 * (z_area ** 2 + np.log(2.0 * np.pi * err_areas_arr ** 2))
-    ll_areas = float(np.sum(ll_area_points)) if score_areas else 0.0
+
+    if kwargs.get("legacy_unconstrained", False):
+        chi2_areas = float(np.sum(z_area ** 2))
+        ll_area_points = -0.5 * (z_area ** 2 + np.log(2.0 * np.pi * err_areas_arr ** 2))
+        ll_areas = float(np.sum(ll_area_points)) if score_areas else 0.0
+    else:
+        cov, cov_pinv, det_sub = get_barberis_amplitude_covariance(record)
+        d_area = areas_pred_arr - pub_areas
+        chi2_areas = float(d_area @ cov_pinv @ d_area)
+        # Rank-2 degenerate Gaussian density on the simplex hyperplane (sum(a_i) = 1)
+        # Normalization factor for 2 DOF is (2*pi)^2 * det(Sigma_sub)
+        log_norm_areas = float(np.log((2.0 * np.pi) ** 2 * det_sub))
+        ll_areas = float(-0.5 * (chi2_areas + log_norm_areas)) if score_areas else 0.0
 
     total_ll = ll_taus + ll_areas
 
@@ -1027,6 +1178,9 @@ def deact_components_log_likelihood(
         tau_w_pub=tau_w_pub,
         tau_w_err=tau_w_err,
         z_tau_w=z_tw,
+        chi2_taus=chi2_taus,
+        chi2_areas=chi2_areas,
+        chi2_total=chi2_taus + chi2_areas,
     )
 
 
@@ -1059,8 +1213,13 @@ def deact_components_diagnostic_score(
     tau_sig = tuple(float(x) for x in (tau_diff / tau_errs_arr))
     area_sig = tuple(float(x) for x in (area_diff / area_errs_arr))
 
-    ll_tau = -0.5 * float(np.sum((tau_diff / tau_errs_arr) ** 2 + np.log(2.0 * np.pi * (tau_errs_arr ** 2))))
-    ll_area = -0.5 * float(np.sum((area_diff / area_errs_arr) ** 2 + np.log(2.0 * np.pi * (area_errs_arr ** 2))))
+    chi2_taus = float(np.sum((tau_diff / tau_errs_arr) ** 2))
+    ll_tau = -0.5 * float(chi2_taus + np.sum(np.log(2.0 * np.pi * (tau_errs_arr ** 2))))
+
+    cov, cov_pinv, det_sub = get_barberis_amplitude_covariance(deact_record)
+    chi2_areas = float(area_diff @ cov_pinv @ area_diff)
+    log_norm_areas = float(np.log((2.0 * np.pi) ** 2 * det_sub))
+    ll_area = float(-0.5 * (chi2_areas + log_norm_areas))
 
     sum_a = float(np.sum(pred_areas))
     tau_w_pred = float(np.sum(pred_areas * pred_taus) / sum_a) if sum_a != 0 else float(np.sum(pred_areas * pred_taus))
@@ -1089,4 +1248,7 @@ def deact_components_diagnostic_score(
         tau_w_residual_sigma=float(tau_w_sig),
         reconstruction_max_deviation=max_dev,
         steady_state_reached=steady_state_reached,
+        chi2_taus=chi2_taus,
+        chi2_areas=chi2_areas,
+        chi2_total=chi2_taus + chi2_areas,
     )

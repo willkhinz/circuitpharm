@@ -24,9 +24,11 @@ from circuitpharm.fitting.deact_components import (
     DeactComponentsDiagnostic,
     DeactComponentsLikelihoodResult,
     DeactFitResult,
+    compute_amplitude_chi2,
     deact_components_diagnostic_score,
     deact_components_log_likelihood,
     fit_triexponential_decay,
+    get_barberis_amplitude_covariance,
     get_barberis_errors,
     parse_barberis_component_errors,
     parse_deactivation_errors,
@@ -315,26 +317,147 @@ def test_structured_error_promotion_matches_prose_parsing():
 
 
 def test_deact_components_log_likelihood():
-    """Deliverable 2: Likelihood scoring against published values and errors."""
+    """Deliverable 2: Likelihood scoring against published values and errors (Weighting iv)."""
     row = DEACTIVATIONS[1]
     true_taus, true_areas = row.components
     err_taus, err_areas = row.component_errors
 
+    # 1. Canonical full-covariance likelihood (Brief 10)
     res = deact_components_log_likelihood(true_taus, true_areas, deact_row=row)
     assert isinstance(res, DeactComponentsLikelihoodResult)
     np.testing.assert_allclose(res.z_taus, (0.0, 0.0, 0.0), atol=1e-12)
     np.testing.assert_allclose(res.z_areas, (0.0, 0.0, 0.0), atol=1e-12)
+    assert res.chi2_taus == pytest.approx(0.0, abs=1e-12)
+    assert res.chi2_areas == pytest.approx(0.0, abs=1e-12)
+    assert res.chi2_total == pytest.approx(0.0, abs=1e-12)
 
+    cov, cov_pinv, det_sub = get_barberis_amplitude_covariance(row)
     expected_ll_t = float(-0.5 * sum(np.log(2 * np.pi * s**2) for s in err_taus))
-    expected_ll_a = float(-0.5 * sum(np.log(2 * np.pi * s**2) for s in err_areas))
+    expected_ll_a = float(-0.5 * np.log((2.0 * np.pi)**2 * det_sub))
     assert abs(res.ll_taus - expected_ll_t) < 1e-10
     assert abs(res.ll_areas - expected_ll_a) < 1e-10
     assert abs(res.total_log_likelihood - (expected_ll_t + expected_ll_a)) < 1e-10
 
-    # Test 1-sigma perturbation on tau1: LL must drop by exactly 0.5 nats
+    # 2. Legacy unconstrained view
+    res_leg = deact_components_log_likelihood(true_taus, true_areas, deact_row=row, legacy_unconstrained=True)
+    expected_ll_a_leg = float(-0.5 * sum(np.log(2 * np.pi * s**2) for s in err_areas))
+    assert abs(res_leg.ll_areas - expected_ll_a_leg) < 1e-10
+
+    # 3. Test 1-sigma perturbation on tau1: LL must drop by exactly 0.5 nats
     perturbed_taus = (true_taus[0] + err_taus[0], true_taus[1], true_taus[2])
     res_pert = deact_components_log_likelihood(perturbed_taus, true_areas, deact_row=row)
     assert abs(res.total_log_likelihood - res_pert.total_log_likelihood - 0.5) < 1e-10
+
+
+def test_amplitude_objective_has_no_arithmetic_floor():
+    """Brief 10 Task 1: Explicitly demonstrate that corrected amplitude objective has NO arithmetic floor.
+
+    1. At the published values (0.57, 0.23, 0.20), chi^2 is 0.0.
+    2. At a 1-sigma perturbation on the simplex, chi^2 is of order degrees of freedom (2), NOT 450.
+    3. At a1 = 0, minimising over (0, x, 1-x) yields chi^2 = (0.57/0.04)^2 = 203.0625 at x = 0.4259,
+       completely eliminating the 249.92 double-counting floor of the legacy objective (which gave 452.9856).
+    """
+    row = DEACTIVATIONS[1]
+    _, pub_areas = row.components
+    _, err_areas = row.component_errors
+
+    # 1. At published optimum: chi^2 = 0
+    chi2_target = compute_amplitude_chi2(pub_areas, pub_areas, err_areas)
+    assert chi2_target == pytest.approx(0.0, abs=1e-12)
+
+    # 2. At 1-sigma eigenvector perturbation: chi^2 is order of degrees of freedom (~1.0 to 2.0)
+    cov, cov_pinv, _ = get_barberis_amplitude_covariance(err_areas=err_areas)
+    eigvals, eigvecs = np.linalg.eigh(cov)
+    # The two non-zero eigenmodes on the simplex
+    v_mode1 = eigvecs[:, 1] * np.sqrt(eigvals[1])
+    pert_triple = pub_areas + v_mode1
+    assert np.isclose(np.sum(pert_triple), 1.0, atol=1e-12)
+    chi2_pert = compute_amplitude_chi2(pert_triple, pub_areas, err_areas)
+    assert chi2_pert == pytest.approx(1.0, abs=1e-10)
+    assert chi2_pert < 5.0, f"Perturbed chi^2 must be of order dof (2), got {chi2_pert}"
+
+    # 3. Minimum when a_1 = 0: exactly (0.57 / 0.04)^2 = 203.0625, no double-counting floor
+    # In legacy unconstrained: min chi^2 over (0, x, 1-x) was 452.9856 at x = 0.4054
+    x_opt = 0.4259375
+    a_zero_fast = np.array([0.0, x_opt, 1.0 - x_opt])
+    chi2_zero_fast = compute_amplitude_chi2(a_zero_fast, pub_areas, err_areas)
+    expected_fast_mismatch = (0.57 / 0.04) ** 2  # 203.0625
+    assert chi2_zero_fast == pytest.approx(expected_fast_mismatch, rel=1e-6)
+
+    # Compare against legacy unconstrained objective which had the 452.99 floor
+    chi2_legacy_at_x = compute_amplitude_chi2(np.array([0.0, 0.40538, 0.59462]), pub_areas, err_areas, method="legacy_unconstrained")
+    assert chi2_legacy_at_x == pytest.approx(452.9856, abs=1e-2)
+
+
+def test_amplitude_drop_one_invariance_and_full_covariance():
+    """Brief 10 Task 1: Check invariance to dropped component.
+
+    - Under full rank-2 covariance, dropping component 0, 1, or 2 yields IDENTICAL chi^2 (to 1e-12).
+    - Under naive diagonal weighting, dropping component 0, 1, or 2 yields divergent chi^2,
+      proving naive drop-one without covariance is invalid.
+    """
+    row = DEACTIVATIONS[1]
+    _, pub_areas = row.components
+    _, err_areas = row.component_errors
+
+    # Test across multiple non-trivial simplex vectors
+    test_vectors = [
+        np.array([0.0, 0.4054, 0.5946]),
+        np.array([0.50, 0.30, 0.20]),
+        np.array([0.60, 0.20, 0.20]),
+        np.array([0.57 + 0.04, 0.23 - 0.04, 0.20]),
+    ]
+
+    for vec in test_vectors:
+        chi2_full = compute_amplitude_chi2(vec, pub_areas, err_areas, method="full_covariance")
+        chi2_drop0 = compute_amplitude_chi2(vec, pub_areas, err_areas, method="drop_one", dropped_index=0)
+        chi2_drop1 = compute_amplitude_chi2(vec, pub_areas, err_areas, method="drop_one", dropped_index=1)
+        chi2_drop2 = compute_amplitude_chi2(vec, pub_areas, err_areas, method="drop_one", dropped_index=2)
+
+        # Invariance check: ALL three drop options match full_covariance exactly
+        assert chi2_drop0 == pytest.approx(chi2_full, abs=1e-10)
+        assert chi2_drop1 == pytest.approx(chi2_full, abs=1e-10)
+        assert chi2_drop2 == pytest.approx(chi2_full, abs=1e-10)
+
+        # Naive diagonal check: dropping without covariance fails invariance
+        diag_drop0 = compute_amplitude_chi2(vec, pub_areas, err_areas, method="drop_one_diagonal", dropped_index=0)
+        diag_drop1 = compute_amplitude_chi2(vec, pub_areas, err_areas, method="drop_one_diagonal", dropped_index=1)
+        diag_drop2 = compute_amplitude_chi2(vec, pub_areas, err_areas, method="drop_one_diagonal", dropped_index=2)
+        if not np.allclose(vec, pub_areas):
+            assert not (np.isclose(diag_drop0, diag_drop1) and np.isclose(diag_drop1, diag_drop2)), (
+                f"Naive diagonal drop-one unexpectedly invariant for {vec}"
+            )
+
+
+def test_amplitude_covariance_algebraic_properties():
+    """Verify algebraic properties of the rank-2 amplitude covariance matrix."""
+    row = DEACTIVATIONS[1]
+    _, err_areas = row.component_errors
+
+    cov, cov_pinv, det_sub = get_barberis_amplitude_covariance(err_areas=err_areas)
+
+    # 1. Zero row-sum condition: Sigma @ 1 = 0
+    np.testing.assert_allclose(cov @ np.ones(3), np.zeros(3), atol=1e-15)
+    np.testing.assert_allclose(cov_pinv @ np.ones(3), np.zeros(3), atol=1e-10)
+
+    # 2. Diagonal matches published variances s_i^2
+    np.testing.assert_allclose(np.diag(cov), np.asarray(err_areas)**2, atol=1e-15)
+
+    # 3. Off-diagonal elements match unique zero-sum solution
+    v = np.asarray(err_areas)**2
+    assert cov[0, 1] == pytest.approx(0.5 * (v[2] - v[0] - v[1]))
+    assert cov[0, 2] == pytest.approx(0.5 * (v[1] - v[0] - v[2]))
+    assert cov[1, 2] == pytest.approx(0.5 * (v[0] - v[1] - v[2]))
+
+    # 4. Rank is exactly 2
+    eigvals = np.linalg.eigvalsh(cov)
+    assert abs(eigvals[0]) < 1e-15
+    assert eigvals[1] > 0.0
+    assert eigvals[2] > 0.0
+
+    # 5. Pseudo-inverse Moore-Penrose conditions
+    np.testing.assert_allclose(cov @ cov_pinv @ cov, cov, atol=1e-10)
+    np.testing.assert_allclose(cov_pinv @ cov @ cov_pinv, cov_pinv, atol=1e-10)
 
 
 def test_grid_sensitivity_check():
