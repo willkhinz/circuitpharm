@@ -115,6 +115,39 @@ def test_kinetic_jw95_model_protocol_and_behavior():
     assert np.all(np.abs(sums - 1.0) < 1e-4)
 
 
+def test_kinetic_jw95_a2d_connectivity_is_strictly_to_a2r():
+    """Assert that in Model B (JW95), A2D connects strictly to A2R, not to A2O.
+
+    States: 0: R, 1: AR, 2: A2R, 3: A2O, 4: A2D.
+    Desensitisation enters from doubly-bound closed A2R (rate d) and resensitises
+    exclusively to A2R (rate r). It does NOT connect to or from open state A2O.
+    """
+    model = KineticAllosteryModel()
+    q = model.q_matrix(gaba_um=100.0)
+
+    # Row 4 (A2D outgoing transitions): only non-diagonal entry is to column 2 (A2R)
+    for col in range(5):
+        if col == 4:
+            assert q[4, col] == -model.r, f"A2D diagonal should be -r, got {q[4, col]}"
+        elif col == 2:
+            assert q[4, col] == model.r, f"A2D -> A2R rate should be r, got {q[4, col]}"
+        else:
+            assert q[4, col] == 0.0, f"A2D transition to state {col} must be 0, got {q[4, col]}"
+
+    # Column 4 (incoming transitions into A2D): only non-diagonal entry is from row 2 (A2R)
+    for row in range(5):
+        if row == 4:
+            continue
+        elif row == 2:
+            assert q[row, 4] == model.d, f"A2R -> A2D rate should be d, got {q[row, 4]}"
+        else:
+            assert q[row, 4] == 0.0, f"Transition from state {row} to A2D must be 0, got {q[row, 4]}"
+
+    # Explicit negative assertions: no direct connection with open state A2O (index 3)
+    assert q[4, 3] == 0.0, "A2D must not transition to A2O (open state)"
+    assert q[3, 4] == 0.0, "A2O (open state) must not transition to A2D"
+
+
 def test_extended_desensitization_model_protocol_and_behavior():
     model = ExtendedDesensitizationModel()
     assert isinstance(model, ReceptorModel)
