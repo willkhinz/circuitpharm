@@ -24,7 +24,7 @@ from dataclasses import dataclass
 import numpy as np
 
 from ..gabaa_kinetics import FIT_RANGES, FIT_TARGETS, po_max_anchor_log_likelihood
-from ..models.base import DecayFit, Observable, ObservableMismatch, WaveformResult
+from ..models.base import DecayFit, Observable, ObservableMismatch, WaveformResult, OPEN_STATE_INDEX
 from ..protocols.waveforms import paired_pulse_ratio
 from .data import NoiseModel, assert_real_data, holdout_guard
 from .identifiability import IDENTIFIABLE_BOUNDS
@@ -213,6 +213,126 @@ def predict_paired_pulse_recovery(
     return np.asarray([ratio], dtype=float)
 
 
+def predict_mean_open_time(model, ds=None) -> np.ndarray:
+    r"""Predicted mean open duration (in ms) derived from the generator matrix.
+
+    Derivation from the infinitesimal generator matrix Q:
+    -----------------------------------------------------
+    Let the discrete state space of a Markov gating model be partitioned into
+    the set of conducting open states \mathcal{O} and the set of non-conducting
+    shut states \mathcal{C}. The transition-rate matrix Q (where rows sum to zero)
+    is partitioned as:
+        Q = [ Q_{\mathcal{O}\mathcal{O}}  Q_{\mathcal{O}\mathcal{C}} ]
+            [ Q_{\mathcal{C}\mathcal{O}}  Q_{\mathcal{C}\mathcal{C}} ]
+    where Q_{\mathcal{O}\mathcal{O}} is the sub-generator for transitions within
+    the open set, and Q_{\mathcal{O}\mathcal{C}} describes exits from \mathcal{O}
+    to the shut set \mathcal{C}.
+
+    In single-channel burst theory (Colquhoun & Hawkes 1981, 1982), the open
+    lifetime (dwell time in \mathcal{O} before the first exit to \mathcal{C})
+    is a phase-type random variable with representation (\pi_{\mathcal{O}}, Q_{\mathcal{O}\mathcal{O}}).
+    The vector \pi_{\mathcal{O}} defines the initial probability distribution across
+    open states upon entry from \mathcal{C}:
+        \pi_{\mathcal{O}} = \frac{p_{\mathcal{C}}^* Q_{\mathcal{C}\mathcal{O}}}{p_{\mathcal{C}}^* Q_{\mathcal{C}\mathcal{O}} \mathbf{1}}
+    where p_{\mathcal{C}}^* is the steady-state occupancy of shut states.
+
+    In all schemes considered in this project (kinetic_jw95, kinetic_open_desens,
+    kinetic_flip, kinetic_two_open, kinetic_coop), there is exactly one gateway edge
+    connecting the shut set to the open set: A2R -> A2O with rate \beta (or A2F -> A2O
+    in kinetic_flip). Because no shut state connects directly to any secondary open
+    state (such as A2O'), the entry flux into \mathcal{O} is concentrated 100% in A2O:
+        \pi_{\mathcal{O}} = (1, 0, \dots, 0).
+
+    The survival function of the open dwell time is:
+        S(t) = P(T > t) = \pi_{\mathcal{O}} \exp(Q_{\mathcal{O}\mathcal{O}} t) \mathbf{1}.
+    Integrating over t \in [0, \infty) yields the expected open duration before closing:
+        \langle \tau_O \rangle = \int_0^\infty S(t) dt = \pi_{\mathcal{O}} (-Q_{\mathcal{O}\mathcal{O}})^{-1} \mathbf{1}.
+
+    1. Schemes with One Open State (kinetic_jw95, kinetic_open_desens, kinetic_flip):
+       \mathcal{O} = {A2O}.
+       Q_{\mathcal{O}\mathcal{O}} = [-\alpha] (or -(\alpha + d) for kinetic_open_desens).
+       \pi_{\mathcal{O}} = [1].
+       \langle \tau_O \rangle = 1 / \alpha   (or 1 / (\alpha + d)).
+
+    2. Schemes with Two Sequential Open States (kinetic_two_open, kinetic_coop):
+       \mathcal{O} = {A2O, A2O'}.
+       Gateway closing: A2O -> A2R at rate \alpha.
+       Sequential opening/closing: A2O -> A2O' at rate \delta; A2O' -> A2O at rate \gamma.
+       The open sub-generator is:
+           Q_{\mathcal{O}\mathcal{O}} = [ -(\alpha + \delta)     \delta  ]
+                                        [      \gamma           -\gamma ]
+       Its negative is:
+           -Q_{\mathcal{O}\mathcal{O}} = [ \alpha + \delta    -\delta ]
+                                         [   -\gamma           \gamma ]
+       The determinant is:
+           \det(-Q_{\mathcal{O}\mathcal{O}}) = (\alpha + \delta)\gamma - (-\delta)(-\gamma)
+                                            = \alpha \gamma + \delta \gamma - \delta \gamma
+                                            = \alpha \gamma.
+       The fundamental matrix of open states is:
+           (-Q_{\mathcal{O}\mathcal{O}})^{-1} = \frac{1}{\alpha \gamma} [    \gamma            \delta       ]
+                                                                        [    \gamma        \alpha + \delta  ]
+                                              = [ 1/\alpha      \delta / (\alpha \gamma)      ]
+                                                [ 1/\alpha   (\alpha + \delta) / (\alpha \gamma) ]
+       With entry distribution \pi_{\mathcal{O}} = (1, 0):
+           \pi_{\mathcal{O}} (-Q_{\mathcal{O}\mathcal{O}})^{-1} = [ 1/\alpha,  \delta / (\alpha \gamma) ].
+       Summing over open states (\cdot \mathbf{1}) yields the exact mean open dwell time:
+           \langle \tau_O \rangle = \frac{1}{\alpha} + \frac{\delta}{\alpha \gamma}
+                                  = \frac{1}{\alpha} \left( 1 + \frac{\delta}{\gamma} \right).
+
+       Physical meaning:
+       1/\alpha is the mean total time spent in A2O before closing to A2R.
+       \delta / \alpha is the expected number of excursions to A2O' before closing.
+       1/\gamma is the mean duration of each visit to A2O'.
+       The product (\delta / \alpha)(1/\gamma) is the expected total time spent in A2O'.
+       The sum is the total mean open time. When \delta = 0 or \gamma \to \infty,
+       the expression continuously reduces to 1/\alpha, preserving structural nesting.
+    """
+    if ds is not None:
+        obs = getattr(ds, "observable", None)
+        if obs is not None and obs is not Observable.MEAN_OPEN_TIME:
+            raise ObservableMismatch(
+                f"{getattr(ds, 'citation_label', ds)!r} is {obs.value} data; "
+                f"predict_mean_open_time only evaluates Observable.MEAN_OPEN_TIME.")
+
+    open_idx = getattr(model, "open_indices", None)
+    if open_idx is None:
+        idx = getattr(model, "open_index", None)
+        if idx is not None:
+            open_idx = list(idx) if isinstance(idx, (tuple, list)) else [idx]
+        elif hasattr(model, "alpha"):
+            open_idx = [OPEN_STATE_INDEX]
+        else:
+            open_idx = None
+
+    if open_idx is not None and len(open_idx) == 2 and hasattr(model, "delta") and hasattr(model, "gamma") and hasattr(model, "alpha"):
+        alpha = float(model.alpha)
+        delta = float(model.delta)
+        gamma = float(model.gamma)
+        val = (1.0 / alpha) * (1.0 + delta / gamma)
+    elif open_idx is not None and len(open_idx) == 1 and hasattr(model, "alpha"):
+        if getattr(model, "name", "") == "KineticOpenDesens" and hasattr(model, "d"):
+            val = 1.0 / (float(model.alpha) + float(model.d))
+        else:
+            val = 1.0 / float(model.alpha)
+    elif hasattr(model, "q_matrix") and open_idx is not None:
+        Q = model.q_matrix(0.0)
+        Q_OO = Q[np.ix_(open_idx, open_idx)]
+        pi_O = np.zeros(len(open_idx), dtype=float)
+        pi_O[0] = 1.0
+        val = float(pi_O @ np.linalg.inv(-Q_OO) @ np.ones(len(open_idx), dtype=float))
+    else:
+        raise ObservableMismatch(
+            f"{type(model).__name__} has no Markov states or closing rate alpha, "
+            f"so it has no physical open-state dwell time.")
+
+    if ds is not None:
+        y_obs = _observed(ds)
+        if y_obs.ndim == 0:
+            return np.asarray(val, dtype=float)
+        return np.asarray([val], dtype=float)
+    return float(val)
+
+
 def _predict(model, ds):
     """Model prediction for one dataset, ON THAT DATASET'S OBSERVABLE AND SCALE."""
     obs = ds.observable
@@ -247,13 +367,16 @@ def _predict(model, ds):
     elif obs is Observable.PAIRED_PULSE_RECOVERY:
         # A scalar ratio, already normalised to its own first pulse amplitude by construction.
         return predict_paired_pulse_recovery(model, ds)
+    elif obs is Observable.MEAN_OPEN_TIME:
+        # Scalar mean open duration in ms derived from infinitesimal generator
+        return predict_mean_open_time(model, ds)
     else:
         raise ObservableMismatch(
             f"{ds.citation_label!r} is tagged {obs.value}; this likelihood handles "
             f"concentration-response datasets (PEAK or EQUILIBRIUM), DEACTIVATION time "
-            f"courses, and PAIRED_PULSE_RECOVERY ratios. A CHARGE dataset is an integral "
-            f"over a window rather than a decay shape or ratio, and still needs its own "
-            f"door -- see protocols/waveforms.py.")
+            f"courses, PAIRED_PULSE_RECOVERY ratios, and MEAN_OPEN_TIME observations. "
+            f"A CHARGE dataset is an integral over a window rather than a decay shape or "
+            f"ratio, and still needs its own door -- see protocols/waveforms.py.")
 
     if getattr(ds, "normalisation", "absolute") == "fraction_of_max":
         # The data is I/I_max, so the prediction must be P/P(c_max) -- divided at the SAME
@@ -282,6 +405,13 @@ def _observed(ds):
     obs = getattr(ds, "observable", None)
     if obs is Observable.DEACTIVATION:
         return np.asarray(ds.normalized_current, dtype=float)
+    if obs is Observable.MEAN_OPEN_TIME:
+        val = getattr(ds, "mean_open_time_ms", getattr(ds, "mean_response", None))
+        if val is None:
+            raise ObservableMismatch(
+                f"{getattr(ds, 'citation_label', ds)!r} is tagged MEAN_OPEN_TIME and carries "
+                f"no mean_open_time_ms column.")
+        return np.asarray(val, dtype=float)
     if not hasattr(ds, "mean_response"):
         # Reached before `_predict` can explain itself, because the observed column is read
         # first. Without this, a CHARGE dataset fails with
@@ -290,9 +420,10 @@ def _observed(ds):
         raise ObservableMismatch(
             f"{getattr(ds, 'citation_label', ds)!r} is tagged "
             f"{getattr(obs, 'value', obs)!r} and carries no response column this likelihood "
-            f"can read. PEAK, EQUILIBRIUM and PAIRED_PULSE_RECOVERY datasets supply `mean_response`; "
-            f"DEACTIVATION supplies `normalized_current`. A CHARGE dataset is an integral over a "
-            f"window rather than either, and still needs its own door -- see protocols/waveforms.py.")
+            f"can read. PEAK, EQUILIBRIUM, PAIRED_PULSE_RECOVERY and MEAN_OPEN_TIME datasets "
+            f"supply observations; DEACTIVATION supplies `normalized_current`. A CHARGE "
+            f"dataset is an integral over a window rather than either, and still needs its own "
+            f"door -- see protocols/waveforms.py.")
     return np.asarray(ds.mean_response, dtype=float)
 
 

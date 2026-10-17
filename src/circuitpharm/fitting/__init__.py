@@ -33,6 +33,12 @@ from .data import (
     MeanOpenTimeConditioning,
     MEAN_OPEN_TIME_CONDITIONINGS,
     PairedPulseDataset,
+    KERAMIDAS2008_MEAN_OPEN_TIME_M,
+    KERAMIDAS2008_MEAN_OPEN_TIME_H,
+    LI2008_MEAN_OPEN_TIME,
+    KERAMIDAS_M_MODE_BAND,
+    KERAMIDAS_H_MODE_BAND,
+    KERAMIDAS_MODAL_SPAN,
     assert_real_data,
     holdout_guard,
 )
@@ -74,6 +80,8 @@ from .likelihood import (
     fit_mle,
     fit_mle_vector,
     make_log_likelihood,
+    predict_paired_pulse_recovery,
+    predict_mean_open_time,
     score_holdout,
 )
 from .comparison import (

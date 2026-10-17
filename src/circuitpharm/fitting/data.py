@@ -231,6 +231,7 @@ class MeanOpenTimeDataset:
     conditioning: MeanOpenTimeConditioning
     conc_mm: float | None = None
     sem_ms: float | None = None
+    band: tuple[float, float] | None = None
     observable: Observable = Observable.MEAN_OPEN_TIME
     kind: DataKind = "digitised"
     synthetic: bool = False
@@ -831,6 +832,97 @@ BARBERIS2007_PAIRED_PULSE = PairedPulseDataset(
     ),
     role="holdout",
     noise_model="stated_sem",
+)
+
+#: Keramidas & Harrison 2008 single-channel mean open time datasets and band intervals.
+#: Scored as interval/band constraints without an invented sigma because the source error
+#: convention is UNSTATED. The M-mode (medium P_o, 11 of ~15 patches) and H-mode (high P_o, 5 patches)
+#: represent modal gating (switching between kinetic modes over seconds), NOT two open states
+#: within a burst.
+KERAMIDAS_M_MODE_BAND = (2.54, 2.83)   # propagated from component tau errors at weighted mean 2.68 ms
+KERAMIDAS_H_MODE_BAND = (5.86, 8.63)   # propagated from component tau errors at weighted mean 7.25 ms
+KERAMIDAS_MODAL_SPAN = (2.54, 8.63)    # full modal envelope spanning both gating modes
+
+KERAMIDAS2008_MEAN_OPEN_TIME_M = MeanOpenTimeDataset(
+    citation_label="Keramidas & Harrison 2008 (M-mode mean open time)",
+    mean_open_time_ms=2.68,
+    conditioning="INTRABURST",
+    conc_mm=10.0,
+    sem_ms=None,  # UNSTATED error convention in source; scored as band constraint
+    band=KERAMIDAS_M_MODE_BAND,
+    observable=Observable.MEAN_OPEN_TIME,
+    kind="digitised",
+    synthetic=False,
+    source_key="keramidas2008",
+    figure="Table III",
+    digitisation=(
+        "Area-weighted mean (2.68 ms) computed from Table III components: "
+        "tau_O = (0.49, 2.58, 5.17) ms, areas = (0.26, 0.49, 0.25), n = 10 patches. "
+        "Component tau errors +/- (0.02, 0.09, 0.38) span [2.54, 2.83] ms. Error kind UNSTATED."
+    ),
+    preparation="HEK293 outside-out excised patch, rat alpha1beta2gamma2S, 21 +/- 1 C, -70 mV",
+    n_cells=10,
+    origin=(
+        "Keramidas & Harrison 2008 J Gen Physiol 131:163-181 Table III: M-mode intraburst "
+        "open times at 10 mM GABA in rat alpha1beta2gamma2S. Medium P_o gating mode observed in "
+        "11 of ~15 patches."
+    ),
+    role="train",
+    noise_model="estimated",
+)
+
+KERAMIDAS2008_MEAN_OPEN_TIME_H = MeanOpenTimeDataset(
+    citation_label="Keramidas & Harrison 2008 (H-mode mean open time)",
+    mean_open_time_ms=7.25,
+    conditioning="INTRABURST",
+    conc_mm=10.0,
+    sem_ms=None,  # UNSTATED error convention in source; scored as band constraint
+    band=KERAMIDAS_H_MODE_BAND,
+    observable=Observable.MEAN_OPEN_TIME,
+    kind="digitised",
+    synthetic=False,
+    source_key="keramidas2008",
+    figure="Table III",
+    digitisation=(
+        "Area-weighted mean (7.25 ms) computed from Table III components: "
+        "tau_O = (0.59, 4.22, 13.2) ms, areas = (0.18, 0.41, 0.41), n = 5 patches. "
+        "Component tau errors +/- (0.11, 0.73, 2.6) span [5.86, 8.63] ms. Error kind UNSTATED."
+    ),
+    preparation="HEK293 outside-out excised patch, rat alpha1beta2gamma2S, 21 +/- 1 C, -70 mV",
+    n_cells=5,
+    origin=(
+        "Keramidas & Harrison 2008 J Gen Physiol 131:163-181 Table III: H-mode intraburst "
+        "open times at 10 mM GABA in rat alpha1beta2gamma2S. High P_o gating mode observed in "
+        "5 patches."
+    ),
+    role="train",
+    noise_model="estimated",
+)
+
+LI2008_MEAN_OPEN_TIME = MeanOpenTimeDataset(
+    citation_label="Li et al. 2008 / Li et al. 2007b control (intracluster mean open time)",
+    mean_open_time_ms=2.96,
+    conditioning="INTRACLUSTER",
+    conc_mm=0.05,  # 50 uM GABA is sub-saturating
+    sem_ms=None,   # source reports SD, not SEM
+    observable=Observable.MEAN_OPEN_TIME,
+    kind="digitised",
+    synthetic=False,
+    source_key="li2008",
+    figure="Table 1",
+    digitisation=(
+        "Area-weighted mean (2.96 ms) computed from Table 1 (Li et al. 2007b control): "
+        "OT = (0.28, 3.0, 7.3) ms, areas = (0.22, 0.65, 0.13), n = 4 patches. "
+        "Reported error kind is SD. Rat alpha1beta2gamma2L (different splice variant from gamma2S)."
+    ),
+    preparation="HEK293 cell-attached single-channel patch, rat alpha1beta2gamma2L, room temperature",
+    n_cells=4,
+    origin=(
+        "Li et al. 2008 Br J Pharmacol 153:598-608 Table 1 citing Li et al. 2007b J Physiol 584:789-800: "
+        "intracluster open time at sub-saturating 50 uM GABA on rat alpha1beta2gamma2L."
+    ),
+    role="train",
+    noise_model="estimated",
 )
 
 #: What is still missing, named so it cannot be forgotten (roadmap P1-2, P3).
