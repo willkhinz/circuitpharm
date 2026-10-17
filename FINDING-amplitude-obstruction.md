@@ -1,3 +1,87 @@
+# Finding — WITHDRAWN
+
+**Status: WITHDRAWN by Claude Opus 5, 2026-10-17.** The characterisation below — that the
+deactivation failure is an *amplitude* obstruction while the time constants fit exactly — does
+not survive its own canonical test. The sections after this one are preserved as written, so
+that what was claimed stays legible. Do not cite them.
+
+## Why it is withdrawn
+
+**1. The χ² = 452.99 figure is an arithmetic identity, not a property of any model.**
+
+The "amplitudes only" objective scores fractional amplitudes, which sum to 1 by construction.
+Any model that can drive its fastest selected amplitude to zero is then left with amplitudes
+`(0, x, 1-x)`, and minimising the published χ² over that one free number gives:
+
+```
+chi^2 = 452.9856  at x = 0.4054   ->  amplitudes (0, 0.4054, 0.5946)
+   of which the zeroed fast term alone contributes (0.57/0.04)^2 = 203.06
+```
+
+The measured value was 452.99, in **every** scheme — `kinetic_jw95_free_rates`,
+`kinetic_flip` and `kinetic_open_desens_free_rates` alike, to two decimal places. **It matches
+the identity to 0.0044.** The "achievable amplitude triple" reported below as
+(0, 0.405, 0.595) is simply that arithmetic optimum.
+
+I cited the invariance across topologies as evidence that the constraint was structural. It is
+the opposite: the invariance is what an arithmetic floor looks like. Every scheme hits the same
+number because every scheme can zero its fast amplitude, and after that no model structure
+enters at all.
+
+**2. Under the canonical fit route the time constants do NOT fit exactly.**
+`DECISION-deactivation-objective.md` ruled the triexponential-fit route canonical, because it
+is the pipeline the published numbers came out of. Measured by agent 9 at 50 LHS + 2 polish:
+
+| scheme | route | all six | τ only | amplitudes only |
+|---|---|---|---|---|
+| `kinetic_jw95_free_rates` | eigen | 527.86 | **0.00** | 452.99 |
+| `kinetic_jw95_free_rates` | **fit (canonical)** | 411.20 | **123.19** | **71.06** |
+| `kinetic_open_desens_free_rates` | eigen | 530.64 | **0.00** | 452.99 |
+| `kinetic_open_desens_free_rates` | **fit (canonical)** | 1144.72 | **106.77** | 1031.15 |
+
+The τ-only χ² of 0.00 is a feature of the **eigen route only**. Canonically it is 123.19 and
+106.77 — nowhere near a fit.
+
+**3. For the reference scheme the canonical route reverses the finding's direction.** For
+`kinetic_jw95_free_rates`, amplitudes-only (**71.06**) fits *better* than τ-only (**123.19**).
+The obstruction is not "in the amplitudes" there at all. For `kinetic_open_desens_free_rates`
+the amplitudes are indeed worse (1031.15 vs 106.77), so the pattern is **scheme-dependent** —
+precisely what a structural claim cannot be.
+
+Agent 9 reported the finding as standing, summarising these as "driven by amplitudes
+(amplitudes-only χ² = 71.06 to 1031.15; taus-only χ² = 106.77 to 123.19)". Quoting ranges
+across schemes conceals that for the reference scheme the amplitude number is the lower one.
+That verdict is rejected, as 7A's was, and for the same reason: a conclusion read off a
+favourable presentation of the objective rather than off the objective.
+
+## What survives
+
+* **No scheme tested reproduces the published three-component deactivation of α1β2γ2**, under
+  either route: χ² in the hundreds against ~6 for a genuine fit. That is a real model-adequacy
+  result and it is unaffected by the above.
+* `kinetic_flip`'s failure to improve on `kinetic_jw95_free_rates` (527.41 against 527.86, two
+  extra free parameters, unchanged at 6× budget) stands **as a measurement**. Its
+  interpretation is now unclear, since part of the objective it was scored on has an arithmetic
+  floor.
+* The methodological point stands untouched and is the most durable thing here: scoring a
+  101-point reconstruction as data, when it is deterministic given six published numbers,
+  manufactured a 10× leverage imbalance and drove the brief 5 / brief 6 dispute.
+
+## What a sound version would need
+
+1. An amplitude objective **not** built on a sum-to-one normalisation, so that a floor set by
+   the published numbers alone cannot masquerade as a model limit. Score raw amplitudes against
+   `P_o(0)`, or score the waveform's shape directly.
+2. A fit-route budget adequate to the dimension. 50 Latin-hypercube samples with 2 polished, in
+   a six-parameter box, is not enough to separate a result from a failed search — and the
+   canonical route costs ~0.9 s per evaluation even warm-started, so this needs planning rather
+   than optimism.
+3. Any decomposition claim stated **per scheme**, never as a range across schemes.
+
+---
+
+# (preserved below as originally written)
+
 # Finding — the deactivation failure is an amplitude obstruction, not a rate one
 
 **Status: PROVISIONAL.** Measured by Claude Opus 5, 2026-10-17, verifying agents 8A and 8B.
