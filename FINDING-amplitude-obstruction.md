@@ -48,20 +48,47 @@ runs the two schemes agree to **two decimal places on all three numbers**. Re-ru
 search budget (9000 Latin-hypercube starts, 40 polished) and a different seed**, the figures
 were unchanged: 527.86 and 527.41. This is not an under-search.
 
-## Why this plausibly happens
+## Why — WITHDRAWN, I was wrong twice
 
-Open probability is at its maximum when the relaxation begins. A fast component carrying 0.57
-of the amplitude at τ = 2.8 ms implies an initial slope of about 0.2 per ms — the current
-losing more than half its value within a few milliseconds. In every scheme here the open state
-is fed by the liganded shut states (`A2R`, or `A2F`), which remain heavily occupied at that
-moment and hold open probability up. The reservoir buffers the open state and forbids a fast,
-large-amplitude decay.
+This section originally argued that open probability starts at its maximum, that a
+0.57-amplitude component at τ = 2.8 ms implies an initial slope near 0.2/ms, and that the
+liganded shut states buffer the open state and forbid such a decay. **I tested that and it is
+false.** Both attempts to explain the obstruction failed:
 
-If that reading is right, the mechanisms that could supply one are those that **remove open
-channels quickly** rather than inserting more shut states upstream: desensitisation or block
-directly from the open state, or a second open state. Note `kinetic_open_desens` *is* that
-topology but has only **3** free parameters — its rate conventions were never freed — so it has
-not actually been tested. That is the next experiment, not a conclusion.
+**Attempt 1 — an initial-slope limit.** The published components fix the initial normalised
+decay rate at Σ aᵢ/τᵢ = **0.2114 ± 0.0261 /ms** (96.3% of it from the fast component). The same
+quantity for a model is `-(p_end @ Q₀)[open] / p_end[open]`, computable from the generator with
+no decomposition, no fit and no selection rule. Maximised over each box:
+
+| scheme | max achievable Σaᵢ/τᵢ | vs required | `po_max` there |
+|---|---|---|---|
+| `kinetic_jw95_free_rates` | 3.0925 /ms | **14.63×** | 0.0099 |
+| `kinetic_flip` | 3.3538 /ms | 15.87× | 0.0000 |
+| `kinetic_open_desens` | 1.9392 /ms | 9.17× | 0.9990 |
+| `extended_desens` | 0.2917 /ms | 1.38× | 0.0099 |
+
+Every scheme can decay far faster than required, so there is no slope limit. The test also
+measured the wrong proxy: the model reaches a large Σaᵢ/τᵢ with a *tiny* amplitude at a *tinier*
+τ (0.003 at 0.0051 ms), where the published value comes from a moderate amplitude at a moderate
+τ.
+
+**Attempt 2 — a fast mode that cannot carry amplitude.** Maximising the fractional amplitude
+carried by modes with τ inside the published τ₁ ± 1σ window (2.5–3.1 ms), with `po_max`
+constrained to [0.70, 0.80], `kinetic_jw95_free_rates` reaches **1.2404** at `po_max` = 0.7000,
+against the 0.57 required. So that is not the obstruction either.
+
+**A methodological hazard surfaced instead, and it bears on the numbers above.** The same
+search returned "amplitudes" of **194** and **9013**. Fractional amplitudes are `aᵢ / Σaⱼ`, and
+where `Σaⱼ → 0` that normalisation is ill-conditioned and explodes. An optimiser will find such
+regions. **Whether the χ² = 452.99 amplitudes-only figure is partly exploiting the same
+ill-conditioning has not been checked**, and brief 9 must check it: report the raw `Σaⱼ` at
+every reported optimum and reject any cell where it is near zero.
+
+**So the measurements in the table above stand, and the explanation does not.** The obstruction
+is some joint constraint over the components, `po_max` and the waveform that I have not
+identified. I am recording the two failed explanations rather than deleting them, because a
+plausible mechanism written into a findings document and left unchallenged is exactly the
+failure this project exists to prevent — and I wrote it.
 
 ## Why this matters
 
