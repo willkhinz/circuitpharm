@@ -607,6 +607,13 @@ _JAHN_RESP = _JAHN_X / (1.0 + _JAHN_X)
 _JAHN_SLOPE_WINDOW_UM = (1.0, 10.0)      # "between 0.001 and 0.01 mM GABA", verbatim
 _JAHN_OUTSIDE_HILL_RANGE = (1.3, 2.6)    # published whole-curve fits .. local upper bound
 
+#: Public aliases for Jahn 1997 published parameters (Weighting iv for CRC)
+JAHN_EC50_UM: float = _JAHN_EC50_UM
+JAHN_EC50_SEM: float = _JAHN_EC50_SEM
+JAHN_HILL: float = _JAHN_HILL
+JAHN_HILL_SEM: float = _JAHN_HILL_SEM
+JAHN_SLOPE_WINDOW_UM: tuple[float, float] = _JAHN_SLOPE_WINDOW_UM
+
 
 def _jahn_spread() -> np.ndarray:
     def half_range(hills) -> np.ndarray:

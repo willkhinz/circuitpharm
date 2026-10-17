@@ -29,6 +29,10 @@ DEFAULT_V_HOLD_MV = -60.0
 #: must not be shortened.
 PEAK_APPLICATION_MS = 300.0
 
+#: Index of the open state in both the 5- and 6-state schemes (A2O). Asserted in each
+#: model module against its own STATES tuple, so a reordering cannot desynchronise them.
+OPEN_STATE_INDEX = 3
+
 
 class Observable(str, Enum):
     """What a number is a number OF.
@@ -208,14 +212,15 @@ class DecayFit:
         return bool(np.isfinite(self.tau_weighted_ms))
 
 
-def resolve_initial_state(initial_state, n_states: int, resting: np.ndarray) -> np.ndarray:
+def resolve_initial_state(initial_state, n_states: int, resting: np.ndarray,
+                          open_index: int | Sequence[int] = OPEN_STATE_INDEX) -> np.ndarray:
     """Coerce a caller's initial condition into a full state vector on the simplex.
 
     Accepts:
       * None                  -> `resting`
-      * a scalar open prob    -> that value in the open state, with the remaining mass
-                                 distributed over `resting`'s NON-open states in their
-                                 resting proportions
+      * a scalar open prob    -> that value in the open state (or distributed across multiple
+                                 open states), with the remaining mass distributed over
+                                 `resting`'s NON-open states in their resting proportions
       * a length-n vector     -> validated (non-negative, sums to 1 within 1e-8)
 
     WHY A SCALAR IS HONOURED RATHER THAN REPLACED. `models/base.py` documents
@@ -225,8 +230,10 @@ def resolve_initial_state(initial_state, n_states: int, resting: np.ndarray) -> 
     crash: `kinetic_jw95.py` silently substituted the resting distribution, discarding the
     caller's instruction without a word (roadmap P0-1).
 
-    `open_index` is taken as the index of `resting`'s own open state by convention: both
-    schemes put A2O at index 3, which is asserted in the model modules.
+    `open_index` is taken as the index of `resting`'s own open state by convention (default
+    `OPEN_STATE_INDEX` = 3), or explicitly specified for schemes with different open-state
+    indices (e.g. 6-state pre-open kinetic_flip with open_index = 4, or multi-open schemes
+    with open_index = (3, 4)).
     """
     resting = np.asarray(resting, dtype=float)
     if resting.shape != (n_states,):
@@ -246,8 +253,18 @@ def resolve_initial_state(initial_state, n_states: int, resting: np.ndarray) -> 
                 f"got {p_open}. Pass a length-{n_states} state vector to set the full "
                 f"distribution.")
         out = np.zeros(n_states, dtype=float)
-        out[OPEN_STATE_INDEX] = p_open
-        others = [i for i in range(n_states) if i != OPEN_STATE_INDEX]
+        if isinstance(open_index, (tuple, list, np.ndarray)):
+            open_indices = tuple(int(i) for i in open_index)
+            others = [i for i in range(n_states) if i not in open_indices]
+            resting_open = resting[list(open_indices)]
+            sum_ro = float(np.sum(resting_open))
+            if sum_ro > 1e-12:
+                out[list(open_indices)] = resting_open * (p_open / sum_ro)
+            else:
+                out[list(open_indices)] = p_open / len(open_indices)
+        else:
+            out[open_index] = p_open
+            others = [i for i in range(n_states) if i != open_index]
         mass = float(resting[others].sum())
         if mass > 1e-12:
             out[others] = resting[others] * ((1.0 - p_open) / mass)
@@ -327,7 +344,8 @@ def _expm_scaled(a: np.ndarray) -> np.ndarray:
 
 def peak_open_probability_constant(
     q_matrix, p_resting, concs_um, *, pam_factor: float = 1.0,
-    application_ms: float = PEAK_APPLICATION_MS, open_index: int = OPEN_STATE_INDEX,
+    application_ms: float = PEAK_APPLICATION_MS,
+    open_index: int | Sequence[int] = OPEN_STATE_INDEX,
     n_grid: int = PEAK_GRID_POINTS,
 ) -> np.ndarray:
     """Peak open probability during a SQUARE application, solved exactly.
@@ -379,7 +397,10 @@ def peak_open_probability_constant(
             filled += k
             if filled < n_grid:
                 cur = cur @ cur
-        best = float(np.max(states[:, open_index]))
+        if isinstance(open_index, (tuple, list, np.ndarray)):
+            best = float(np.max(np.sum(states[:, list(open_index)], axis=1)))
+        else:
+            best = float(np.max(states[:, open_index]))
         if not np.isfinite(best):
             raise FloatingPointError(
                 f"the propagator produced a non-finite open probability at {c} uM. A "
@@ -398,8 +419,8 @@ def peak_open_probability_constant(
 JAHN1997_SLOPE_WINDOW_REL = (1.0 / 11.6, 10.0 / 11.6)
 
 
-def hill_slope(concs_um, response, *, window_rel=None, band=(0.02, 0.98),
-               n_points: int = 25) -> float:
+def hill_slope(concs_um, response, *, window_um=None, window_rel=None,
+               band=(0.02, 0.98), n_points: int = 25) -> float:
     """Logit-space slope of a response curve, measured over a STATED range.
 
     THE RANGE IS PART OF THE MEASUREMENT. A Hill curve is a straight line in logit-log
@@ -415,9 +436,12 @@ def hill_slope(concs_um, response, *, window_rel=None, band=(0.02, 0.98),
     a rising-phase Hill fit (theirs) against a whole-curve regression (ours). See
     `knowledge/12-inference.md` Section 2.
 
-    `window_rel` is (lo, hi) in MULTIPLES OF THE CURVE'S OWN EC50 -- use it to reproduce a
-    paper's restricted fit, e.g. `JAHN1997_SLOPE_WINDOW_REL`. `band` is the fraction-of-max
-    range for a whole-curve regression, used when `window_rel` is None.
+    `window_um` is (lo, hi) in ABSOLUTE micromolar concentrations -- use it to match an
+    experimental protocol directly, e.g. (1.0, 10.0) for Jahn 1997 ("between 0.001 and
+    0.01 mM GABA", verbatim). `window_rel` is (lo, hi) in MULTIPLES OF THE CURVE'S OWN
+    EC50 -- use it to reproduce a paper's restricted fit relative to EC50, e.g.
+    `JAHN1997_SLOPE_WINDOW_REL`. `band` is the fraction-of-max range for a whole-curve
+    regression, used when both `window_um` and `window_rel` are None.
 
     `response` need not be normalised; it is divided by its own maximum here. It must be
     rising and single-valued in the region used, which a peak or equilibrium
@@ -433,7 +457,14 @@ def hill_slope(concs_um, response, *, window_rel=None, band=(0.02, 0.98),
         raise ValueError(f"response has no positive finite maximum (max = {mx!r})")
     yn = y / mx
 
-    if window_rel is not None:
+    if window_um is not None:
+        lo_um, hi_um = (float(v) for v in window_um)
+        if not 0 < lo_um < hi_um:
+            raise ValueError(f"window_um must satisfy 0 < lo < hi, got {window_um!r}")
+        grid = np.logspace(np.log10(lo_um), np.log10(hi_um), n_points)
+        use_c = grid
+        use_y = np.interp(grid, c, yn)
+    elif window_rel is not None:
         lo_rel, hi_rel = (float(v) for v in window_rel)
         if not 0 < lo_rel < hi_rel:
             raise ValueError(f"window_rel must satisfy 0 < lo < hi, got {window_rel!r}")

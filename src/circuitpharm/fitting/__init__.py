@@ -107,6 +107,40 @@ from .diagnostic import (
     diagnostic_log_likelihood,
     fit_diagnostic_consistency,
 )
+from .deact_components import (
+    DeactComponentsDiagnostic,
+    DeactComponentsLikelihoodResult,
+    DeactFitResult,
+    compute_amplitude_chi2,
+    deact_components_diagnostic_score,
+    deact_components_log_likelihood,
+    fit_triexponential_decay,
+    get_barberis_amplitude_covariance,
+    get_barberis_errors,
+    parse_barberis_component_errors,
+    parse_deactivation_errors,
+    predict_components_eigen,
+    predict_components_eigen_all,
+    predict_components_fit,
+    reconstruct_deactivation_waveform,
+    verify_eigen_reconstruction,
+)
+from .crc_components import (
+    CRC_BASELINE_RMSE,
+    CrcComponentsLogLikelihood,
+    CrcParameters,
+    crc_components_log_likelihood,
+    extract_crc_parameters,
+    get_jahn_published_records,
+    surface_ec50_discrepancy,
+)
+from .data import (
+    JAHN_EC50_SEM,
+    JAHN_EC50_UM,
+    JAHN_HILL,
+    JAHN_HILL_SEM,
+    JAHN_SLOPE_WINDOW_UM,
+)
 
 __all__ = [
     # data
@@ -204,4 +238,34 @@ __all__ = [
     "DiagnosticFitResult",
     "diagnostic_log_likelihood",
     "fit_diagnostic_consistency",
+    # deactivation components (Briefs 7A, 7B, 8A: Weighting iv; Brief 10)
+    "DeactComponentsDiagnostic",
+    "DeactComponentsLikelihoodResult",
+    "DeactFitResult",
+    "compute_amplitude_chi2",
+    "deact_components_diagnostic_score",
+    "deact_components_log_likelihood",
+    "fit_triexponential_decay",
+    "get_barberis_amplitude_covariance",
+    "get_barberis_errors",
+    "parse_barberis_component_errors",
+    "parse_deactivation_errors",
+    "predict_components_eigen",
+    "predict_components_eigen_all",
+    "predict_components_fit",
+    "reconstruct_deactivation_waveform",
+    "verify_eigen_reconstruction",
+    # CRC components (Brief 12: Weighting iv for parametric CRC)
+    "CrcParameters",
+    "CrcComponentsLogLikelihood",
+    "extract_crc_parameters",
+    "crc_components_log_likelihood",
+    "get_jahn_published_records",
+    "surface_ec50_discrepancy",
+    "JAHN_EC50_UM",
+    "JAHN_EC50_SEM",
+    "JAHN_HILL",
+    "JAHN_HILL_SEM",
+    "JAHN_SLOPE_WINDOW_UM",
+    "CRC_BASELINE_RMSE",
 ]
