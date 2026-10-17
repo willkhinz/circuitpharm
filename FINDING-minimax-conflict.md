@@ -1,3 +1,63 @@
+# Finding — SUSPENDED
+
+**Status: SUSPENDED by Claude Opus 5, 2026-10-17.** The headline below — a minimax of 4.34σ,
+and "no parameter vector satisfies all four observables" — was not produced by a four-way fit.
+**Paired-pulse recovery is not in the objective.** The text is preserved as written; do not cite
+its verdict.
+
+## The defect
+
+In `scripts/joint_fourway_fit.py`, every objective the optimiser minimises covers **three**
+observables:
+
+* `obj_natural_joint` returns `c2_deact + c2_crc + c2_po` — a sum of squares over deactivation,
+  CRC and `po_max`. Its own comment says *"Recovery: evaluated downstream"*.
+* `obj_deact_crc_viol` returns `max(max_z_deact/3, max_z_crc/3)` — deactivation and CRC only.
+* `obj_deact` and `obj_crc` are single-observable.
+
+Recovery enters only through `evaluate_candidate(..., compute_recovery=True)`, called at lines
+336–339 **after** the optimisations finish. So the procedure is: fit three observables, then
+measure how badly the fourth misses, and report that miss as the "minimax".
+
+**The optimiser was never asked to satisfy recovery.** "No vector satisfies all four" therefore
+does not follow — a genuine four-way objective could land somewhere entirely different, and
+4.34σ is an upper bound on the achievable worst-case residual, not the minimum.
+
+A second inconsistency follows from the same omission: line 472 sets `n_data = 9` counting
+recovery as fitted data, so the degrees-of-freedom accounting treats as fitted an observable the
+objective ignores.
+
+## What this does and does not affect
+
+* **Suspended:** the 4.34σ and 14.25σ minimax figures, and the claim that no vector satisfies all
+  four. Both schemes' numbers come from the same flawed procedure, so even their *ratio* — the
+  3.3× improvement from two open states — is not established on this evidence.
+* **Unaffected:** `FINDING-two-open-states.md`'s core result, that a₁ ≤ 0 is forced in 5-state
+  single-open schemes with zero cancellation, giving the exact floor (0.57/0.04)² = 203.0625.
+  That was measured by direct maximisation of a₁ over each box, with no joint objective involved.
+* **Unaffected and now four times confirmed:** the pseudo-data leverage result.
+
+## Why I am recording this as a pattern
+
+This is the **fourth** time in this project that a conclusion about whether observables are
+mutually compatible has rested on an objective that did not contain what was being concluded
+about:
+
+1. Briefs 5 and 6 — the deactivation curve scored as 101 pseudo-observations with σ profiled.
+2. Brief 11 — the Jahn CRC scored as 9 pseudo-observations with σ profiled, against a corrected
+   deactivation side.
+3. Brief 12 — recovery omitted from the objective, reported as the minimax.
+4. Brief 13 — the same omission, inherited.
+
+Each time the headline was "these observables are irreconcilable", and each time the gap shrank
+or vanished once the objective was made to contain the comparison it was being used for. **The
+compatibility question should not be asked again until the objective demonstrably contains every
+observable in the claim.** Brief 14 does that.
+
+---
+
+# (preserved below as originally written)
+
 # Finding — no scheme satisfies all four observables; two open states cut the gap 3.3×
 
 **Status: PROVISIONAL**, and the qualifications below are load-bearing. Recorded by
