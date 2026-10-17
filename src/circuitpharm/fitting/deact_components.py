@@ -68,6 +68,9 @@ class DeactFitResult(tuple):
         r_squared: float = 1.0,
         degeneracy_reason: str = "",
         top_optima: list[dict[str, Any]] | None = None,
+        warm_start_won: bool = True,
+        cost_warm: float = 0.0,
+        cost_random: float = 0.0,
     ):
         instance = super().__new__(cls, (taus, areas))
         instance._taus = taus
@@ -82,7 +85,25 @@ class DeactFitResult(tuple):
         instance._r_squared = r_squared
         instance._degeneracy_reason = degeneracy_reason
         instance._top_optima = top_optima or []
+        instance._warm_start_won = warm_start_won
+        instance._cost_warm = cost_warm
+        instance._cost_random = cost_random
         return instance
+
+    @property
+    def warm_start_won(self) -> bool:
+        """Whether the chosen optimum came from a warm start rather than random sampling."""
+        return self._warm_start_won
+
+    @property
+    def cost_warm(self) -> float:
+        """Best least-squares residual cost achieved across warm starts."""
+        return self._cost_warm
+
+    @property
+    def cost_random(self) -> float:
+        """Best least-squares residual cost achieved across random starts."""
+        return self._cost_random
 
     @property
     def taus(self) -> tuple[float, float, float]:
@@ -593,6 +614,7 @@ def fit_triexponential_decay(
     n_starts: int = 16,
     seed: int = 42,
     spread_tol: float = 0.05,
+    starts: Sequence[np.ndarray] | None = None,
     extra_starts: Sequence[np.ndarray] | None = None,
     bounds: tuple[np.ndarray, np.ndarray] | None = None,
 ) -> DeactFitResult:
@@ -601,12 +623,13 @@ def fit_triexponential_decay(
     The model parameterisation enforces sum(a_i) = 1.0 (with a_3 = 1 - a_1 - a_2) and
     searches in log10(tau) to cover timescales spanning from 0.01 ms to 10,000 ms.
 
-    Convergence and conditioning checks:
-    - Multi-start optimisation via Latin Hypercube + warm starts.
-    - Top-5 optima are tracked to detect ties and spread.
-    - SVD of the Jacobian evaluates condition number and rank deficiency.
-    - If two time constants collapse within 5% or an area is near 0, the fit is
-      flagged as ill-conditioned (rank deficient / non-identifiable tie).
+    Warm-start and multi-start discipline (Brief 9C §2):
+    - Accepts explicit starting parameter vectors via `starts` (e.g. from eigen decomposition).
+    - Retains random Latin Hypercube starts (`n_starts`).
+    - Compares warm starts vs random starts: asserts warm-started optimum is no worse than
+      the best random-start optimum on least-squares cost. If random beats warm, random is
+      reported as the fit, preventing warm-start bias.
+    - Tracks top optima, condition number, rank deficiency, and collapsed taus.
     """
     t_arr = np.asarray(t_ms, dtype=float)
     y_arr = np.asarray(y, dtype=float)
@@ -633,27 +656,38 @@ def fit_triexponential_decay(
         hi_b = np.asarray(bounds[1], dtype=float)
         bounds = (lo_b, hi_b)
 
-    sampler = qmc.LatinHypercube(d=5, seed=seed)
-    sampled = lo_b + sampler.random(n_starts) * (hi_b - lo_b)
-    for row in sampled:
-        row[:3] = np.sort(row[:3])
-        if row[3] >= 0 and row[4] >= 0 and row[3] + row[4] > 0.95:
-            scale = 0.85 / (row[3] + row[4])
-            row[3] *= scale
-            row[4] *= scale
-
-    warm_starts = [
-        np.array([np.log10(2.8), np.log10(33.4), np.log10(221.35), 0.57, 0.23]),
-        np.array([np.log10(5.0), np.log10(50.0), np.log10(300.0), 0.33, 0.33]),
-        np.array([np.log10(1.0), np.log10(15.0), np.log10(500.0), 0.40, 0.30]),
-    ]
+    # 1. Warm starts (explicit or default literature/heuristic)
+    warm_candidates = []
+    if starts is not None:
+        for s in starts:
+            warm_candidates.append(np.asarray(s, dtype=float))
+    else:
+        warm_candidates = [
+            np.array([np.log10(2.8), np.log10(33.4), np.log10(221.35), 0.57, 0.23]),
+            np.array([np.log10(5.0), np.log10(50.0), np.log10(300.0), 0.33, 0.33]),
+            np.array([np.log10(1.0), np.log10(15.0), np.log10(500.0), 0.40, 0.30]),
+        ]
     if extra_starts:
-        warm_starts.extend(extra_starts)
+        for s in extra_starts:
+            warm_candidates.append(np.asarray(s, dtype=float))
 
-    all_starts = np.vstack([warm_starts, sampled])
+    # 2. Random Latin Hypercube starts
+    sampled = []
+    if n_starts > 0:
+        sampler = qmc.LatinHypercube(d=5, seed=seed)
+        sampled_raw = lo_b + sampler.random(n_starts) * (hi_b - lo_b)
+        for row in sampled_raw:
+            row[:3] = np.sort(row[:3])
+            if row[3] >= 0 and row[4] >= 0 and row[3] + row[4] > 0.95:
+                scale = 0.85 / (row[3] + row[4])
+                row[3] *= scale
+                row[4] *= scale
+            sampled.append(row)
+
+    tagged_starts = [(s, "warm") for s in warm_candidates] + [(s, "random") for s in sampled]
 
     optima = []
-    for s0 in all_starts:
+    for s0, origin in tagged_starts:
         s0_clamped = np.clip(s0, lo_b + 1e-6, hi_b - 1e-6)
         try:
             res = least_squares(
@@ -693,15 +727,29 @@ def fit_triexponential_decay(
             "cond": cond,
             "singular_values": tuple(float(x) for x in s_vals),
             "res": res,
+            "origin": origin,
         })
 
     if not optima:
         raise RuntimeError("None of the triexponential starts converged.")
 
-    optima.sort(key=lambda item: item["cost"])
-    best = optima[0]
+    # Guard: Compare best warm start against best random start (Brief 9C §2)
+    warm_opts = [o for o in optima if o["origin"] == "warm"]
+    rand_opts = [o for o in optima if o["origin"] == "random"]
+    best_warm = min(warm_opts, key=lambda x: x["cost"]) if warm_opts else None
+    best_rand = min(rand_opts, key=lambda x: x["cost"]) if rand_opts else None
 
-    top = optima[: min(5, len(optima))]
+    cost_warm = best_warm["cost"] if best_warm else float("inf")
+    cost_rand = best_rand["cost"] if best_rand else float("inf")
+
+    if cost_rand < cost_warm - 1e-9:
+        warm_start_won = False
+        best = best_rand
+    else:
+        warm_start_won = True
+        best = best_warm if best_warm else best_rand
+
+    top = sorted(optima, key=lambda item: item["cost"])[: min(5, len(optima))]
     tau_mat = np.array([item["taus"] for item in top])
     area_mat = np.array([item["areas"] for item in top])
 
@@ -750,6 +798,9 @@ def fit_triexponential_decay(
         r_squared=float(r2),
         degeneracy_reason=degeneracy_str,
         top_optima=top,
+        warm_start_won=warm_start_won,
+        cost_warm=cost_warm,
+        cost_random=cost_rand,
     )
 
 
@@ -760,13 +811,15 @@ def predict_components_fit(
     conc_mm: float = 10.0,
     fit_window_ms: float = _BARBERIS_FIT_WINDOW_MS,
     grid: np.ndarray | None = None,
-    n_starts: int = 16,
+    n_starts: int = 4,
     seed: int = 42,
     uniform_grid: bool = False,
     n_pulse: int = 200,
     n_tail: int = 500,
+    starts: Sequence[np.ndarray] | None = None,
     extra_starts: Sequence[np.ndarray] | None = None,
     bounds: tuple[np.ndarray, np.ndarray] | None = None,
+    warm_start_from_eigen: bool = True,
 ) -> DeactFitResult:
     """Predict triexponential deactivation components (taus, areas) by fitting simulated waveform.
 
@@ -777,8 +830,8 @@ def predict_components_fit(
        divided by peak open probability so y(0) = 1.0, matching BARBERIS2007_DEACT.normalized_current.
     3. Grid sampling: evaluated on the dataset's hybrid log/linear grid (_T_BARBERIS) by default,
        or on a uniform grid if uniform_grid=True (sensitivity check).
-    4. Triexponential fit: multi-start non-linear least squares fit with convergence and
-       rank-deficiency detection, returning (taus, areas) ordered fastest-first.
+    4. Triexponential fit: warm-started from the generator's dominant eigen components (Brief 9C §2)
+       alongside random Latin Hypercube starts, with rank-deficiency / tie detection.
     """
     if grid is not None:
         t_eval = np.asarray(grid, dtype=float)
@@ -789,7 +842,7 @@ def predict_components_fit(
 
     if isinstance(model, np.ndarray):
         y_eval = np.asarray(model, dtype=float)
-        return fit_triexponential_decay(t_eval, y_eval, n_starts=n_starts, seed=seed, extra_starts=extra_starts, bounds=bounds)
+        return fit_triexponential_decay(t_eval, y_eval, n_starts=n_starts, seed=seed, starts=starts, extra_starts=extra_starts, bounds=bounds)
 
     if isinstance(model, DeactivationDataset) or hasattr(model, "normalized_current"):
         ds_t = getattr(model, "time_ms", t_eval)
@@ -798,7 +851,7 @@ def predict_components_fit(
             y_eval = np.asarray(ds_y, dtype=float)
         else:
             y_eval = np.interp(t_eval, ds_t, ds_y)
-        return fit_triexponential_decay(t_eval, y_eval, n_starts=n_starts, seed=seed, extra_starts=extra_starts, bounds=bounds)
+        return fit_triexponential_decay(t_eval, y_eval, n_starts=n_starts, seed=seed, starts=starts, extra_starts=extra_starts, bounds=bounds)
 
     if not hasattr(model, "q_matrix"):
         from ..models.base import ObservableMismatch
@@ -807,7 +860,28 @@ def predict_components_fit(
             f"got {type(model).__name__}."
         )
 
-    # 1. Simulate the protocol
+    # 1. Warm-start from eigen decomposition if enabled (Brief 9C §2)
+    fit_starts = list(starts) if starts is not None else []
+    if not fit_starts and warm_start_from_eigen:
+        try:
+            e_taus, e_areas = predict_components_eigen(
+                model, pulse_ms=pulse_ms, conc_mm=conc_mm, n_components=3
+            )
+            lo_b = np.array([-2.0, -1.0, 0.5, 0.0, 0.0]) if bounds is None else bounds[0]
+            hi_b = np.array([1.5, 2.8, 4.2, 1.0, 1.0]) if bounds is None else bounds[1]
+            p_eigen = np.array([
+                np.log10(max(float(e_taus[0]), 10.0 ** lo_b[0])),
+                np.log10(max(float(e_taus[1]), 10.0 ** lo_b[1])),
+                np.log10(max(float(e_taus[2]), 10.0 ** lo_b[2])),
+                float(e_areas[0]),
+                float(e_areas[1]),
+            ])
+            p_eigen = np.clip(p_eigen, lo_b + 1e-4, hi_b - 1e-4)
+            fit_starts.append(p_eigen)
+        except Exception:
+            pass
+
+    # 2. Simulate the protocol
     t_sim = np.unique(np.concatenate([
         np.linspace(0.0, float(pulse_ms), n_pulse),
         float(pulse_ms) + np.geomspace(1e-4, float(fit_window_ms), n_tail),
@@ -817,7 +891,7 @@ def predict_components_fit(
     res = model.simulate_waveform(t_sim, gaba_um)
     p_open = np.asarray(res.p_open, dtype=float)
 
-    # 2. Extract and normalise decay
+    # 3. Extract and normalise decay
     i_peak = int(np.argmax(p_open))
     peak = float(p_open[i_peak])
     if not (np.isfinite(peak) and peak > 0.0):
@@ -828,11 +902,15 @@ def predict_components_fit(
     t_decay = t_sim[i_peak:] - t_sim[i_peak]
     y_decay = p_open[i_peak:] / peak
 
-    # 3. Interpolate onto the evaluation grid
+    # 4. Interpolate onto the evaluation grid
     y_grid = np.interp(t_eval, t_decay, y_decay)
 
-    # 4. Fit triexponential
-    return fit_triexponential_decay(t_eval, y_grid, n_starts=n_starts, seed=seed, extra_starts=extra_starts, bounds=bounds)
+    # 5. Fit triexponential
+    return fit_triexponential_decay(
+        t_eval, y_grid, n_starts=n_starts, seed=seed,
+        starts=fit_starts if fit_starts else None,
+        extra_starts=extra_starts, bounds=bounds,
+    )
 
 
 # -----------------------------------------------------------------------------

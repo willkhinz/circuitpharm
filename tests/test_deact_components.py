@@ -508,3 +508,48 @@ def test_near_zero_amplitude_sum_rejected_by_objective():
     assert po0 > 0.10, f"Healthy model should have appreciable P_o(0), got {po0}"
     assert np.isclose(np.sum(raw_3), po0, rtol=1e-3, atol=1e-4)
 
+
+# -----------------------------------------------------------------------------
+# Brief 9C §2 Tests: Triexponential Warm-Starts and Multi-Start Guard
+# -----------------------------------------------------------------------------
+
+def test_warm_start_from_eigen_and_guard():
+    """Brief 9C §2: fit_triexponential_decay accepts start values, predict_components_fit
+
+    warm-starts from eigen components by default, random starts are retained, and the
+    warm-start-no-worse guard selects the best fit between warm and random.
+    """
+    m = KineticAllosteryModel()
+
+    # 1. predict_components_fit warm-starts from eigen components by default
+    res = predict_components_fit(m, n_starts=2)
+    assert isinstance(res, DeactFitResult)
+    assert hasattr(res, "warm_start_won")
+    assert hasattr(res, "cost_warm")
+    assert hasattr(res, "cost_random")
+    assert np.isfinite(res.cost_warm)
+    assert np.isfinite(res.cost_random)
+
+    # Chosen optimum cost must be min(cost_warm, cost_random) up to tolerance
+    expected_best_cost = min(res.cost_warm, res.cost_random)
+    assert res.cost == pytest.approx(expected_best_cost, abs=1e-9)
+
+    # 2. fit_triexponential_decay accepts explicit starts
+    t = BARBERIS2007_DEACT.time_ms
+    y = BARBERIS2007_DEACT.normalized_current
+    explicit_start = [np.array([np.log10(2.8), np.log10(33.4), np.log10(221.35), 0.57, 0.23])]
+
+    res_exp = fit_triexponential_decay(t, y, starts=explicit_start, n_starts=2)
+    assert res_exp.warm_start_won is True
+    assert res_exp.cost_warm <= res_exp.cost_random + 1e-6
+    assert res_exp.r_squared > 0.9999
+
+    # 3. Guard test: If a bad warm start is passed, random start beats it and is adopted
+    bad_warm_start = [np.array([1.5, 2.5, 3.5, 0.99, 0.005])]  # Very poor starting guess
+    res_bad = fit_triexponential_decay(t, y, starts=bad_warm_start, n_starts=8, seed=42)
+    # The better fit must be chosen
+    assert res_bad.cost == pytest.approx(min(res_bad.cost_warm, res_bad.cost_random), abs=1e-9)
+    if res_bad.cost_random < res_bad.cost_warm - 1e-9:
+        assert res_bad.warm_start_won is False, "Random start beat bad warm start, warm_start_won must be False"
+
+
