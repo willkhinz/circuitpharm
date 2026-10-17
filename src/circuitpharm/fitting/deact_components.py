@@ -291,7 +291,7 @@ def predict_components_eigen_all(
     *,
     pulse_ms: float = 2.0,
     conc_mm: float = 10.0,
-    open_index: int = OPEN_STATE_INDEX,
+    open_index: int | Sequence[int] | None = None,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Compute all non-zero relaxation components (taus, areas) from the generator matrix.
 
@@ -303,8 +303,9 @@ def predict_components_eigen_all(
         Pulse duration in ms (default 2.0 ms for Barberis 2007 brief pulse).
     conc_mm : float
         GABA concentration during pulse in mM (default 10.0 mM).
-    open_index : int
-        State index for open channel A2O (default 3).
+    open_index : int, sequence of ints, or None
+        State index or indices for conducting open channel(s). If None, inspects
+        model.open_indices or model.open_index, falling back to OPEN_STATE_INDEX (3).
 
     Returns
     -------
@@ -319,6 +320,19 @@ def predict_components_eigen_all(
             f"analytic deactivation components require a discrete Markov generator."
         )
 
+    if open_index is None:
+        if hasattr(model, "open_indices"):
+            open_indices = tuple(int(i) for i in model.open_indices)
+        elif hasattr(model, "open_index"):
+            idx = model.open_index
+            open_indices = tuple(int(i) for i in idx) if isinstance(idx, (tuple, list, np.ndarray)) else (int(idx),)
+        else:
+            open_indices = (OPEN_STATE_INDEX,)
+    elif isinstance(open_index, (int, np.integer)):
+        open_indices = (int(open_index),)
+    else:
+        open_indices = tuple(int(i) for i in open_index)
+
     # 1. Initial condition: 2 ms pulse of 10 mM GABA starting from equilibrium at 0 agonist
     gaba_pulse_um = float(conc_mm) * 1000.0
     p0 = np.asarray(model.state_distribution(0.0), dtype=float)
@@ -328,7 +342,7 @@ def predict_components_eigen_all(
     # Numerical hygiene: ensure state probabilities remain on simplex
     p_pulse = np.clip(p_pulse, 0.0, 1.0)
     p_pulse = p_pulse / np.sum(p_pulse)
-    p_open_onset = float(p_pulse[open_index])
+    p_open_onset = float(np.sum(p_pulse[list(open_indices)]))
 
     # 2. Relaxation: decompose Q at zero agonist
     q_0 = np.asarray(model.q_matrix(0.0), dtype=float)
@@ -358,13 +372,15 @@ def predict_components_eigen_all(
     lambda_nz = eigvals_real[non_zero]
     taus = -1.0 / lambda_nz
 
-    # 3. Observable: projection onto open state coordinate
+    # 3. Observable: projection onto open state coordinate(s)
     v_nz = np.real(v)
     v_inv = la.inv(v_nz)
 
-    # a_i = (P(pulse_ms) @ V)_i * (V^{-1})_{i, open_index}
+    # For multiple open states, project onto sum of basis coordinates
+    # a_i = (P(pulse_ms) @ V)_i * sum_{j in open_indices} (V^{-1})_{i, j}
     proj_pulse = p_pulse @ v_nz
-    amps = proj_pulse[non_zero] * v_inv[non_zero, open_index]
+    summed_v_inv = np.sum(v_inv[non_zero, :][:, list(open_indices)], axis=1)
+    amps = proj_pulse[non_zero] * summed_v_inv
 
     # Check: sum of amplitudes must reproduce peak open probability at onset
     sum_amps = float(np.sum(amps))
@@ -391,7 +407,7 @@ def predict_components_eigen(
     pulse_ms: float = 2.0,
     conc_mm: float = 10.0,
     n_components: int = 3,
-    open_index: int = OPEN_STATE_INDEX,
+    open_index: int | Sequence[int] | None = None,
     return_all: bool = False,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Predict deactivation (taus, areas) from generator matrix eigenvalues.
@@ -409,8 +425,8 @@ def predict_components_eigen(
         GABA concentration in mM (default 10.0).
     n_components : int
         Number of components to return (default 3 to match Barberis 2007).
-    open_index : int
-        Index of the open state (default 3).
+    open_index : int, sequence of ints, or None
+        Index or indices of the conducting open state(s). Defaults to model open state(s).
     return_all : bool
         If True, returns all non-zero components without reduction.
 
@@ -458,7 +474,7 @@ def verify_eigen_reconstruction(
     *,
     pulse_ms: float = 2.0,
     conc_mm: float = 10.0,
-    open_index: int = OPEN_STATE_INDEX,
+    open_index: int | Sequence[int] | None = None,
     atol: float = 1e-6,
 ) -> float:
     """Reconstruct waveform from eigen-components and assert agreement with simulate_waveform.
@@ -473,8 +489,8 @@ def verify_eigen_reconstruction(
         Pulse duration in ms (default 2.0).
     conc_mm : float
         GABA concentration in mM (default 10.0).
-    open_index : int
-        Index of the open state (default 3).
+    open_index : int, sequence of ints, or None
+        Index or indices of the conducting open state(s). Defaults to model open state(s).
     atol : float
         Maximum allowed absolute deviation (default 1e-6).
 
@@ -496,11 +512,25 @@ def verify_eigen_reconstruction(
     p_pulse = np.clip(p_pulse, 0.0, 1.0)
     p_pulse = p_pulse / np.sum(p_pulse)
 
+    # Resolve open indices
+    if open_index is None:
+        if hasattr(model, "open_indices"):
+            open_indices = tuple(int(i) for i in model.open_indices)
+        elif hasattr(model, "open_index"):
+            idx = model.open_index
+            open_indices = tuple(int(i) for i in idx) if isinstance(idx, (tuple, list, np.ndarray)) else (int(idx),)
+        else:
+            open_indices = (OPEN_STATE_INDEX,)
+    elif isinstance(open_index, (int, np.integer)):
+        open_indices = (int(open_index),)
+    else:
+        open_indices = tuple(int(i) for i in open_index)
+
     # 2. All components and unnormalized amplitudes
     taus_all, areas_all = predict_components_eigen_all(
-        model, pulse_ms=pulse_ms, conc_mm=conc_mm, open_index=open_index
+        model, pulse_ms=pulse_ms, conc_mm=conc_mm, open_index=open_indices
     )
-    p_open_onset = float(p_pulse[open_index])
+    p_open_onset = float(np.sum(p_pulse[list(open_indices)]))
     amps_all = areas_all * p_open_onset
 
     # 3. Reconstruct analytical waveform

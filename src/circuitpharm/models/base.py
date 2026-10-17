@@ -213,14 +213,14 @@ class DecayFit:
 
 
 def resolve_initial_state(initial_state, n_states: int, resting: np.ndarray,
-                          open_index: int = OPEN_STATE_INDEX) -> np.ndarray:
+                          open_index: int | Sequence[int] = OPEN_STATE_INDEX) -> np.ndarray:
     """Coerce a caller's initial condition into a full state vector on the simplex.
 
     Accepts:
       * None                  -> `resting`
-      * a scalar open prob    -> that value in the open state, with the remaining mass
-                                 distributed over `resting`'s NON-open states in their
-                                 resting proportions
+      * a scalar open prob    -> that value in the open state (or distributed across multiple
+                                 open states), with the remaining mass distributed over
+                                 `resting`'s NON-open states in their resting proportions
       * a length-n vector     -> validated (non-negative, sums to 1 within 1e-8)
 
     WHY A SCALAR IS HONOURED RATHER THAN REPLACED. `models/base.py` documents
@@ -232,7 +232,8 @@ def resolve_initial_state(initial_state, n_states: int, resting: np.ndarray,
 
     `open_index` is taken as the index of `resting`'s own open state by convention (default
     `OPEN_STATE_INDEX` = 3), or explicitly specified for schemes with different open-state
-    indices (e.g. 6-state pre-open kinetic_flip with open_index = 4).
+    indices (e.g. 6-state pre-open kinetic_flip with open_index = 4, or multi-open schemes
+    with open_index = (3, 4)).
     """
     resting = np.asarray(resting, dtype=float)
     if resting.shape != (n_states,):
@@ -252,8 +253,18 @@ def resolve_initial_state(initial_state, n_states: int, resting: np.ndarray,
                 f"got {p_open}. Pass a length-{n_states} state vector to set the full "
                 f"distribution.")
         out = np.zeros(n_states, dtype=float)
-        out[open_index] = p_open
-        others = [i for i in range(n_states) if i != open_index]
+        if isinstance(open_index, (tuple, list, np.ndarray)):
+            open_indices = tuple(int(i) for i in open_index)
+            others = [i for i in range(n_states) if i not in open_indices]
+            resting_open = resting[list(open_indices)]
+            sum_ro = float(np.sum(resting_open))
+            if sum_ro > 1e-12:
+                out[list(open_indices)] = resting_open * (p_open / sum_ro)
+            else:
+                out[list(open_indices)] = p_open / len(open_indices)
+        else:
+            out[open_index] = p_open
+            others = [i for i in range(n_states) if i != open_index]
         mass = float(resting[others].sum())
         if mass > 1e-12:
             out[others] = resting[others] * ((1.0 - p_open) / mass)
@@ -333,7 +344,8 @@ def _expm_scaled(a: np.ndarray) -> np.ndarray:
 
 def peak_open_probability_constant(
     q_matrix, p_resting, concs_um, *, pam_factor: float = 1.0,
-    application_ms: float = PEAK_APPLICATION_MS, open_index: int = OPEN_STATE_INDEX,
+    application_ms: float = PEAK_APPLICATION_MS,
+    open_index: int | Sequence[int] = OPEN_STATE_INDEX,
     n_grid: int = PEAK_GRID_POINTS,
 ) -> np.ndarray:
     """Peak open probability during a SQUARE application, solved exactly.
@@ -385,7 +397,10 @@ def peak_open_probability_constant(
             filled += k
             if filled < n_grid:
                 cur = cur @ cur
-        best = float(np.max(states[:, open_index]))
+        if isinstance(open_index, (tuple, list, np.ndarray)):
+            best = float(np.max(np.sum(states[:, list(open_index)], axis=1)))
+        else:
+            best = float(np.max(states[:, open_index]))
         if not np.isfinite(best):
             raise FloatingPointError(
                 f"the propagator produced a non-finite open probability at {c} uM. A "
