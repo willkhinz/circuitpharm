@@ -467,3 +467,44 @@ def test_triexponential_fit_degeneracy_when_one_mode_dominates():
         f"Triexponential fit must be flagged degenerate when one mode carries >= 90% amplitude: "
         f"well_conditioned={fit_res.is_well_conditioned}, taus={fit_res.taus}"
     )
+
+
+# -----------------------------------------------------------------------------
+# Brief 9B §3 Tests: Amplitude Ill-Conditioning and Near-Zero Sum Rejection
+# -----------------------------------------------------------------------------
+
+def test_near_zero_amplitude_sum_rejected_by_objective():
+    """Brief 9B §3: Vector whose raw amplitude sum is near zero must be rejected by the objective, not scored.
+
+    Pins:
+    1. Explicit area vector with sum(areas) near zero (cancelling components) raises ValueError.
+    2. Kinetic model with near-zero open probability at relaxation onset (P_o(0) < 1e-4) raises ValueError.
+    3. predict_components_eigen return_raw=True exposes raw amplitudes and P_o(0).
+    """
+    row = DEACTIVATIONS[1]
+    taus, _ = row.components
+
+    # 1. Explicit cancelling areas with sum == 0.0
+    cancelling_areas = (0.57, -0.57, 0.0)
+    with pytest.raises(ValueError, match="[Ii]ll-conditioned amplitudes.*near zero"):
+        deact_components_log_likelihood(taus, cancelling_areas, deact_row=row)
+
+    # Small sum under threshold
+    tiny_sum_areas = (0.57, -0.56999, 0.0)  # sum is 1e-5 < 1e-4
+    with pytest.raises(ValueError, match="[Ii]ll-conditioned amplitudes.*near zero"):
+        deact_components_log_likelihood(taus, tiny_sum_areas, deact_row=row)
+
+    # 2. Kinetic model where channel opening is virtually blocked (beta -> 0, P_o(0) ~ 0)
+    m_closed = KineticAllosteryModel(beta=1e-8, alpha=100.0)
+    with pytest.raises(ValueError, match="[Dd]eactivation amplitude sum is near zero or ill-conditioned"):
+        predict_components_eigen_all(m_closed)
+
+    with pytest.raises(ValueError, match="[Dd]eactivation amplitude sum is near zero or ill-conditioned"):
+        deact_components_log_likelihood(m_closed, deact_row=row)
+
+    # 3. Healthy model verifies raw amplitudes and P_o(0) agree
+    m_healthy = KineticAllosteryModel()
+    t_3, a_3, raw_3, po0 = predict_components_eigen(m_healthy, return_raw=True)
+    assert po0 > 0.10, f"Healthy model should have appreciable P_o(0), got {po0}"
+    assert np.isclose(np.sum(raw_3), po0, rtol=1e-3, atol=1e-4)
+

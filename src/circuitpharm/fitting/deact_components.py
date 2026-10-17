@@ -292,7 +292,8 @@ def predict_components_eigen_all(
     pulse_ms: float = 2.0,
     conc_mm: float = 10.0,
     open_index: int | Sequence[int] | None = None,
-) -> tuple[np.ndarray, np.ndarray]:
+    return_raw: bool = False,
+) -> tuple[np.ndarray, np.ndarray] | tuple[np.ndarray, np.ndarray, np.ndarray, float]:
     """Compute all non-zero relaxation components (taus, areas) from the generator matrix.
 
     Parameters
@@ -390,14 +391,22 @@ def predict_components_eigen_all(
             f"at pulse end ({p_open_onset:.8e})."
         )
 
+    # Reject unphysical or ill-conditioned near-zero open probability / amplitude sum (Brief 9B §3)
+    min_amplitude_sum = 1e-4
+    if p_open_onset < min_amplitude_sum or abs(sum_amps) < min_amplitude_sum:
+        raise ValueError(
+            f"Deactivation amplitude sum is near zero or ill-conditioned "
+            f"(P_o(0) = {p_open_onset:.4e}, sum(amps) = {sum_amps:.4e} < {min_amplitude_sum:.1e}); "
+            f"relaxation waveform carries negligible open probability."
+        )
+
     # Normalise areas to peak (p_open at relaxation onset)
-    if p_open_onset > 0.0:
-        areas = amps / p_open_onset
-    else:
-        areas = np.zeros_like(amps)
+    areas = amps / p_open_onset
 
     # Sort fast-to-slow
     order = np.argsort(taus)
+    if return_raw:
+        return taus[order], areas[order], amps[order], p_open_onset
     return taus[order], areas[order]
 
 
@@ -409,11 +418,16 @@ def predict_components_eigen(
     n_components: int = 3,
     open_index: int | Sequence[int] | None = None,
     return_all: bool = False,
-) -> tuple[np.ndarray, np.ndarray]:
+    return_raw: bool = False,
+    min_relative_ratio: float = 0.10,
+) -> tuple[np.ndarray, np.ndarray] | tuple[np.ndarray, np.ndarray, np.ndarray, float]:
     """Predict deactivation (taus, areas) from generator matrix eigenvalues.
 
     By default returns the 3 physically active relaxation components, resolving the 4-vs-3 problem
     by dropping the unbinding mode AR -> R which carries mathematically zero amplitude in A2O.
+
+    Rejects parameter vectors where the raw amplitude sum of the selected components is near
+    zero or small relative to P_o(0) (threshold min_relative_ratio, default 0.10; Brief 9B §3).
 
     Parameters
     ----------
@@ -429,6 +443,10 @@ def predict_components_eigen(
         Index or indices of the conducting open state(s). Defaults to model open state(s).
     return_all : bool
         If True, returns all non-zero components without reduction.
+    return_raw : bool
+        If True, returns (taus, areas, raw_amplitudes, p_open_onset).
+    min_relative_ratio : float
+        Minimum required ratio |sum(raw_chosen)| / P_o(0) (default 0.10).
 
     Returns
     -------
@@ -437,19 +455,34 @@ def predict_components_eigen(
     areas : np.ndarray
         Component normalised areas (fractions).
     """
-    taus_all, areas_all = predict_components_eigen_all(
-        model, pulse_ms=pulse_ms, conc_mm=conc_mm, open_index=open_index
+    taus_all, areas_all, amps_all, p_open_onset = predict_components_eigen_all(
+        model, pulse_ms=pulse_ms, conc_mm=conc_mm, open_index=open_index, return_raw=True
     )
-    if return_all:
-        return taus_all, areas_all
-
-    if n_components >= len(taus_all):
+    if return_all or n_components >= len(taus_all):
+        if return_raw:
+            return taus_all, areas_all, amps_all, p_open_onset
         return taus_all, areas_all
 
     top_indices = np.argsort(-np.abs(areas_all))[:n_components]
     sort_taus = np.argsort(taus_all[top_indices])
     chosen = top_indices[sort_taus]
-    return taus_all[chosen], areas_all[chosen]
+
+    chosen_taus = taus_all[chosen]
+    chosen_areas = areas_all[chosen]
+    chosen_amps = amps_all[chosen]
+
+    # Conditioning check: raw amplitude sum of selected components must not cancel to near zero (Brief 9B §3)
+    raw_sum_chosen = float(np.sum(chosen_amps))
+    if p_open_onset > 0.0 and (abs(raw_sum_chosen) / p_open_onset) < min_relative_ratio:
+        raise ValueError(
+            f"Ill-conditioned amplitudes: raw amplitude sum of top {n_components} components "
+            f"({raw_sum_chosen:.4e}) is small relative to P_o(0) ({p_open_onset:.4e}, "
+            f"ratio {abs(raw_sum_chosen)/p_open_onset:.4f} < {min_relative_ratio}); vector rejected."
+        )
+
+    if return_raw:
+        return chosen_taus, chosen_areas, chosen_amps, p_open_onset
+    return chosen_taus, chosen_areas
 
 
 def reconstruct_deactivation_waveform(
@@ -870,6 +903,14 @@ def deact_components_log_likelihood(
     if len(taus_pred_arr) != n_comp or len(areas_pred_arr) != n_comp:
         raise ValueError(
             f"Expected {n_comp} taus and areas, got {len(taus_pred_arr)} taus and {len(areas_pred_arr)} areas."
+        )
+
+    # Reject near-zero amplitude sums (Brief 9B §3)
+    sum_areas = float(np.sum(areas_pred_arr))
+    if abs(sum_areas) < 1e-4:
+        raise ValueError(
+            f"Ill-conditioned amplitudes: sum of predicted component areas ({sum_areas:.4e}) "
+            f"is near zero (< 1e-4); vector rejected."
         )
 
     z_tau = (taus_pred_arr - pub_taus) / err_taus_arr
