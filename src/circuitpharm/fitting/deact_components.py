@@ -90,6 +90,28 @@ class DeactFitResult(tuple):
         instance._cost_random = cost_random
         return instance
 
+    def __reduce__(self):
+        state = {
+            "_spread_taus": self._spread_taus,
+            "_spread_areas": self._spread_areas,
+            "_is_unique": self._is_unique,
+            "_is_well_conditioned": self._is_well_conditioned,
+            "_condition_number": self._condition_number,
+            "_singular_values": self._singular_values,
+            "_cost": self._cost,
+            "_r_squared": self._r_squared,
+            "_degeneracy_reason": self._degeneracy_reason,
+            "_top_optima": self._top_optima,
+            "_warm_start_won": self._warm_start_won,
+            "_cost_warm": self._cost_warm,
+            "_cost_random": self._cost_random,
+        }
+        return (self.__class__, (self._taus, self._areas), state)
+
+    def __setstate__(self, state: dict[str, Any]):
+        for k, v in state.items():
+            setattr(self, k, v)
+
     @property
     def warm_start_won(self) -> bool:
         """Whether the chosen optimum came from a warm start rather than random sampling."""

@@ -1,5 +1,10 @@
 # RESULTS-BRIEF-8A: Structural Search Over Deactivation Components and Predictor Unification
 
+> [!WARNING]
+> **SUPERSEDED BY RESULTS-BRIEF-10.md (Agent Brief 10)**
+> The deactivation amplitude objective used in this report evaluated an unconstrained 3-component $\chi^2$ on a composition constrained to $\sum a_i = 1$ with published values summing to $1.00$. As demonstrated in Agent Brief 10, that formulation possessed an artificial arithmetic floor of $452.99$ (at $a_1=0$, $(0.57/0.04)^2 = 203.06$ plus $249.92$ double-counting penalty on $a_2, a_3$). All headline $\chi^2$ values herein (e.g. $527.9$, $1107.7$, $2181.9$) inherit this floor ($527.86 = 452.99 \text{ floor} + 74.87 \text{ residual}$).
+> All numerical results below are preserved intact per archival discipline. For the corrected rank-2 covariance formulation on the 2-simplex, see [RESULTS-BRIEF-10.md](file:///Users/whinz/Biochemistry-wt-agent-brief-10/RESULTS-BRIEF-10.md).
+
 **Agent:** Gemini 3.8 Flash (High) (Worker 8A)  
 **Execution Command:**  
 ```bash

@@ -1,5 +1,10 @@
 # Results: Agent Brief 9, 9B, and 9C — Deactivation Obstruction Decomposition and Warm-Start Canonical Routing
 
+> [!WARNING]
+> **SUPERSEDED BY RESULTS-BRIEF-10.md (Agent Brief 10)**
+> The deactivation amplitude objective used throughout Briefs 9, 9B, and 9C evaluated an unconstrained 3-component $\chi^2$ on a composition constrained to $\sum a_i = 1$. As established in Agent Brief 10, the amplitudes-only objective possessed an artificial arithmetic floor of $452.99$ ($203.06$ from zeroing the fast component $a_1$ plus $249.92$ double-counting penalty), and `FINDING-amplitude-obstruction.md` is WITHDRAWN.
+> All historical numbers and per-scheme decomposition results below are preserved intact. For the corrected rank-2 covariance objective and re-derived decomposition across all 5 schemes, see [RESULTS-BRIEF-10.md](file:///Users/whinz/Biochemistry-wt-agent-brief-10/RESULTS-BRIEF-10.md).
+
 **Branch:** `claude/agent-brief-9`  
 **Worktree:** `/Users/whinz/Biochemistry-wt-agent-brief-9`  
 **Commits:**

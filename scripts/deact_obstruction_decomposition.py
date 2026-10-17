@@ -31,6 +31,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import multiprocessing as mp
 import pathlib
 import sys
 import time
@@ -50,6 +51,7 @@ from circuitpharm.fitting.comparison import MODEL_SPECS, ModelSpec
 from circuitpharm.fitting.data import BARBERIS2007_PAIRED_PULSE, JAHN1997_PEAK_CRC
 from circuitpharm.fitting.deact_components import (
     DeactFitResult,
+    compute_amplitude_chi2,
     get_barberis_errors,
     predict_components_eigen,
     predict_components_eigen_all,
@@ -86,16 +88,17 @@ def compute_chi2(
     err_areas: np.ndarray,
     objective: str,
 ) -> float:
-    """Compute chi^2 for the specified objective."""
+    """Compute chi^2 for the specified objective under Brief 10 corrected formulation."""
     z_t = (taus_pred - pub_taus) / err_taus
-    z_a = (areas_pred - pub_areas) / err_areas
+    chi2_t = float(np.sum(z_t ** 2))
+    chi2_a = compute_amplitude_chi2(areas_pred, pub_areas, err_areas, method="full_covariance")
 
     if objective == "taus_only":
-        return float(np.sum(z_t ** 2))
+        return chi2_t
     elif objective == "amplitudes_only":
-        return float(np.sum(z_a ** 2))
+        return chi2_a
     elif objective == "all_six":
-        return float(np.sum(z_t ** 2) + np.sum(z_a ** 2))
+        return chi2_t + chi2_a
     else:
         raise ValueError(f"Unknown objective: {objective!r}")
 
@@ -159,7 +162,7 @@ def evaluate_task4_cross_checks(spec: ModelSpec, opt_vec: np.ndarray) -> dict[st
     pp_sigma = (pp_pred - pp_obs) / pp_sem
 
     # 2. Jahn 1997 peak CRC RMSE
-    crc_pred = np.asarray(model.dose_response(JAHN1997_PEAK_CRC.concentrations_um), dtype=float)
+    crc_pred = np.asarray(model.dose_response(JAHN1997_PEAK_CRC.concs_um), dtype=float)
     crc_obs = np.asarray(JAHN1997_PEAK_CRC.mean_response, dtype=float)
     crc_rmse = float(np.sqrt(np.mean((crc_pred - crc_obs) ** 2)))
     crc_baseline = 0.004917
@@ -288,6 +291,71 @@ def run_eigen_decomposition(
     }
 
 
+def _eval_fit_pt(item: tuple[str, np.ndarray, str, np.ndarray, np.ndarray, np.ndarray, np.ndarray, int]) -> dict[str, Any] | None:
+    spec_name, pt, objective, pub_taus, pub_areas, err_taus, err_areas, n_fit_starts = item
+    try:
+        spec = MODEL_SPECS[spec_name]
+        m = spec.factory(pt)
+        fit_res = predict_components_fit(m, n_starts=n_fit_starts)
+        t_pred = np.asarray(fit_res.taus, dtype=float)
+        a_pred = np.asarray(fit_res.areas, dtype=float)
+        c2 = compute_chi2(t_pred, a_pred, pub_taus, pub_areas, err_taus, err_areas, objective)
+        is_deg, deg_reason = check_is_degenerate(fit_res)
+        if np.isfinite(c2):
+            return {
+                "chi2": c2,
+                "vec": pt,
+                "fit_res": fit_res,
+                "is_deg": is_deg,
+                "deg_reason": deg_reason,
+            }
+    except Exception:
+        pass
+    return None
+
+
+def _polish_fit_pt(item: tuple[str, np.ndarray, str, np.ndarray, np.ndarray, np.ndarray, np.ndarray]) -> dict[str, Any] | None:
+    spec_name, pt, objective, pub_taus, pub_areas, err_taus, err_areas = item
+    try:
+        spec = MODEL_SPECS[spec_name]
+        lo = np.array([b[0] for b in spec.bounds], dtype=float)
+        hi = np.array([b[1] for b in spec.bounds], dtype=float)
+
+        def obj_fn(v: np.ndarray) -> float:
+            penalty = 0.0
+            if np.any(v < lo) or np.any(v > hi):
+                penalty += float(np.sum(np.maximum(0, lo - v)**2 + np.maximum(0, v - hi)**2)) * 1e3
+            v_c = np.clip(v, lo, hi)
+            try:
+                m = spec.factory(v_c)
+                fit = predict_components_fit(m, n_starts=1)
+                t_p = np.asarray(fit.taus, dtype=float)
+                a_p = np.asarray(fit.areas, dtype=float)
+                val = compute_chi2(t_p, a_p, pub_taus, pub_areas, err_taus, err_areas, objective)
+                is_d, _ = check_is_degenerate(fit)
+                penalty += 1e4 if is_d else 0.0
+                return (val + penalty) if np.isfinite(val) else (1e6 + penalty)
+            except Exception:
+                return 1e6 + penalty
+
+        res = minimize(obj_fn, pt, method="Nelder-Mead", options={"maxiter": 20, "maxfev": 35, "xatol": 1e-3, "fatol": 1e-3})
+        v_opt = np.clip(res.x, lo, hi)
+        m_eval = spec.factory(v_opt)
+        fit_eval = predict_components_fit(m_eval, n_starts=6)
+        c2_eval = compute_chi2(np.asarray(fit_eval.taus), np.asarray(fit_eval.areas),
+                               pub_taus, pub_areas, err_taus, err_areas, objective)
+        is_d, d_reas = check_is_degenerate(fit_eval)
+        return {
+            "chi2": c2_eval,
+            "vec": v_opt,
+            "fit_res": fit_eval,
+            "is_deg": is_d,
+            "deg_reason": d_reas,
+        }
+    except Exception:
+        return None
+
+
 def run_fit_decomposition(
     spec: ModelSpec,
     objective: str,
@@ -295,15 +363,16 @@ def run_fit_decomposition(
     pub_areas: np.ndarray,
     err_taus: np.ndarray,
     err_areas: np.ndarray,
-    n_samples: int = 50,
-    n_polish: int = 2,
+    n_samples: int = 200,
+    n_polish: int = 6,
     seed: int = 42,
     warm_starts: Sequence[np.ndarray] | None = None,
+    n_workers: int = 8,
 ) -> dict[str, Any]:
     """Optimize the model under the canonical fit route for a specific objective.
 
     Reports genuine well-conditioned fits or flags as DEGENERATE.
-    Explicitly budgeted per Brief 9B §2.
+    Parallelized across workers with multiprocessing fork context.
     """
     t0 = time.perf_counter()
     lo = np.array([b[0] for b in spec.bounds], dtype=float)
@@ -318,25 +387,14 @@ def run_fit_decomposition(
         all_starts.extend(warm_starts)
     all_starts.extend(pts)
 
-    evaluated = []
-    for pt in all_starts:
-        try:
-            m = spec.factory(pt)
-            fit_res = predict_components_fit(m, n_starts=4)
-            t_pred = np.asarray(fit_res.taus, dtype=float)
-            a_pred = np.asarray(fit_res.areas, dtype=float)
-            c2 = compute_chi2(t_pred, a_pred, pub_taus, pub_areas, err_taus, err_areas, objective)
-            is_deg, deg_reason = check_is_degenerate(fit_res)
-            if np.isfinite(c2):
-                evaluated.append({
-                    "chi2": c2,
-                    "vec": pt,
-                    "fit_res": fit_res,
-                    "is_deg": is_deg,
-                    "deg_reason": deg_reason,
-                })
-        except Exception:
-            continue
+    items = [(spec.name, pt, objective, pub_taus, pub_areas, err_taus, err_areas, 2) for pt in all_starts]
+    if n_workers > 1:
+        ctx = mp.get_context("fork")
+        with ctx.Pool(processes=n_workers) as pool:
+            raw_eval = pool.map(_eval_fit_pt, items)
+        evaluated = [x for x in raw_eval if x is not None]
+    else:
+        evaluated = [res for item in items if (res := _eval_fit_pt(item)) is not None]
 
     if not evaluated:
         elapsed = time.perf_counter() - t0
@@ -369,44 +427,30 @@ def run_fit_decomposition(
     best_is_deg = best_cand["is_deg"]
     best_deg_reason = best_cand["deg_reason"]
 
-    for pt in polish_pool:
-        def obj_fn(v: np.ndarray) -> float:
-            if np.any(v < lo) or np.any(v > hi):
-                return 1e12
-            try:
-                m = spec.factory(v)
-                fit = predict_components_fit(m, n_starts=2)
-                t_p = np.asarray(fit.taus, dtype=float)
-                a_p = np.asarray(fit.areas, dtype=float)
-                val = compute_chi2(t_p, a_p, pub_taus, pub_areas, err_taus, err_areas, objective)
-                is_d, _ = check_is_degenerate(fit)
-                penalty = 1e6 if is_d else 0.0
-                return val + penalty if np.isfinite(val) else 1e12
-            except Exception:
-                return 1e12
+    polish_items = [(spec.name, pt, objective, pub_taus, pub_areas, err_taus, err_areas) for pt in polish_pool]
+    if n_workers > 1 and len(polish_items) > 1:
+        ctx = mp.get_context("fork")
+        with ctx.Pool(processes=min(n_workers, len(polish_items))) as pool:
+            raw_polish = pool.map(_polish_fit_pt, polish_items)
+        polish_results = [x for x in raw_polish if x is not None]
+    else:
+        polish_results = [res for item in polish_items if (res := _polish_fit_pt(item)) is not None]
 
-        res = minimize(obj_fn, pt, method="Nelder-Mead", options={"maxiter": 40, "xatol": 1e-4, "fatol": 1e-4})
-        try:
-            m_eval = spec.factory(res.x)
-            fit_eval = predict_components_fit(m_eval, n_starts=8)
-            c2_eval = compute_chi2(np.asarray(fit_eval.taus), np.asarray(fit_eval.areas),
-                                   pub_taus, pub_areas, err_taus, err_areas, objective)
-            is_d, d_reas = check_is_degenerate(fit_eval)
-            if not is_d:
-                if best_is_deg or c2_eval < best_chi2:
-                    best_chi2 = c2_eval
-                    best_vec = res.x
-                    best_fit = fit_eval
-                    best_is_deg = False
-                    best_deg_reason = ""
-            elif best_is_deg and c2_eval < best_chi2:
+    for p_res in polish_results:
+        c2_eval = p_res["chi2"]
+        if not p_res["is_deg"]:
+            if best_is_deg or c2_eval < best_chi2:
                 best_chi2 = c2_eval
-                best_vec = res.x
-                best_fit = fit_eval
-                best_is_deg = True
-                best_deg_reason = d_reas
-        except Exception:
-            continue
+                best_vec = p_res["vec"]
+                best_fit = p_res["fit_res"]
+                best_is_deg = False
+                best_deg_reason = ""
+        elif best_is_deg and c2_eval < best_chi2:
+            best_chi2 = c2_eval
+            best_vec = p_res["vec"]
+            best_fit = p_res["fit_res"]
+            best_is_deg = True
+            best_deg_reason = p_res["deg_reason"]
 
     # Final conditioning extraction
     opt_model = spec.factory(best_vec)
@@ -558,27 +602,28 @@ def format_budget_table(
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Deactivation obstruction decomposition (Brief 9 & 9B)")
+    parser = argparse.ArgumentParser(description="Deactivation obstruction decomposition (Brief 10)")
     parser.add_argument("--schemes", nargs="+", default=[
-        "kinetic_jw95_free_rates", "kinetic_open_desens_free_rates",
-    ], help="Schemes to evaluate in priority order (default: Priority 1 and 2)")
-    parser.add_argument("--all-schemes", action="store_true", help="Evaluate all 4 schemes including kinetic_flip and extended_desens")
-    parser.add_argument("--n-samples-eigen", type=int, default=1500, help="LHS samples for eigen route (default: 1500)")
-    parser.add_argument("--n-polish-eigen", type=int, default=12, help="Polish count for eigen route (default: 12)")
-    parser.add_argument("--n-samples-fit", type=int, default=50, help="LHS samples for fit route (default: 50)")
-    parser.add_argument("--n-polish-fit", type=int, default=2, help="Polish count for fit route (default: 2)")
+        "kinetic_jw95_free_rates", "kinetic_open_desens_free_rates", "kinetic_flip", "kinetic_two_open", "extended_desens",
+    ], help="Schemes to evaluate in priority order (default: all 5 priority schemes)")
+    parser.add_argument("--all-schemes", action="store_true", help="Evaluate all 5 schemes")
+    parser.add_argument("--n-samples-eigen", type=int, default=3000, help="LHS samples for eigen route (default: 3000)")
+    parser.add_argument("--n-polish-eigen", type=int, default=15, help="Polish count for eigen route (default: 15)")
+    parser.add_argument("--n-samples-fit", type=int, default=200, help="LHS samples for fit route (default: 200)")
+    parser.add_argument("--n-polish-fit", type=int, default=6, help="Polish count for fit route (default: 6)")
+    parser.add_argument("--workers", type=int, default=min(8, mp.cpu_count()), help="Worker count for fit route evaluations")
     parser.add_argument("--seed", type=int, default=42, help="Random seed (default: 42)")
     args = parser.parse_args()
 
     if args.all_schemes:
-        schemes = ["kinetic_jw95_free_rates", "kinetic_open_desens_free_rates", "kinetic_flip", "extended_desens"]
+        schemes = ["kinetic_jw95_free_rates", "kinetic_open_desens_free_rates", "kinetic_flip", "kinetic_two_open", "extended_desens"]
     else:
         schemes = args.schemes
 
     pub_taus, pub_areas, err_taus, err_areas, record = load_literature_targets()
 
     print("=" * 80)
-    print("DEACTIVATION OBSTRUCTION DECOMPOSITION (Agent Brief 9 & 9B)")
+    print("DEACTIVATION OBSTRUCTION DECOMPOSITION (Agent Brief 10)")
     print("=" * 80)
     print(f"Literature Target: {record.label} (source: {record.source_key})")
     print(f"Published values: taus = {pub_taus} ms, areas = {pub_areas}")
@@ -586,7 +631,7 @@ def main():
     print(f"Conditioning thresholds: Po(0) >= {THRESHOLD_PO_0}, raw_sum >= {THRESHOLD_RAW_SUM}, ratio >= {THRESHOLD_RATIO}")
     print(f"Schemes: {schemes}")
     print(f"Eigen search budget: {args.n_samples_eigen} LHS, top {args.n_polish_eigen} polished")
-    print(f"Fit search budget: {args.n_samples_fit} LHS, top {args.n_polish_fit} polished")
+    print(f"Fit search budget: {args.n_samples_fit} LHS, top {args.n_polish_fit} polished (workers={args.workers})")
     print("-" * 80, flush=True)
 
     t_start = time.perf_counter()
@@ -622,7 +667,7 @@ def main():
             res_f = run_fit_decomposition(
                 spec, obj_name, pub_taus, pub_areas, err_taus, err_areas,
                 n_samples=args.n_samples_fit, n_polish=args.n_polish_fit,
-                seed=args.seed, warm_starts=warm,
+                seed=args.seed, warm_starts=warm, n_workers=args.workers,
             )
             results_fit[(scheme, obj_name)] = res_f
             print(f"  * {obj_name:<16}: {res_f['display']} (Po(0)={res_f.get('po_0', 0.0):.4f}, raw_sum={res_f.get('raw_sum', 0.0):.4f}) [{res_f['runtime_s']:.2f} s]", flush=True)
