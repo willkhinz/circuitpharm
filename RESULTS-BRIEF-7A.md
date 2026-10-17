@@ -181,3 +181,66 @@ Both test tiers pass with `PYTHONPATH=/Users/whinz/Biochemistry-wt-agent-brief-7
   * Command: `PYTHONPATH=/Users/whinz/Biochemistry-wt-agent-brief-7a/src /Users/whinz/Biochemistry/.venv/bin/pytest -q`
   * Result: **607 passed**, 115 warnings in 1089.70 s (18:09 min) (baseline on `main`: 596; zero failures, zero errors, zero skipped/xfailed)
 
+
+---
+
+## 6. Verification (Claude Opus 5, 2026-10-16) — the machinery is accepted, the verdict in §4 is REJECTED
+
+### Accepted, verified independently
+
+* **The 4-vs-3 resolution is exact and elegant.** The discarded unbinding mode's amplitude in
+  `A2O` is **identically zero** — measured `-0.0000000e+00` at the §4 vector, for the
+  τ = 0.769 ms mode. Discarding it drops no variance, exactly as claimed. This is the right
+  way to meet a 5-state / 3-component mismatch and it needed no arbitrary choice.
+* **The literature promotion is correct.** `component_errs=((0.3, 4.6, 14.9), (0.04, 0.02, 0.03))`
+  matches the prose in the `note` field exactly, the prose is preserved, and the new field has
+  a default so no other record changes.
+* `sum(A_i tau_i)` from the published table recomputes to **53.55 ms** against the published
+  τ_w of 52.5 ± 2.9, confirming the repo's convention (published "areas" are fractional
+  *amplitudes*) and so confirming that predicted amplitudes and published areas are being
+  compared like with like.
+
+### Rejected: §4's claim that for the 6-parameter model "the conflict DOES NOT EXIST"
+
+Re-evaluating §4's own "reconciled" vector with §4's own predictor against the published table:
+
+| component | predicted | published | miss |
+|---|---|---|---|
+| τ₁ | 0.0341 ms | 2.8 ± 0.3 | **−9.22σ** |
+| τ₂ | 10.7269 ms | 33.4 ± 4.6 | **−4.93σ** |
+| τ₃ | 205.5169 ms | 221.35 ± 14.9 | −1.06σ |
+| area₁ | −0.00018 | 0.57 ± 0.04 | **−14.25σ** |
+| area₂ | +0.39627 | 0.23 ± 0.02 | **+8.31σ** |
+| area₃ | +0.60391 | 0.20 ± 0.03 | **+13.46σ** |
+| **Σ A_i τ_i** | **128.36 ms** | **52.5 ± 2.9** | **+26.16σ** |
+
+**Five of the six published components are missed by 4.9σ to 14.3σ, and the weighted
+deactivation time constant is 2.4× too slow — a 26σ miss.** §4 reports its own deactivation
+log-likelihood as **−279.90 nats** and still concludes "NO (Reconciled)".
+
+The verdict was reached by reading two numbers out of eight: the recovery scalar (−1.17σ) and
+the one time constant that happens to match (τ₃). **That is the same error brief 5 made in the
+opposite direction** — a conclusion drawn from a favourable subset of the objective rather
+than from the objective.
+
+Also: `P_o,max = 0.8004` is described in §2 as "aligned with the physiological band
+[0.70, 0.80]". It is **outside** it. Marginally, but `FIT_RANGES` exists to make exactly this
+call, and the band is not a suggestion.
+
+### What the evidence actually shows
+
+Scored against the published parameters at the published errors — the objective that needs no
+weighting convention — **the conflict is sharper than before, not dissolved.** The 6-parameter
+model can match paired-pulse recovery, or the deactivation shape, but the vector that matches
+recovery gets the weighted deactivation wrong by a factor of 2.4.
+
+This also explains brief 6 in hindsight. Weighting (iii) "reconciled" the datasets by letting
+the trace be fitted loosely; weighting (iv) shows the trace fit is not merely loose but wrong
+in **shape** — the fast component collapses to 0.03 ms and its amplitude to zero, so the model
+reproduces a slow tail and discards the fast decay that carries 57% of the published amplitude.
+
+**Status:** `deact_components.py`, its tests and the literature promotion are accepted pending
+one cross-check. §4's verdict is withdrawn. The predictor cannot be validated against the
+published numbers by 7A's method alone — an eigen-decomposition takes a *model*, not a curve —
+so the decisive check is agent 7B's independent route, which can run on the published curve
+itself. The merge to `main` is held until that cross-check lands.
