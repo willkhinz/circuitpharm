@@ -51,15 +51,15 @@ def test_jahn_published_records_read_from_project_records():
     assert rec["restricted_dataset_key"] == JAHN1997_PEAK_CRC_RESTRICTED.citation_label
 
 
-def test_ec50_discrepancy_surfaced_and_unresolved():
-    """Verify the discrepancy between FIT_TARGETS['ec50_um'] and the sourced value is surfaced and unresolved."""
+def test_ec50_discrepancy_surfaced_and_resolved():
+    """Verify the discrepancy between FIT_TARGETS['ec50_um'] and the sourced value is surfaced and resolved."""
     disc = surface_ec50_discrepancy()
-    assert disc["fit_targets_ec50_um"] == pytest.approx(20.0)
+    assert disc["fit_targets_ec50_um"] == pytest.approx(11.6)
     assert disc["jahn_sourced_ec50_um"] == pytest.approx(11.6)
     assert disc["jahn_sourced_ec50_sem"] == pytest.approx(0.9)
-    assert disc["discrepancy_um"] == pytest.approx(8.4)
-    assert disc["discrepancy_sigma"] == pytest.approx(8.4 / 0.9)
-    assert "unresolved" in disc["resolution"].lower()
+    assert disc["discrepancy_um"] == pytest.approx(0.0)
+    assert disc["discrepancy_sigma"] == pytest.approx(0.0)
+    assert "resolved" in disc["resolution"].lower()
 
 
 def test_hill_slope_measured_window_and_sensitivity():

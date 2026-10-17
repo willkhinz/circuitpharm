@@ -153,15 +153,17 @@ def test_the_provenance_gap_is_what_the_audit_recorded():
     # sourced propagates into every charge ratio downstream of it -- and before this it
     # appeared in no parameter table at all. None of the twelve is QUANTITATIVE and three
     # are outright GUESSes.
-    assert a["total"] == 57, f"parameter count changed to {a['total']}; re-run the audit"
-    assert a["sourced"] == 7, (
-        f"{a['sourced']} parameters now name a source, not 7. If this went UP, update this "
+    # 57 -> 58 when Brief 13 Task 2 registered FIT_TARGETS['ec50_um'] from Jahn 1997
+    # (jahn_a1b2g2_kinetics) with Basis.QUANTITATIVE.
+    assert a["total"] == 58, f"parameter count changed to {a['total']}; re-run the audit"
+    assert a["sourced"] == 8, (
+        f"{a['sourced']} parameters now name a source, not 8. If this went UP, update this "
         f"pin and knowledge/06-source-provenance.md. If it went DOWN, something lost its "
         f"citation.")
-    assert a["by_basis"].get(Basis.QUANTITATIVE.value, 0) == 1, (
-        "exactly 1 QUANTITATIVE entry is expected: fitting/data.py's Jahn 1997 "
-        "concentration-response, the first parameter in this project read as a number from "
-        "a named source. If this goes up, that is a real advance -- record it in "
+    assert a["by_basis"].get(Basis.QUANTITATIVE.value, 0) == 2, (
+        "exactly 2 QUANTITATIVE entries are expected: fitting/data.py's Jahn 1997 "
+        "concentration-response and gabaa_kinetics.FIT_TARGETS['ec50_um']. "
+        "If this goes up, that is a real advance -- record it in "
         "knowledge/06-source-provenance.md.")
     assert a["by_basis"][Basis.UNSOURCED.value] == 31, (
         f"{a['by_basis'][Basis.UNSOURCED.value]} UNSOURCED, not 31. Widening this gap is a "
