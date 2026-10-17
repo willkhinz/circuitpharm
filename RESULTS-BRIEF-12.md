@@ -1,5 +1,10 @@
 # Results — Agent Brief 12: Symmetric Four-Way Fit Evaluation
 
+> [!WARNING]
+> **SUPERSEDED BY RESULTS-BRIEF-14.md (Agent Brief 14)**
+> The four-way joint fit procedure in this report omitted paired-pulse recovery from the numerical optimization objectives (`obj_natural_joint` minimized only deactivation, CRC, and peak open probability; recovery was computed only downstream). Consequently, the reported 4.34σ "minimax" for `kinetic_two_open` was an upper bound from a 3-observable fit rather than a true 4-way minimax minimum. Furthermore, the CRC was compared against an unsourced legacy target of 20.0 µM alongside the sourced 11.6 µM.
+> All figures and tables below are preserved intact per project archival discipline. For the definitive four-way fit with recovery directly in the joint and minimax objectives, exact nesting warm-starts, and the sourced 11.6 µM anchor, see [RESULTS-BRIEF-14.md](file:///Users/whinz/Biochemistry-wt-agent-brief-14/RESULTS-BRIEF-14.md).
+
 **Worktree:** `/Users/whinz/Biochemistry-wt-agent-brief-12`  
 **Branch:** `claude/agent-brief-12`  
 **Date:** 2026-10-17  

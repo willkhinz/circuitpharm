@@ -1,5 +1,10 @@
 # Results Brief 13 — Cooperative Binding and EC50 Target Resolution
 
+> [!WARNING]
+> **SUPERSEDED BY RESULTS-BRIEF-14.md (Agent Brief 14)**
+> The reported 17.69σ minimax residual for `kinetic_coop` in this report was an artifact of optimization omission: `obj_natural_joint` omitted paired-pulse recovery during search, and the optimizer was not warm-started from the nested sub-model `kinetic_two_open` at $c = 1.0$. Because `kinetic_coop` strictly nests `kinetic_two_open`, its true mathematical optimum on any joint objective is strictly $\le$ `kinetic_two_open`'s optimum.
+> All figures and tables below are preserved intact per project archival discipline. For the definitive four-way fit with recovery in the objective and enforced nesting assertions, see [RESULTS-BRIEF-14.md](file:///Users/whinz/Biochemistry-wt-agent-brief-14/RESULTS-BRIEF-14.md).
+
 **Worktree:** `/Users/whinz/Biochemistry-wt-agent-brief-13`  
 **Branch:** `claude/agent-brief-13`  
 **Base Commit on `main`:** `918cea9`  
