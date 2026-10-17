@@ -397,6 +397,42 @@ def get_barberis_amplitude_covariance(
     return cov, cov_pinv, det_sub
 
 
+DEFAULT_L1_MAX: float = 1.5
+
+
+def check_amplitude_admissibility(
+    areas: Sequence[float],
+    l1_max: float | None = DEFAULT_L1_MAX,
+) -> tuple[bool, float]:
+    """Check whether amplitude decomposition is admissible (Brief 11 §2c).
+
+    A decomposition is admissible only if the mode cancellation ratio satisfies:
+        sum(|a_i|) / |sum(a_i)| <= l1_max (default 1.5)
+
+    Parameters
+    ----------
+    areas : Sequence[float]
+        Component amplitudes (raw or fractional).
+    l1_max : float or None, default 1.5
+        Maximum permitted cancellation ratio sum(|a_i|) / |sum(a_i)|.
+
+    Returns
+    -------
+    is_admissible : bool
+        True if cancellation ratio <= l1_max.
+    cancellation_ratio : float
+        Evaluated sum(|a_i|) / |sum(a_i)|.
+    """
+    a = np.asarray(areas, dtype=float)
+    sum_a = float(np.sum(a))
+    if abs(sum_a) < 1e-12:
+        return False, float("inf")
+    ratio = float(np.sum(np.abs(a)) / abs(sum_a))
+    if l1_max is None:
+        return True, ratio
+    return bool(ratio <= l1_max + 1e-7), ratio
+
+
 def compute_amplitude_chi2(
     areas_pred: Sequence[float],
     pub_areas: Sequence[float],
@@ -601,6 +637,7 @@ def predict_components_eigen(
     return_all: bool = False,
     return_raw: bool = False,
     min_relative_ratio: float = 0.10,
+    l1_max: float | None = DEFAULT_L1_MAX,
 ) -> tuple[np.ndarray, np.ndarray] | tuple[np.ndarray, np.ndarray, np.ndarray, float]:
     """Predict deactivation (taus, areas) from generator matrix eigenvalues.
 
@@ -609,6 +646,10 @@ def predict_components_eigen(
 
     Rejects parameter vectors where the raw amplitude sum of the selected components is near
     zero or small relative to P_o(0) (threshold min_relative_ratio, default 0.10; Brief 9B §3).
+
+    Enforces amplitude admissibility gate (Brief 11 §2c):
+        sum(|a_i|) / |sum(a_i)| <= l1_max (default 1.5)
+    rejecting cancelling-amplitude regimes.
 
     Parameters
     ----------
@@ -628,6 +669,8 @@ def predict_components_eigen(
         If True, returns (taus, areas, raw_amplitudes, p_open_onset).
     min_relative_ratio : float
         Minimum required ratio |sum(raw_chosen)| / P_o(0) (default 0.10).
+    l1_max : float or None, default 1.5
+        Maximum permitted mode cancellation ratio sum(|a_i|) / |sum(a_i)|.
 
     Returns
     -------
@@ -640,6 +683,13 @@ def predict_components_eigen(
         model, pulse_ms=pulse_ms, conc_mm=conc_mm, open_index=open_index, return_raw=True
     )
     if return_all or n_components >= len(taus_all):
+        if l1_max is not None:
+            is_adm, c_ratio = check_amplitude_admissibility(areas_all, l1_max=l1_max)
+            if not is_adm:
+                raise ValueError(
+                    f"Inadmissible amplitude decomposition: sum(|a_i|) / |sum(a_i)| = {c_ratio:.4f} > {l1_max} "
+                    f"(cancelling amplitudes exceed limit); vector rejected."
+                )
         if return_raw:
             return taus_all, areas_all, amps_all, p_open_onset
         return taus_all, areas_all
@@ -660,6 +710,15 @@ def predict_components_eigen(
             f"({raw_sum_chosen:.4e}) is small relative to P_o(0) ({p_open_onset:.4e}, "
             f"ratio {abs(raw_sum_chosen)/p_open_onset:.4f} < {min_relative_ratio}); vector rejected."
         )
+
+    # Admissibility check: mode cancellation ratio sum(|a_i|) / |sum(a_i)| <= L1_MAX (Brief 11 §2c)
+    if l1_max is not None:
+        is_adm, c_ratio = check_amplitude_admissibility(chosen_areas, l1_max=l1_max)
+        if not is_adm:
+            raise ValueError(
+                f"Inadmissible amplitude decomposition: sum(|a_i|) / |sum(a_i)| = {c_ratio:.4f} > {l1_max} "
+                f"(cancelling amplitudes exceed limit); vector rejected."
+            )
 
     if return_raw:
         return chosen_taus, chosen_areas, chosen_amps, p_open_onset
@@ -1103,13 +1162,15 @@ def deact_components_log_likelihood(
       - `deact_components_log_likelihood(taus, areas, ...)`: scores explicit component sequences
       - `deact_components_log_likelihood(fit_result, ...)`: scores fitted component results
     """
+    l1_max = kwargs.get("l1_max", DEFAULT_L1_MAX)
+
     if len(args) == 2:
         taus_in, areas_in = args[0], args[1]
     elif len(args) == 1:
         arg = args[0]
         if hasattr(arg, "q_matrix") or isinstance(arg, ReceptorModel):
             taus_in, areas_in = predict_components_eigen(
-                arg, pulse_ms=pulse_ms, conc_mm=conc_mm, n_components=3
+                arg, pulse_ms=pulse_ms, conc_mm=conc_mm, n_components=3, l1_max=l1_max
             )
         elif isinstance(arg, (tuple, list)) and len(arg) == 2:
             taus_in, areas_in = arg[0], arg[1]
@@ -1150,6 +1211,15 @@ def deact_components_log_likelihood(
             f"Ill-conditioned amplitudes: sum of predicted component areas ({sum_areas:.4e}) "
             f"is near zero (< 1e-4); vector rejected."
         )
+
+    # Admissibility gate: mode cancellation bound (Brief 11 §2c)
+    if l1_max is not None:
+        is_adm, c_ratio = check_amplitude_admissibility(areas_pred_arr, l1_max=l1_max)
+        if not is_adm:
+            raise ValueError(
+                f"Inadmissible amplitude decomposition: sum(|a_i|) / |sum(a_i)| = {c_ratio:.4f} > {l1_max} "
+                f"(cancelling amplitudes exceed limit); vector rejected."
+            )
 
     z_tau = (taus_pred_arr - pub_taus) / err_taus_arr
     ll_tau_points = -0.5 * (z_tau ** 2 + np.log(2.0 * np.pi * err_taus_arr ** 2))

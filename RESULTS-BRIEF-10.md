@@ -92,8 +92,10 @@
 > - **Eigen route (Amplitudes Only):** Both schemes hit the identical single-open boundary value of $\chi^2 = \mathbf{203.06}$.  
 > - **Fit route (All Six):** `kinetic_jw95_free_rates` reaches $\chi^2 = \mathbf{910.73}$; `kinetic_flip` reaches $\chi^2 = \mathbf{1118.95}$.  
 >
-> **Physical Mechanism:**  
-> `kinetic_flip` introduces an extra pre-activation state ($F2R \rightleftharpoons F2O$), but maintains only a single conducting open state ($F2O$). Agonist unbinding at pulse termination still projects onto a 1-dimensional open-state subspace. Because the fastest observable relaxation mode remains forced to zero or negative amplitude, `kinetic_flip` is subject to the exact same $(0.57/0.04)^2 = 203.06$ arithmetic amplitude floor as `kinetic_jw95_free_rates`. The flipping transition provides no topological degrees of freedom to un-jam the amplitude obstruction.  
+> **Physical Mechanism (Correction from Brief 11 Task 2a):**  
+> `kinetic_flip` introduces an extra shut pre-activation state ($A2R \rightleftharpoons A2F \rightleftharpoons A2O$), maintaining a single conducting open state ($A2O$). Crucially, **`kinetic_flip` is NOT forced to $a_1 \le 0$**.  
+> In the two 5-state single-open schemes (`kinetic_jw95_free_rates` and `kinetic_open_desens_free_rates`), $a_1 \le -0.00000$ is strictly forced with zero mode cancellation ($\sum |a_i| / |\sum a_i| = 1.000$). In contrast, `kinetic_flip` relieves this structural constraint partially, reaching max admissible $a_1 = \mathbf{+0.24515}$ at the cancellation limit ($\sum |a_i| / |\sum a_i| = 1.500$, 50% cancellation).  
+> Therefore, `kinetic_flip` does **not** fail structurally due to a sign-definiteness obstruction forcing $a_1 \le 0$; it fails **quantitatively** ($+0.245$ is still far short of the required $+0.57 \pm 0.04$). Its best all-six $\chi^2$ ($273.86$) is numerically close to the 5-state schemes' ($273.92, 273.95$) for a fundamentally different reason than theirs, and the two cases must not be collapsed.  
 
 ---
 
@@ -103,11 +105,12 @@
 > - On the analytic eigen route: All six published parameters are satisfied with $\chi^2 = \mathbf{0.00}$ (time constants $\chi^2 = \mathbf{0.00}$, amplitudes $\chi^2 = \mathbf{0.00}$).  
 > - On the canonical fit route: It reduces the all-six $\chi^2$ to $\mathbf{153.88}$, compared to $910 - 1118$ across all single-open topologies.  
 >
-> **Physical Mechanism:**  
-> In single-open schemes ($AR_2 \rightleftharpoons AR_2^*$), the observable channel current is a projection onto a 1D coordinate $e_{open}$. The non-zero relaxation modes of the $Q_0$ generator matrix must satisfy sign-definiteness constraints that force the fast relaxation mode to enter with negative or negligible amplitude when following a 2 ms pulse.  
-> In `kinetic_two_open`, two distinct conducting open states exist ($AR^*$ and $A2R^*$). The observable current is a 2D projection:  
-> $$a_i = (p(0) \cdot V)_i \cdot \sum_{j \in \{open_1, open_2\}} (V^{-1})_{i, j}$$  
-> This linear combination of projection coordinates allows positive amplitudes across all three relaxation timescales, reproducing the published amplitude triple $(0.57, 0.23, 0.20)$ with $\chi^2 = 0.00$.  
+> **Physical Mechanism (Correction from Brief 11 Task 2b):**  
+> In single-open schemes ($A2R \rightleftharpoons A2O$), the observable channel current is a projection onto a 1D coordinate $e_{open}$. The non-zero relaxation modes of the $Q_0$ generator matrix must satisfy sign-definiteness constraints that force the fast relaxation mode to enter with negative amplitude ($a_1 \le 0$ for 5-state schemes) or restricted positive amplitude ($a_1 \le 0.245$ for flip).  
+> In `kinetic_two_open`, two distinct conducting open states exist, **both doubly-liganded**: $A2O$ and $A2O'$ ($R \rightleftharpoons AR \rightleftharpoons A2R \rightleftharpoons A2O \rightleftharpoons A2O'$, with desensitisation $A2R \rightleftharpoons A2D$). The observable current is a 2D projection onto the sum of both conducting open states:  
+> $$a_i = (p(0) \cdot V)_i \cdot \sum_{j \in \{A2O, A2O'\}} (V^{-1})_{i, j}$$  
+> This linear combination of projection coordinates allows positive amplitudes across all three relaxation timescales, reproducing the published amplitude triple $(0.57, 0.23, 0.20)$ with $\chi^2 = 0.00$.
+  
 
 ---
 

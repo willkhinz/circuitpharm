@@ -194,7 +194,10 @@ def test_self_consistency_target_time_constants_reproduction():
     koff, beta, alpha, d_rate, r_rate = res.x
     m_target = KineticAllosteryModel(kon=0.01, koff=koff, beta=beta, alpha=alpha, d=d_rate, r=r_rate)
 
-    pred_taus, pred_areas = predict_components_eigen(m_target)
+    # Note: This surrogate toy model was optimized solely for Q33 eigenvalues, ignoring amplitudes.
+    # Its amplitudes exhibit mode cancellation (ratio ~3.45 > 1.5), so testing time-constant
+    # reproduction requires relaxing the L1 admissibility gate (l1_max=None).
+    pred_taus, pred_areas = predict_components_eigen(m_target, l1_max=None)
     for pt, tt in zip(pred_taus, target_taus):
         assert pt == pytest.approx(tt, rel=1e-3), f"Engineered model must reproduce tau {tt}, got {pt}"
 
@@ -674,5 +677,58 @@ def test_warm_start_from_eigen_and_guard():
     assert res_bad.cost == pytest.approx(min(res_bad.cost_warm, res_bad.cost_random), abs=1e-9)
     if res_bad.cost_random < res_bad.cost_warm - 1e-9:
         assert res_bad.warm_start_won is False, "Random start beat bad warm start, warm_start_won must be False"
+
+
+# -----------------------------------------------------------------------------
+# Brief 11 Task 2 Tests: Amplitude Admissibility Gate
+# -----------------------------------------------------------------------------
+
+def test_amplitude_admissibility_gate():
+    """Brief 11 Task 2: Assert amplitude admissibility gate rejects mode cancellation > L1_MAX.
+
+    1. check_amplitude_admissibility returns True for positive amplitudes (ratio 1.000).
+    2. check_amplitude_admissibility returns True at cancellation boundary (ratio <= 1.5).
+    3. check_amplitude_admissibility returns False for cancelling amplitudes (ratio > 1.5).
+    4. predict_components_eigen and deact_components_log_likelihood raise ValueError when ratio > L1_MAX.
+    5. Passing l1_max=None relaxes the gate.
+    """
+    from circuitpharm.fitting.deact_components import (
+        DEFAULT_L1_MAX,
+        check_amplitude_admissibility,
+        deact_components_log_likelihood,
+        predict_components_eigen,
+    )
+
+    row = DEACTIVATIONS[1]
+    taus, pub_areas = row.components
+
+    # 1. Strictly positive amplitudes: cancellation ratio = 1.000
+    pos_areas = (0.57, 0.23, 0.20)
+    is_adm, ratio = check_amplitude_admissibility(pos_areas)
+    assert is_adm is True
+    assert ratio == pytest.approx(1.000, abs=1e-6)
+
+    # 2. At cancellation boundary: ratio = 1.500
+    boundary_areas = (1.25, -0.25, 0.0)  # sum = 1.0, sum(|a|) = 1.5, ratio = 1.5
+    is_adm, ratio = check_amplitude_admissibility(boundary_areas, l1_max=1.5)
+    assert is_adm is True
+    assert ratio == pytest.approx(1.500, abs=1e-6)
+
+    # 3. Exceeding cancellation boundary: ratio = 1.6 > 1.5
+    cancelling_areas = (1.30, -0.30, 0.0)  # sum = 1.0, sum(|a|) = 1.6, ratio = 1.6
+    is_adm, ratio = check_amplitude_admissibility(cancelling_areas, l1_max=1.5)
+    assert is_adm is False
+    assert ratio == pytest.approx(1.600, abs=1e-6)
+
+    # 4. deact_components_log_likelihood rejects cancelling areas by default (l1_max=1.5)
+    with pytest.raises(ValueError, match="[Ii]nadmissible amplitude decomposition"):
+        deact_components_log_likelihood(taus, cancelling_areas, deact_row=row)
+
+    # But accepts when l1_max is relaxed to 2.0 or None
+    res_relaxed = deact_components_log_likelihood(taus, cancelling_areas, deact_row=row, l1_max=2.0)
+    assert np.isfinite(res_relaxed.total_log_likelihood)
+
+    res_none = deact_components_log_likelihood(taus, cancelling_areas, deact_row=row, l1_max=None)
+    assert np.isfinite(res_none.total_log_likelihood)
 
 
