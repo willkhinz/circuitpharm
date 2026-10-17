@@ -1,58 +1,220 @@
-"""Analytic prediction of deactivation components from generator matrix eigenvalues.
+"""Deactivation component prediction, fitting, and likelihood scoring (Weighting iv).
 
-Agent Brief 7A:
-Predicts deactivation relaxation time constants and component amplitudes analytically
-from the Q matrix eigenvalues and eigenvectors at zero agonist, for a step application
-protocol (Barberis et al. 2007: 2 ms pulse of 10 mM GABA in alpha1beta2gamma2S).
+Unified module (Brief 8A):
+Reconciles the analytic eigen-decomposition predictor (Brief 7A) and the
+triexponential waveform-fitting predictor (Brief 7B) for the Barberis et al. 2007
+protocol (2 ms pulse of 10 mM GABA in alpha1beta2gamma2S).
 
-The three steps:
-1. Initial condition:
-   Starting from equilibrium at zero agonist (P(0) = state_distribution(0.0)),
-   the receptor is exposed to a square pulse of agonist (conc_mm, default 10.0 mM = 10,000 uM)
-   for duration pulse_ms (default 2.0 ms). Because the generator Q_pulse is constant during the pulse,
-   the occupancy at the end of the pulse is obtained exactly via the matrix exponential:
-       P(pulse_ms) = P(0) @ expm(Q_pulse * pulse_ms)
-   The pulse is brief and saturating; the receptor does not reach steady state during it.
-
-2. Relaxation:
-   At zero agonist (t >= pulse_ms), the generator matrix Q_0 = q_matrix(0.0) governs relaxation:
-       dP/dt = P Q_0
-   We compute the eigen-decomposition Q_0 = V diag(lambda) V^{-1}.
-   The zero eigenvalue corresponds to the stationary absorbing state (all channels in R).
-   The non-zero eigenvalues lambda_i < 0 yield relaxation time constants:
-       tau_i = -1 / lambda_i
-
-3. Observable:
-   Current is proportional to open probability (occupancy of A2O, open_index=3).
-   The open probability relaxation is:
-       p_open(t) = sum_i a_i exp(lambda_i t) = sum_i a_i exp(-t / tau_i)
-   where amplitude a_i is the projection of the initial state onto eigenvector i and coordinate 3:
-       a_i = (P(pulse_ms) @ V)_i * (V^{-1})_{i, open_index}
-   The sum of all amplitudes sum_i a_i reproduces the open probability at relaxation onset,
-   p_open(0) = P(pulse_ms)[open_index].
-   Normalised component areas are:
-       area_i = a_i / sum_j a_j = a_i / P(pulse_ms)[open_index]
-   such that sum_i area_i = 1.0, exactly matching the normalisation of BARBERIS2007_DEACT.
-
-4. The 4-vs-3 problem:
-   A 5-state Markov scheme has 4 non-zero relaxation eigenvalues. However, because agonist is zero,
-   no transitions occur from R -> AR or AR -> A2R. The unbinding mode AR -> R (eigenvalue lambda = -koff)
-   has identically zero projection onto the {A2R, A2O, A2D} coupled subsystem.
-   Therefore, the amplitude of the fourth mode in the open state A2O is mathematically zero (a_4 = 0).
-   Reporting the 3 largest components by absolute amplitude retains 100% of the observable signal
-   and discards a mode with zero observable current.
+Predictors:
+1. `predict_components_eigen`: Analytic prediction from the infinitesimal generator
+   eigenvalues and eigenvectors at zero agonist (Q_0). Resolves the 4-vs-3 problem
+   by identifying the zero-amplitude unbinding mode AR -> R.
+2. `predict_components_eigen_all`: Computes all 4 relaxation components without reduction.
+3. `predict_components_fit`: Triexponential non-linear least squares fit to simulated
+   decay waveforms, matching the experimental methodology of Barberis et al. 2007.
+4. `fit_triexponential_decay`: Multi-start bounded optimizer with Latin Hypercube sampling,
+   Jacobian SVD condition analysis, and rank-deficiency / tie detection.
+5. `deact_components_log_likelihood`: Unified Gaussian log-likelihood term scoring predicted
+   (taus, areas) against published parameters at published errors (Weighting iv), reading from
+   `circuitpharm.literature.DEACTIVATIONS[1]` without literals.
 """
 from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import Sequence
+from typing import Any, Sequence
 
 import numpy as np
 import scipy.linalg as la
+from scipy.optimize import least_squares
+from scipy.stats import qmc
 
 from ..literature import DEACTIVATIONS, Deactivation
 from ..models.base import OPEN_STATE_INDEX, ReceptorModel
+from .data import _BARBERIS_FIT_WINDOW_MS, _T_BARBERIS, BARBERIS2007_DEACT, DeactivationDataset
+
+
+class DeactFitResult(tuple):
+    """Result of triexponential deactivation decay fit.
+
+    Inherits from tuple with length 2: (taus, areas), allowing unpacking:
+        taus, areas = result
+    while also exposing rich diagnostic attributes:
+        result.taus: (tau1, tau2, tau3) in ms, ordered fastest-first
+        result.areas: (a1, a2, a3) fractional amplitudes, matching taus
+        result.spread_taus: max - min across top optima (decades or ms)
+        result.spread_areas: max - min across top optima
+        result.is_unique: whether top optima agree within tolerance
+        result.is_well_conditioned: whether components are distinct and identifiable
+        result.condition_number: condition number of the Jacobian at the optimum
+        result.singular_values: singular values of the Jacobian at the optimum
+        result.cost: half sum of squared residuals
+        result.r_squared: coefficient of determination
+        result.degeneracy_reason: diagnostic note if fit is ill-conditioned or tied
+    """
+
+    def __new__(
+        cls,
+        taus: tuple[float, float, float],
+        areas: tuple[float, float, float],
+        *,
+        spread_taus: tuple[float, float, float] = (0.0, 0.0, 0.0),
+        spread_areas: tuple[float, float, float] = (0.0, 0.0, 0.0),
+        is_unique: bool = True,
+        is_well_conditioned: bool = True,
+        condition_number: float = 1.0,
+        singular_values: tuple[float, ...] = (),
+        cost: float = 0.0,
+        r_squared: float = 1.0,
+        degeneracy_reason: str = "",
+        top_optima: list[dict[str, Any]] | None = None,
+    ):
+        instance = super().__new__(cls, (taus, areas))
+        instance._taus = taus
+        instance._areas = areas
+        instance._spread_taus = spread_taus
+        instance._spread_areas = spread_areas
+        instance._is_unique = is_unique
+        instance._is_well_conditioned = is_well_conditioned
+        instance._condition_number = condition_number
+        instance._singular_values = singular_values
+        instance._cost = cost
+        instance._r_squared = r_squared
+        instance._degeneracy_reason = degeneracy_reason
+        instance._top_optima = top_optima or []
+        return instance
+
+    @property
+    def taus(self) -> tuple[float, float, float]:
+        return self._taus
+
+    @property
+    def areas(self) -> tuple[float, float, float]:
+        return self._areas
+
+    @property
+    def spread_taus(self) -> tuple[float, float, float]:
+        return self._spread_taus
+
+    @property
+    def spread_areas(self) -> tuple[float, float, float]:
+        return self._spread_areas
+
+    @property
+    def is_unique(self) -> bool:
+        return self._is_unique
+
+    @property
+    def is_well_conditioned(self) -> bool:
+        return self._is_well_conditioned
+
+    @property
+    def condition_number(self) -> float:
+        return self._condition_number
+
+    @property
+    def singular_values(self) -> tuple[float, ...]:
+        return self._singular_values
+
+    @property
+    def cost(self) -> float:
+        return self._cost
+
+    @property
+    def r_squared(self) -> float:
+        return self._r_squared
+
+    @property
+    def degeneracy_reason(self) -> str:
+        return self._degeneracy_reason
+
+    @property
+    def top_optima(self) -> list[dict[str, Any]]:
+        return self._top_optima
+
+    @property
+    def tau_weighted_ms(self) -> float:
+        """Derived amplitude-weighted deactivation time constant: sum(a_i * tau_i)."""
+        return float(sum(a * t for a, t in zip(self._areas, self._taus)))
+
+    def __repr__(self) -> str:
+        cond_str = "well-conditioned" if self._is_well_conditioned else f"ill-conditioned ({self._degeneracy_reason})"
+        return (
+            f"DeactFitResult(taus={tuple(round(t, 3) for t in self._taus)}, "
+            f"areas={tuple(round(a, 3) for a in self._areas)}, "
+            f"tau_w={self.tau_weighted_ms:.2f} ms, "
+            f"cond={self._condition_number:.2e}, {cond_str})"
+        )
+
+
+class DeactComponentsLikelihoodResult(float):
+    """Log-likelihood evaluation of predicted components against literature.
+
+    Subclasses float so that it functions as a plain float log-likelihood in nats:
+        ll = deact_components_log_likelihood(model)
+        assert np.isfinite(ll)
+        assert ll < 0.0
+    while also exposing rich diagnostic attributes (matching Brief 7B):
+        res.total_log_likelihood: float
+        res.ll_taus: float
+        res.ll_areas: float
+        res.z_taus: tuple[float, ...]
+        res.z_areas: tuple[float, ...]
+        res.taus_pred: tuple[float, ...]
+        res.taus_pub: tuple[float, ...]
+        res.taus_err: tuple[float, ...]
+        res.areas_pred: tuple[float, ...]
+        res.areas_pub: tuple[float, ...]
+        res.areas_err: tuple[float, ...]
+        res.tau_w_pred: float
+        res.tau_w_pub: float
+        res.tau_w_err: float
+        res.z_tau_w: float
+    """
+
+    def __new__(
+        cls,
+        total_log_likelihood: float,
+        ll_taus: float,
+        ll_areas: float,
+        z_taus: tuple[float, ...],
+        z_areas: tuple[float, ...],
+        taus_pred: tuple[float, ...],
+        taus_pub: tuple[float, ...],
+        taus_err: tuple[float, ...],
+        areas_pred: tuple[float, ...],
+        areas_pub: tuple[float, ...],
+        areas_err: tuple[float, ...],
+        tau_w_pred: float,
+        tau_w_pub: float,
+        tau_w_err: float,
+        z_tau_w: float,
+    ):
+        instance = super().__new__(cls, float(total_log_likelihood))
+        instance.total_log_likelihood = float(total_log_likelihood)
+        instance.ll_taus = float(ll_taus)
+        instance.ll_areas = float(ll_areas)
+        instance.z_taus = tuple(float(x) for x in z_taus)
+        instance.z_areas = tuple(float(x) for x in z_areas)
+        instance.taus_pred = tuple(float(x) for x in taus_pred)
+        instance.taus_pub = tuple(float(x) for x in taus_pub)
+        instance.taus_err = tuple(float(x) for x in taus_err)
+        instance.areas_pred = tuple(float(x) for x in areas_pred)
+        instance.areas_pub = tuple(float(x) for x in areas_pub)
+        instance.areas_err = tuple(float(x) for x in areas_err)
+        instance.tau_w_pred = float(tau_w_pred)
+        instance.tau_w_pub = float(tau_w_pub)
+        instance.tau_w_err = float(tau_w_err)
+        instance.z_tau_w = float(z_tau_w)
+        return instance
+
+    def __repr__(self) -> str:
+        return (
+            f"DeactComponentsLikelihoodResult(total_ll={self.total_log_likelihood:.4f}, "
+            f"ll_taus={self.ll_taus:.4f}, ll_areas={self.ll_areas:.4f}, "
+            f"z_taus={tuple(round(z, 2) for z in self.z_taus)}, "
+            f"z_areas={tuple(round(z, 2) for z in self.z_areas)})"
+        )
 
 
 @dataclass(frozen=True)
@@ -72,6 +234,57 @@ class DeactComponentsDiagnostic:
     reconstruction_max_deviation: float
     steady_state_reached: bool
 
+
+def parse_barberis_component_errors(
+    note: str,
+) -> tuple[tuple[float, float, float], tuple[float, float, float]]:
+    """Parse component errors and area errors from a Deactivation record note prose.
+
+    Matches e.g.:
+      'Triple exponential; component errors are 0.3, 4.6, 14.9 ms and area errors 0.04, 0.02, 0.03.'
+    """
+    pattern = (
+        r"component errors are\s+([\d]+(?:\.[\d]+)?),\s*([\d]+(?:\.[\d]+)?),\s*([\d]+(?:\.[\d]+)?)\s*ms\s+"
+        r"and area errors\s+([\d]+(?:\.[\d]+)?),\s*([\d]+(?:\.[\d]+)?),\s*([\d]+(?:\.[\d]+)?)"
+    )
+    m = re.search(pattern, note)
+    if not m:
+        m_tau = re.search(r"component errors are ([0-9.,\s]+) ms", note)
+        m_area = re.search(r"area errors ([0-9.,\s]+)", note)
+        if not (m_tau and m_area):
+            raise ValueError(f"Could not parse component errors from note: {note!r}")
+        tau_errs = tuple(float(x.strip()) for x in m_tau.group(1).split(",") if x.strip())
+        raw_area = m_area.group(1).rstrip(".;")
+        area_errs = tuple(float(x.strip()) for x in raw_area.split(",") if x.strip())
+        return tau_errs, area_errs
+    tau_errs = (float(m.group(1)), float(m.group(2)), float(m.group(3)))
+    area_errs = (float(m.group(4)), float(m.group(5)), float(m.group(6)))
+    return tau_errs, area_errs
+
+
+def get_barberis_errors(
+    record: Deactivation | None = None,
+) -> tuple[tuple[float, ...], tuple[float, ...]]:
+    """Retrieve published component errors from structured field or prose fallback."""
+    if record is None:
+        record = DEACTIVATIONS[1]
+    for attr in ("component_errors", "component_errs"):
+        val = getattr(record, attr, None)
+        if val and len(val) == 2 and len(val[0]) > 0:
+            return tuple(float(x) for x in val[0]), tuple(float(x) for x in val[1])
+    return parse_barberis_component_errors(record.note)
+
+
+def parse_deactivation_errors(
+    record: Deactivation | None = None,
+) -> tuple[tuple[float, ...], tuple[float, ...]]:
+    """Alias for get_barberis_errors (Brief 7A name)."""
+    return get_barberis_errors(record)
+
+
+# -----------------------------------------------------------------------------
+# 1. Analytic Eigen-Decomposition Predictor (Brief 7A)
+# -----------------------------------------------------------------------------
 
 def predict_components_eigen_all(
     model: ReceptorModel,
@@ -96,9 +309,9 @@ def predict_components_eigen_all(
     Returns
     -------
     taus : np.ndarray
-        Array of all 4 relaxation time constants in ms, sorted ascending.
+        Array of all relaxation time constants in ms, sorted ascending.
     areas : np.ndarray
-        Array of all 4 normalised component areas (summing to 1.0).
+        Array of all normalised component areas (summing to 1.0).
     """
     if not hasattr(model, "q_matrix") or not hasattr(model, "state_distribution"):
         raise TypeError(
@@ -140,7 +353,6 @@ def predict_components_eigen_all(
     zero_tol = 1e-10
     non_zero = np.abs(eigvals_real) > zero_tol
     if np.sum(non_zero) != len(eigvals_real) - 1:
-        # Stationary direction should be unique (absorbing state R)
         non_zero = np.argsort(eigvals_real)[:-1]
 
     lambda_nz = eigvals_real[non_zero]
@@ -200,7 +412,7 @@ def predict_components_eigen(
     open_index : int
         Index of the open state (default 3).
     return_all : bool
-        If True, returns all 4 non-zero components without reduction.
+        If True, returns all non-zero components without reduction.
 
     Returns
     -------
@@ -209,22 +421,19 @@ def predict_components_eigen(
     areas : np.ndarray
         Component normalised areas (fractions).
     """
-    taus_4, areas_4 = predict_components_eigen_all(
+    taus_all, areas_all = predict_components_eigen_all(
         model, pulse_ms=pulse_ms, conc_mm=conc_mm, open_index=open_index
     )
     if return_all:
-        return taus_4, areas_4
+        return taus_all, areas_all
 
-    if n_components >= len(taus_4):
-        return taus_4, areas_4
+    if n_components >= len(taus_all):
+        return taus_all, areas_all
 
-    # 4-vs-3 resolution:
-    # Select the n_components with largest absolute amplitude/area.
-    # In this topology, the unbinding mode AR -> R has amplitude ~ 0.0, so it is cleanly discarded.
-    top_indices = np.argsort(-np.abs(areas_4))[:n_components]
-    sort_taus = np.argsort(taus_4[top_indices])
+    top_indices = np.argsort(-np.abs(areas_all))[:n_components]
+    sort_taus = np.argsort(taus_all[top_indices])
     chosen = top_indices[sort_taus]
-    return taus_4[chosen], areas_4[chosen]
+    return taus_all[chosen], areas_all[chosen]
 
 
 def reconstruct_deactivation_waveform(
@@ -275,7 +484,6 @@ def verify_eigen_reconstruction(
         Maximum absolute deviation across the grid.
     """
     if time_ms is None:
-        from ..fitting.data import BARBERIS2007_DEACT
         t_grid = np.asarray(BARBERIS2007_DEACT.time_ms, dtype=float)
     else:
         t_grid = np.asarray(time_ms, dtype=float)
@@ -288,15 +496,15 @@ def verify_eigen_reconstruction(
     p_pulse = np.clip(p_pulse, 0.0, 1.0)
     p_pulse = p_pulse / np.sum(p_pulse)
 
-    # 2. All 4 components and unnormalized amplitudes
-    taus_4, areas_4 = predict_components_eigen_all(
+    # 2. All components and unnormalized amplitudes
+    taus_all, areas_all = predict_components_eigen_all(
         model, pulse_ms=pulse_ms, conc_mm=conc_mm, open_index=open_index
     )
     p_open_onset = float(p_pulse[open_index])
-    amps_4 = areas_4 * p_open_onset
+    amps_all = areas_all * p_open_onset
 
     # 3. Reconstruct analytical waveform
-    recon_p_open = reconstruct_deactivation_waveform(taus_4, amps_4, t_grid)
+    recon_p_open = reconstruct_deactivation_waveform(taus_all, amps_all, t_grid)
 
     # 4. Integrate with simulate_waveform starting from p_pulse at zero agonist
     wf = model.simulate_waveform(t_grid, np.zeros_like(t_grid), initial_state=p_pulse)
@@ -311,110 +519,366 @@ def verify_eigen_reconstruction(
     return max_dev
 
 
-def parse_deactivation_errors(
-    record: Deactivation | None = None,
-) -> tuple[tuple[float, ...], tuple[float, ...]]:
-    """Extract published (tau_errors, area_errors) from Deactivation record.
+# -----------------------------------------------------------------------------
+# 2. Triexponential Fitting Predictor (Brief 7B)
+# -----------------------------------------------------------------------------
 
-    Reads `component_errs` structured field if populated; otherwise extracts from `note` prose.
-    Never uses hardcoded numeric literals.
+def fit_triexponential_decay(
+    t_ms: np.ndarray,
+    y: np.ndarray,
+    *,
+    n_starts: int = 16,
+    seed: int = 42,
+    spread_tol: float = 0.05,
+    extra_starts: Sequence[np.ndarray] | None = None,
+    bounds: tuple[np.ndarray, np.ndarray] | None = None,
+) -> DeactFitResult:
+    """Fit a normalized triexponential decay sum(a_i * exp(-t / tau_i)) to a time series.
+
+    The model parameterisation enforces sum(a_i) = 1.0 (with a_3 = 1 - a_1 - a_2) and
+    searches in log10(tau) to cover timescales spanning from 0.01 ms to 10,000 ms.
+
+    Convergence and conditioning checks:
+    - Multi-start optimisation via Latin Hypercube + warm starts.
+    - Top-5 optima are tracked to detect ties and spread.
+    - SVD of the Jacobian evaluates condition number and rank deficiency.
+    - If two time constants collapse within 5% or an area is near 0, the fit is
+      flagged as ill-conditioned (rank deficient / non-identifiable tie).
     """
-    if record is None:
-        record = DEACTIVATIONS[1]
+    t_arr = np.asarray(t_ms, dtype=float)
+    y_arr = np.asarray(y, dtype=float)
+    if t_arr.shape != y_arr.shape or t_arr.ndim != 1 or t_arr.size < 10:
+        raise ValueError(f"Invalid input arrays: shapes {t_arr.shape} vs {y_arr.shape}")
+    if not (np.all(np.isfinite(t_arr)) and np.all(np.isfinite(y_arr))):
+        raise ValueError("Non-finite values encountered in deactivation decay trace.")
 
-    if getattr(record, "component_errs", None):
-        c_errs = record.component_errs
-        if len(c_errs) == 2 and len(c_errs[0]) > 0:
-            return tuple(float(x) for x in c_errs[0]), tuple(float(x) for x in c_errs[1])
+    # Objective: residuals for p = [log10_tau1, log10_tau2, log10_tau3, a1, a2]
+    # a3 = 1.0 - a1 - a2
+    def resid(p):
+        t1, t2, t3 = 10.0 ** p[0], 10.0 ** p[1], 10.0 ** p[2]
+        a1, a2 = p[3], p[4]
+        a3 = 1.0 - a1 - a2
+        y_mod = a1 * np.exp(-t_arr / t1) + a2 * np.exp(-t_arr / t2) + a3 * np.exp(-t_arr / t3)
+        return y_mod - y_arr
 
-    # Regex parse from prose note:
-    note = record.note
-    # Example: "component errors are 0.3, 4.6, 14.9 ms and area errors 0.04, 0.02, 0.03."
-    m_tau = re.search(r"component errors are ([0-9.,\s]+) ms", note)
-    m_area = re.search(r"area errors ([0-9.,\s]+)", note)
+    if bounds is None:
+        lo_b = np.array([-2.0, -1.0, 0.5, 0.0, 0.0])
+        hi_b = np.array([1.5, 2.8, 4.2, 1.0, 1.0])
+        bounds = (lo_b, hi_b)
+    else:
+        lo_b = np.asarray(bounds[0], dtype=float)
+        hi_b = np.asarray(bounds[1], dtype=float)
+        bounds = (lo_b, hi_b)
 
-    if not (m_tau and m_area):
-        raise ValueError(
-            f"Could not parse component and area errors from note of {record.label!r}: {note!r}"
+    sampler = qmc.LatinHypercube(d=5, seed=seed)
+    sampled = lo_b + sampler.random(n_starts) * (hi_b - lo_b)
+    for row in sampled:
+        row[:3] = np.sort(row[:3])
+        if row[3] >= 0 and row[4] >= 0 and row[3] + row[4] > 0.95:
+            scale = 0.85 / (row[3] + row[4])
+            row[3] *= scale
+            row[4] *= scale
+
+    warm_starts = [
+        np.array([np.log10(2.8), np.log10(33.4), np.log10(221.35), 0.57, 0.23]),
+        np.array([np.log10(5.0), np.log10(50.0), np.log10(300.0), 0.33, 0.33]),
+        np.array([np.log10(1.0), np.log10(15.0), np.log10(500.0), 0.40, 0.30]),
+    ]
+    if extra_starts:
+        warm_starts.extend(extra_starts)
+
+    all_starts = np.vstack([warm_starts, sampled])
+
+    optima = []
+    for s0 in all_starts:
+        s0_clamped = np.clip(s0, lo_b + 1e-6, hi_b - 1e-6)
+        try:
+            res = least_squares(
+                resid,
+                s0_clamped,
+                bounds=bounds,
+                method="trf",
+                ftol=1e-12,
+                xtol=1e-12,
+                gtol=1e-12,
+                max_nfev=15000,
+            )
+        except Exception:
+            continue
+
+        if not res.success or not np.all(np.isfinite(res.x)):
+            continue
+
+        p = res.x
+        t1, t2, t3 = 10.0 ** p[0], 10.0 ** p[1], 10.0 ** p[2]
+        a1, a2 = p[3], p[4]
+        a3 = 1.0 - a1 - a2
+
+        tau_raw = np.array([t1, t2, t3])
+        area_raw = np.array([a1, a2, a3])
+        perm = np.argsort(tau_raw)
+        taus_ordered = tuple(float(tau_raw[i]) for i in perm)
+        areas_ordered = tuple(float(area_raw[i]) for i in perm)
+
+        s_vals = np.linalg.svd(res.jac, compute_uv=False)
+        cond = float(s_vals[0] / s_vals[-1]) if s_vals[-1] > 1e-14 else float("inf")
+
+        optima.append({
+            "cost": float(res.cost),
+            "taus": taus_ordered,
+            "areas": areas_ordered,
+            "cond": cond,
+            "singular_values": tuple(float(x) for x in s_vals),
+            "res": res,
+        })
+
+    if not optima:
+        raise RuntimeError("None of the triexponential starts converged.")
+
+    optima.sort(key=lambda item: item["cost"])
+    best = optima[0]
+
+    top = optima[: min(5, len(optima))]
+    tau_mat = np.array([item["taus"] for item in top])
+    area_mat = np.array([item["areas"] for item in top])
+
+    spread_t = tuple(float(np.ptp(tau_mat[:, i])) for i in range(3))
+    spread_a = tuple(float(np.ptp(area_mat[:, i])) for i in range(3))
+
+    log_tau_mat = np.log10(np.maximum(tau_mat, 1e-12))
+    log_spread_t = np.ptp(log_tau_mat, axis=0)
+    is_unique = bool(np.all(log_spread_t <= spread_tol) and np.all(np.array(spread_a) <= spread_tol))
+
+    t1, t2, t3 = best["taus"]
+    a1, a2, a3 = best["areas"]
+    merge_12 = abs(t2 - t1) / max(t2, 1e-6) < 0.05
+    merge_23 = abs(t3 - t2) / max(t3, 1e-6) < 0.05
+    zero_area = any(abs(a) < 0.01 for a in (a1, a2, a3))
+    high_cond = best["cond"] > 1e4
+
+    is_well_conditioned = not (merge_12 or merge_23 or zero_area or high_cond)
+
+    deg_reasons = []
+    if merge_12:
+        deg_reasons.append(f"tau1 and tau2 collapsed ({t1:.2f} ms vs {t2:.2f} ms; a1+a2 unidentifiable tie)")
+    if merge_23:
+        deg_reasons.append(f"tau2 and tau3 collapsed ({t2:.2f} ms vs {t3:.2f} ms)")
+    if zero_area:
+        deg_reasons.append(f"vanishing amplitude component ({a1:.3f}, {a2:.3f}, {a3:.3f})")
+    if high_cond:
+        deg_reasons.append(f"Jacobian condition number {best['cond']:.2e} indicates rank deficiency")
+
+    degeneracy_str = "; ".join(deg_reasons) if deg_reasons else "None"
+
+    ss_res = 2.0 * best["cost"]
+    ss_tot = float(np.sum((y_arr - np.mean(y_arr)) ** 2))
+    r2 = 1.0 - (ss_res / ss_tot) if ss_tot > 1e-30 else 0.0
+
+    return DeactFitResult(
+        taus=best["taus"],
+        areas=best["areas"],
+        spread_taus=spread_t,
+        spread_areas=spread_a,
+        is_unique=is_unique,
+        is_well_conditioned=is_well_conditioned,
+        condition_number=best["cond"],
+        singular_values=best["singular_values"],
+        cost=best["cost"],
+        r_squared=float(r2),
+        degeneracy_reason=degeneracy_str,
+        top_optima=top,
+    )
+
+
+def predict_components_fit(
+    model: Any,
+    *,
+    pulse_ms: float = 2.0,
+    conc_mm: float = 10.0,
+    fit_window_ms: float = _BARBERIS_FIT_WINDOW_MS,
+    grid: np.ndarray | None = None,
+    n_starts: int = 16,
+    seed: int = 42,
+    uniform_grid: bool = False,
+    n_pulse: int = 200,
+    n_tail: int = 500,
+    extra_starts: Sequence[np.ndarray] | None = None,
+    bounds: tuple[np.ndarray, np.ndarray] | None = None,
+) -> DeactFitResult:
+    """Predict triexponential deactivation components (taus, areas) by fitting simulated waveform.
+
+    Implements the experimental procedure of Barberis et al. 2007:
+    1. Protocol simulation: 2 ms pulse of 10 mM GABA, followed by washout to 0 mM over fit_window_ms
+       (default 1000.0 ms), computed via model.simulate_waveform.
+    2. Peak extraction & normalisation: current decay is re-zeroed at peak open probability and
+       divided by peak open probability so y(0) = 1.0, matching BARBERIS2007_DEACT.normalized_current.
+    3. Grid sampling: evaluated on the dataset's hybrid log/linear grid (_T_BARBERIS) by default,
+       or on a uniform grid if uniform_grid=True (sensitivity check).
+    4. Triexponential fit: multi-start non-linear least squares fit with convergence and
+       rank-deficiency detection, returning (taus, areas) ordered fastest-first.
+    """
+    if grid is not None:
+        t_eval = np.asarray(grid, dtype=float)
+    elif uniform_grid:
+        t_eval = np.linspace(0.0, float(fit_window_ms), len(_T_BARBERIS))
+    else:
+        t_eval = _T_BARBERIS
+
+    if isinstance(model, np.ndarray):
+        y_eval = np.asarray(model, dtype=float)
+        return fit_triexponential_decay(t_eval, y_eval, n_starts=n_starts, seed=seed, extra_starts=extra_starts, bounds=bounds)
+
+    if isinstance(model, DeactivationDataset) or hasattr(model, "normalized_current"):
+        ds_t = getattr(model, "time_ms", t_eval)
+        ds_y = getattr(model, "normalized_current")
+        if np.array_equal(ds_t, t_eval):
+            y_eval = np.asarray(ds_y, dtype=float)
+        else:
+            y_eval = np.interp(t_eval, ds_t, ds_y)
+        return fit_triexponential_decay(t_eval, y_eval, n_starts=n_starts, seed=seed, extra_starts=extra_starts, bounds=bounds)
+
+    if not hasattr(model, "q_matrix"):
+        from ..models.base import ObservableMismatch
+        raise ObservableMismatch(
+            f"predict_components_fit requires a Markov model with state transitions (`q_matrix`), "
+            f"got {type(model).__name__}."
         )
 
-    tau_errs = tuple(float(x.strip()) for x in m_tau.group(1).split(",") if x.strip())
-    # Strip any trailing punctuation from area string
-    raw_area = m_area.group(1).rstrip(".;")
-    area_errs = tuple(float(x.strip()) for x in raw_area.split(",") if x.strip())
-    return tau_errs, area_errs
+    # 1. Simulate the protocol
+    t_sim = np.unique(np.concatenate([
+        np.linspace(0.0, float(pulse_ms), n_pulse),
+        float(pulse_ms) + np.geomspace(1e-4, float(fit_window_ms), n_tail),
+    ]))
+    gaba_um = np.where(t_sim <= float(pulse_ms), float(conc_mm) * 1000.0, 0.0)
 
+    res = model.simulate_waveform(t_sim, gaba_um)
+    p_open = np.asarray(res.p_open, dtype=float)
+
+    # 2. Extract and normalise decay
+    i_peak = int(np.argmax(p_open))
+    peak = float(p_open[i_peak])
+    if not (np.isfinite(peak) and peak > 0.0):
+        raise ValueError(
+            f"Model peak open probability is non-positive or non-finite ({peak!r}); decay cannot be normalised."
+        )
+
+    t_decay = t_sim[i_peak:] - t_sim[i_peak]
+    y_decay = p_open[i_peak:] / peak
+
+    # 3. Interpolate onto the evaluation grid
+    y_grid = np.interp(t_eval, t_decay, y_decay)
+
+    # 4. Fit triexponential
+    return fit_triexponential_decay(t_eval, y_grid, n_starts=n_starts, seed=seed, extra_starts=extra_starts, bounds=bounds)
+
+
+# -----------------------------------------------------------------------------
+# 3. Unified Likelihood & Diagnostics (Weighting iv)
+# -----------------------------------------------------------------------------
 
 def deact_components_log_likelihood(
-    model: ReceptorModel,
-    *,
+    *args,
     deact_record: Deactivation | None = None,
+    deact_row: Deactivation | None = None,
     pulse_ms: float = 2.0,
     conc_mm: float = 10.0,
     score_areas: bool = True,
     score_tau_w: bool = False,
-) -> float:
-    """Evaluate Gaussian log-likelihood of predicted deactivation components against published record.
+    **kwargs,
+) -> DeactComponentsLikelihoodResult:
+    """Score predicted deactivation components against published literature values and errors.
 
-    Weighting (iv): Scores predicted components against published parameters at their published errors,
-    avoiding the point-count leverage and noise profiling of reconstructed curves.
+    Weighting (iv):
+    Evaluates an exact Gaussian log-likelihood for predicted components against
+    published values and errors in `circuitpharm.literature.DEACTIVATIONS[1]`
+    (Barberis 2007 Table 1):
+      tau_1 = 2.8 +/- 0.3 ms, area_1 = 0.57 +/- 0.04
+      tau_2 = 33.4 +/- 4.6 ms, area_2 = 0.23 +/- 0.02
+      tau_3 = 221.35 +/- 14.9 ms, area_3 = 0.20 +/- 0.03
+      tau_w = 52.5 +/- 2.9 ms (derived)
 
-    Parameters
-    ----------
-    model : ReceptorModel
-        Model to evaluate.
-    deact_record : Deactivation, optional
-        Literature record providing published values and errors. Defaults to DEACTIVATIONS[1]
-        (Barberis 2007, brief pulse).
-    pulse_ms : float
-        Pulse length in ms.
-    conc_mm : float
-        GABA concentration in mM.
-    score_areas : bool
-        If True, scores both taus and areas (6 observations total).
-    score_tau_w : bool
-        If True, also scores derived weighted tau against published tau_w.
-
-    Returns
-    -------
-    log_likelihood : float
-        Total log-likelihood in nats.
+    Accepts either:
+      - `deact_components_log_likelihood(model, ...)`: computes analytic eigen-components
+      - `deact_components_log_likelihood(taus, areas, ...)`: scores explicit component sequences
+      - `deact_components_log_likelihood(fit_result, ...)`: scores fitted component results
     """
-    if deact_record is None:
-        deact_record = DEACTIVATIONS[1]
+    if len(args) == 2:
+        taus_in, areas_in = args[0], args[1]
+    elif len(args) == 1:
+        arg = args[0]
+        if hasattr(arg, "q_matrix") or isinstance(arg, ReceptorModel):
+            taus_in, areas_in = predict_components_eigen(
+                arg, pulse_ms=pulse_ms, conc_mm=conc_mm, n_components=3
+            )
+        elif isinstance(arg, (tuple, list)) and len(arg) == 2:
+            taus_in, areas_in = arg[0], arg[1]
+        else:
+            raise TypeError(
+                f"Expected ReceptorModel, (taus, areas) tuple, or 2 positional arguments; got {type(arg).__name__}"
+            )
+    else:
+        raise TypeError(
+            f"deact_components_log_likelihood takes 1 or 2 positional arguments, got {len(args)}"
+        )
 
-    target_taus, target_areas = deact_record.components
-    target_taus = np.asarray(target_taus, dtype=float)
-    target_areas = np.asarray(target_areas, dtype=float)
+    record = deact_record if deact_record is not None else (deact_row if deact_row is not None else DEACTIVATIONS[1])
 
-    tau_errs, area_errs = parse_deactivation_errors(deact_record)
-    tau_errs = np.asarray(tau_errs, dtype=float)
-    area_errs = np.asarray(area_errs, dtype=float)
+    taus_pred_arr = np.asarray(taus_in, dtype=float)
+    areas_pred_arr = np.asarray(areas_in, dtype=float)
 
-    n_comp = len(target_taus)
-    pred_taus, pred_areas = predict_components_eigen(
-        model, pulse_ms=pulse_ms, conc_mm=conc_mm, n_components=n_comp
-    )
+    # Published values & errors
+    target_taus, target_areas = record.components
+    pub_taus = np.asarray(target_taus, dtype=float)
+    pub_areas = np.asarray(target_areas, dtype=float)
 
-    # Sort fast-to-slow to align components
-    tau_diff = pred_taus - target_taus
-    ll_tau = -0.5 * float(np.sum((tau_diff / tau_errs) ** 2 + np.log(2.0 * np.pi * (tau_errs ** 2))))
+    err_taus, err_areas = get_barberis_errors(record)
+    err_taus_arr = np.asarray(err_taus, dtype=float)
+    err_areas_arr = np.asarray(err_areas, dtype=float)
 
-    ll_total = ll_tau
-    if score_areas:
-        area_diff = pred_areas - target_areas
-        ll_area = -0.5 * float(np.sum((area_diff / area_errs) ** 2 + np.log(2.0 * np.pi * (area_errs ** 2))))
-        ll_total += ll_area
+    # Align number of components to target
+    n_comp = len(pub_taus)
+    if len(taus_pred_arr) != n_comp or len(areas_pred_arr) != n_comp:
+        raise ValueError(
+            f"Expected {n_comp} taus and areas, got {len(taus_pred_arr)} taus and {len(areas_pred_arr)} areas."
+        )
+
+    z_tau = (taus_pred_arr - pub_taus) / err_taus_arr
+    ll_tau_points = -0.5 * (z_tau ** 2 + np.log(2.0 * np.pi * err_taus_arr ** 2))
+    ll_taus = float(np.sum(ll_tau_points))
+
+    z_area = (areas_pred_arr - pub_areas) / err_areas_arr
+    ll_area_points = -0.5 * (z_area ** 2 + np.log(2.0 * np.pi * err_areas_arr ** 2))
+    ll_areas = float(np.sum(ll_area_points)) if score_areas else 0.0
+
+    total_ll = ll_taus + ll_areas
+
+    sum_areas = float(np.sum(areas_pred_arr))
+    tau_w_pred = float(np.sum(areas_pred_arr * taus_pred_arr) / sum_areas) if sum_areas != 0 else float(np.sum(areas_pred_arr * taus_pred_arr))
+    tau_w_pub = float(record.tau_w_ms)
+    tau_w_err = float(record.err_ms)
+    z_tw = float((tau_w_pred - tau_w_pub) / tau_w_err)
 
     if score_tau_w:
-        tau_w_pred = float(np.sum(pred_areas * pred_taus) / np.sum(pred_areas))
-        tau_w_targ = float(deact_record.tau_w_ms)
-        tau_w_err = float(deact_record.err_ms)
-        tau_w_diff = tau_w_pred - tau_w_targ
-        ll_tau_w = -0.5 * ((tau_w_diff / tau_w_err) ** 2 + np.log(2.0 * np.pi * (tau_w_err ** 2)))
-        ll_total += ll_tau_w
+        ll_tau_w = -0.5 * (z_tw ** 2 + np.log(2.0 * np.pi * tau_w_err ** 2))
+        total_ll += float(ll_tau_w)
 
-    return float(ll_total)
+    return DeactComponentsLikelihoodResult(
+        total_log_likelihood=total_ll,
+        ll_taus=ll_taus,
+        ll_areas=ll_areas,
+        z_taus=tuple(float(x) for x in z_tau),
+        z_areas=tuple(float(x) for x in z_area),
+        taus_pred=tuple(float(x) for x in taus_pred_arr),
+        taus_pub=tuple(float(x) for x in pub_taus),
+        taus_err=tuple(float(x) for x in err_taus_arr),
+        areas_pred=tuple(float(x) for x in areas_pred_arr),
+        areas_pub=tuple(float(x) for x in pub_areas),
+        areas_err=tuple(float(x) for x in err_areas_arr),
+        tau_w_pred=tau_w_pred,
+        tau_w_pub=tau_w_pub,
+        tau_w_err=tau_w_err,
+        z_tau_w=z_tw,
+    )
 
 
 def deact_components_diagnostic_score(
@@ -432,7 +896,7 @@ def deact_components_diagnostic_score(
     target_taus = tuple(float(x) for x in target_taus)
     target_areas = tuple(float(x) for x in target_areas)
 
-    tau_errs, area_errs = parse_deactivation_errors(deact_record)
+    tau_errs, area_errs = get_barberis_errors(deact_record)
     tau_errs_arr = np.asarray(tau_errs, dtype=float)
     area_errs_arr = np.asarray(area_errs, dtype=float)
 
@@ -449,13 +913,12 @@ def deact_components_diagnostic_score(
     ll_tau = -0.5 * float(np.sum((tau_diff / tau_errs_arr) ** 2 + np.log(2.0 * np.pi * (tau_errs_arr ** 2))))
     ll_area = -0.5 * float(np.sum((area_diff / area_errs_arr) ** 2 + np.log(2.0 * np.pi * (area_errs_arr ** 2))))
 
-    tau_w_pred = float(np.sum(pred_areas * pred_taus) / np.sum(pred_areas))
+    sum_a = float(np.sum(pred_areas))
+    tau_w_pred = float(np.sum(pred_areas * pred_taus) / sum_a) if sum_a != 0 else float(np.sum(pred_areas * pred_taus))
     tau_w_sig = (tau_w_pred - float(deact_record.tau_w_ms)) / float(deact_record.err_ms)
 
-    # Reconstruction deviation check
     max_dev = verify_eigen_reconstruction(model, pulse_ms=pulse_ms, conc_mm=conc_mm, atol=1e-5)
 
-    # Check whether steady state was reached during pulse
     gaba_pulse_um = float(conc_mm) * 1000.0
     p0 = np.asarray(model.state_distribution(0.0), dtype=float)
     q_pulse = np.asarray(model.q_matrix(gaba_pulse_um), dtype=float)

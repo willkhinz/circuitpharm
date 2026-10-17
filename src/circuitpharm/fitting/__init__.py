@@ -109,10 +109,17 @@ from .diagnostic import (
 )
 from .deact_components import (
     DeactComponentsDiagnostic,
+    DeactComponentsLikelihoodResult,
+    DeactFitResult,
     deact_components_diagnostic_score,
     deact_components_log_likelihood,
+    fit_triexponential_decay,
+    get_barberis_errors,
+    parse_barberis_component_errors,
+    parse_deactivation_errors,
     predict_components_eigen,
     predict_components_eigen_all,
+    predict_components_fit,
     reconstruct_deactivation_waveform,
     verify_eigen_reconstruction,
 )
@@ -213,12 +220,19 @@ __all__ = [
     "DiagnosticFitResult",
     "diagnostic_log_likelihood",
     "fit_diagnostic_consistency",
-    # deactivation components (Weighting iv)
+    # deactivation components (Briefs 7A, 7B, 8A: Weighting iv)
     "DeactComponentsDiagnostic",
+    "DeactComponentsLikelihoodResult",
+    "DeactFitResult",
     "deact_components_diagnostic_score",
     "deact_components_log_likelihood",
+    "fit_triexponential_decay",
+    "get_barberis_errors",
+    "parse_barberis_component_errors",
+    "parse_deactivation_errors",
     "predict_components_eigen",
     "predict_components_eigen_all",
+    "predict_components_fit",
     "reconstruct_deactivation_waveform",
     "verify_eigen_reconstruction",
 ]
