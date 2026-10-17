@@ -373,22 +373,55 @@ def test_disagreeing_rankings_produce_a_void_verdict():
 
 
 @pytest.mark.slow
-def test_the_verdict_is_void_when_the_two_rankings_disagree(quiet, peak_from_b):
-    """End to end: a disagreement must make the Akaike weights unreadable, not just noted."""
-    # min_nats=0 disables the parsimony tie-break, which is what produced the measured
-    # disagreement in the first place: CV then prefers Model C by 0.84 nats while AICc
-    # prefers Model B. Forced here on purpose -- the point is the VOIDing, not the gap.
+def test_the_verdict_is_void_when_the_two_rankings_disagree(quiet, peak_from_b,
+                                                           monkeypatch):
+    """End to end: a disagreement must make the Akaike weights unreadable, not just noted.
+
+    THE DISAGREEMENT IS NOW CONSTRUCTED RATHER THAN COAXED, and the reason is an
+    improvement elsewhere rather than a regression here.
+
+    This test used to pass `min_nats=0` to switch off the parsimony tie-break, which left
+    CV preferring Model C by 0.84 nats while AICc preferred Model B. `resolve_cv` now
+    applies a SECOND and independent gate -- a 2-sigma paired standard error -- and
+    `min_nats` does not disable it:
+
+        threshold = min_nats if not isfinite(se) else max(min_nats, 2.0 * se)
+
+    At `min_nats=0` that is still `2*se`. The measured margin on this fixture is 1.42
+    sigma, inside the gate, so Model C ties with Model B, parsimony selects kinetic_jw95 --
+    and kinetic_jw95 is also AICc's winner. The rankings then AGREE and the VOID path below
+    is never reached. That is the stronger gate doing its job; the old mechanism for
+    manufacturing a disagreement simply no longer exists, exactly as the previous version of
+    this test warned ("construct a disagreement explicitly rather than skipping").
+
+    So the CV winner is injected at the one seam that decides it -- `rankings_agree` is
+    `cv_verdict.winner == argmin(aicc)` -- and everything downstream runs for real: the VOID
+    tiering, the unreadable weights, and the UNRESOLVED note, which is what this test exists
+    to cover. `resolve_cv`'s own thresholds are tested separately and are not weakened here.
+    """
+    import dataclasses
+
+    from circuitpharm.fitting import comparison as comparison_module
+
+    real_resolve_cv = comparison_module.resolve_cv
+
+    def resolve_to_the_model_aicc_dislikes(cv, fits, **kwargs):
+        """Run the real resolver, then name the OTHER model as the CV winner."""
+        verdict = real_resolve_cv(cv, fits, **kwargs)
+        aicc_winner = min(fits, key=lambda n: fits[n].aicc)
+        others = [n for n in fits if n != aicc_winner]
+        assert others, "a disagreement needs at least two models to disagree about"
+        return dataclasses.replace(verdict, winner=others[0])
+
+    monkeypatch.setattr(comparison_module, "resolve_cv",
+                        resolve_to_the_model_aicc_dislikes)
+
     res = compare_models(["kinetic_jw95", "extended_desens"], [peak_from_b], n_folds=4,
-                         n_starts=4, cv_starts=2, min_nats=0.0)
-    # NOT A CONDITIONAL SKIP. The disagreement is deterministic at this seed and this is
-    # the measured case -- CV prefers Model C by 0.84 nats while AICc prefers Model B. If it
-    # ever stops happening that is a finding about the comparison, not a reason to pass
-    # quietly; and the FULL-install CI job fails on any skip, so a skip here would read as a
-    # missing optional dependency.
+                         n_starts=4, cv_starts=2)
+
     assert not res.rankings_agree, (
-        f"with the parsimony floor disabled the two rankings now agree on "
-        f"{res.cv_winner}. That is the measured disagreement gone, and the VOID path below "
-        f"is then untested -- construct a disagreement explicitly rather than skipping")
+        f"the injected CV winner ({res.cv_winner}) still matches AICc's "
+        f"({res.aicc_winner}), so the VOID path below is untested")
     assert res.verdict.tier is Tier.VOID
     with pytest.raises(VoidQuantityError):
         res.verdict.value
