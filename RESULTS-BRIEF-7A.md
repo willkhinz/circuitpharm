@@ -244,3 +244,78 @@ one cross-check. §4's verdict is withdrawn. The predictor cannot be validated a
 published numbers by 7A's method alone — an eigen-decomposition takes a *model*, not a curve —
 so the decisive check is agent 7B's independent route, which can run on the published curve
 itself. The merge to `main` is held until that cross-check lands.
+
+---
+
+## 7. Cross-check completed (Claude Opus 5, 2026-10-16) — machinery CONFIRMED, including my own error
+
+§6 held the merge pending an independent check of the predictor. That check is done and **the
+predictor is correct**.
+
+**First I got it wrong.** I reimplemented the eigen-decomposition independently and it
+disagreed with `predict_components_eigen_all` on the amplitudes — mine gave
+`[-0.028, 0.574, 0.233, 0.221]` against 7A's `[-0.001, 0.982, 0.000, 0.019]` at the same
+vector, with identical eigenvalues. On my amplitudes the published six numbers fitted at
+χ² = 37.1 instead of 527.9, so I briefly had what looked like a refutation of §4's whole
+premise and of the structural result.
+
+**The bug was mine.** `p(t) = p₀ @ expm(Qt)` propagates a **row** vector, so the spectral
+decomposition needs the eigenvectors of **Qᵀ**. I used `eig(Q)` and then solved against a
+column vector, mixing the two conventions. Decisive test — reconstruct the relaxation from
+each decomposition and compare against `expm(Q₀t)` applied to the end-of-pulse occupancy, with
+no decomposition in the ground truth:
+
+| decomposition | max abs deviation from truth, 61 points over 0–1000 ms |
+|---|---|
+| mine, as first written | **8.14e-02** |
+| 7A's `predict_components_eigen_all` | **6.72e-15** |
+| mine, with `eig(Qᵀ)` | **5.80e-15** |
+
+Corrected, my implementation agrees with 7A's fractional amplitudes to **6.66e-16**.
+
+**Consequences:**
+
+* `predict_components_eigen_all` is confirmed by an independent reimplementation at machine
+  precision. Accepted without reservation.
+* **The 4-vs-3 resolution is sound.** The τ = 6.22 ms mode really does carry zero amplitude.
+  I had taken its amplitude to be 0.233 and thought 7A was discarding a quarter of the signal;
+  that was my bug, not its choice.
+* **§6's rejection of §4's verdict stands unchanged** — it was computed with 7A's own correct
+  predictor, so nothing in it depended on my error. Five of six published components are still
+  missed by 4.9σ to 14.3σ at §4's "reconciled" vector, with Σ A_i τ_i at 128.36 ms against
+  52.5 ± 2.9.
+* **7B's verdict is the correct one**, and its "ill-conditioned" finding is now explained
+  mechanically: a three-exponential fit degenerates because only one mode carries appreciable
+  amplitude — 0.982 of it at the vector above. 7B's repeated τ values (`10.998, 205.598,
+  205.598`) are that degeneracy showing up as two components collapsing onto one.
+
+### The structural result this unlocks
+
+Optimising each scheme against **all six published numbers** at their published errors, using
+the confirmed predictor (1500 Latin-hypercube starts, best 12 polished by Nelder–Mead):
+
+| scheme | free params | best χ² over 6 numbers | modes with \|amp\| ≥ 0.10 | three positive amplitudes? |
+|---|---|---|---|---|
+| `kinetic_jw95_free_rates` | 6 | **527.9** | 2 of 4 | no |
+| `extended_desens` (Model C) | 4 | **1107.7** | 2 of 5 | no |
+| `kinetic_open_desens` | 3 | **2181.9** | 1 of 4 | no |
+
+A genuine fit would be of order 6. In every scheme the fast mode's amplitude collapses towards
+zero — σ ≈ −14.3 on area₁ in all three — while the published data require the **fastest**
+component (τ = 2.8 ms) to carry the **largest** amplitude (0.57).
+
+Across 4000 Latin-hypercube vectors in the 6-parameter box, 57.0% of vectors give one
+appreciable mode, 37.6% give two, 5.3% give three and none give four. So the scheme *can*
+produce three appreciable modes, but no vector was found that produces them at the published
+time constants with the published amplitudes.
+
+**Stated honestly, this is a bounded-search result, not a proof:** no parameter vector was
+found, within the declared bounds and that search budget, for which any of the three schemes
+reproduces the published three-component deactivation of α1β2γ2. It is not a demonstration
+that none exists.
+
+**What it means for the project:** the "dataset conflict" of briefs 5 and 6 looks like a
+symptom rather than the disease. Scored against real measurements with real error bars, the
+schemes fail to reproduce the deactivation waveform's *shape*, and the apparent incompatibility
+with paired-pulse recovery is what that failure looks like when the objective is free to trade
+one dataset against another.
