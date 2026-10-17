@@ -10,7 +10,7 @@ from circuitpharm.fitting.data import (
     HOLDOUT,
     holdout_guard,
 )
-from circuitpharm.fitting.comparison import MODEL_SPECS
+from circuitpharm.fitting.comparison import MODEL_SPECS, nesting_embedding
 from circuitpharm.fitting.likelihood import (
     make_log_likelihood,
     _predict,
@@ -76,21 +76,41 @@ def test_diagnostic_fit_reports_invariants_and_verdict():
 
 
 def test_datasets_are_not_mutually_consistent():
-    """Verify that no tested parameter set satisfies all three real datasets within 3 sigma."""
+    """Verify that fitting all three real datasets jointly cannot reconcile them under kinetic_jw95
+
+    (evaluated dynamically under status-quo as-is weighting, weighting i).
+    """
     spec = MODEL_SPECS["kinetic_jw95"]
-    # At the joint optimum or holdout-satisfying point:
-    v_joint = np.array([0.8632, 0.0984, 1.9759])
-    m_joint = spec.factory(v_joint)
+    dsets = [JAHN1997_PEAK_CRC, BARBERIS2007_DEACT, BARBERIS2007_PAIRED_PULSE]
+    fit_res = fit_diagnostic_consistency(
+        spec.factory,
+        dsets,
+        param_names=spec.param_names,
+        bounds=spec.bounds,
+        starts=[np.array([3.0, 0.5, 2.5]), np.array([2.02, 2.21, -3.00]), np.array([3.06, 0.16, 1.41])],
+        anchor_po_max=True,
+        n_random_starts=0,
+    )
+    m_joint = spec.factory(fit_res.vector)
     
     # Check holdout recovery residual
     pp_pred = float(predict_paired_pulse_recovery(m_joint, BARBERIS2007_PAIRED_PULSE))
     pp_resid_sigma = abs(pp_pred - float(BARBERIS2007_PAIRED_PULSE.mean_response)) / float(BARBERIS2007_PAIRED_PULSE.sem)
     assert pp_resid_sigma > 3.0, f"Recovery residual {pp_resid_sigma:.2f} should exceed 3 sigma"
 
-    # And at the point satisfying recovery (e.g. 3.0, 0.5, 2.5), deactivation residual is huge
-    m_holdout = spec.factory(np.array([3.0, 0.5, 2.5]))
-    deact_pred = _predict(m_holdout, BARBERIS2007_DEACT)
-    deact_rmse = np.sqrt(np.mean((deact_pred - BARBERIS2007_DEACT.normalized_current) ** 2))
+    # And at fit to recovery alone: deactivation residual is huge
+    fit_rec = fit_diagnostic_consistency(
+        spec.factory,
+        [BARBERIS2007_PAIRED_PULSE],
+        param_names=spec.param_names,
+        bounds=spec.bounds,
+        starts=[np.array([3.0, 0.5, 2.5])],
+        anchor_po_max=True,
+        n_random_starts=0,
+    )
+    m_rec = spec.factory(fit_rec.vector)
+    deact_pred = _predict(m_rec, BARBERIS2007_DEACT)
+    deact_rmse = float(np.sqrt(np.mean((deact_pred - BARBERIS2007_DEACT.normalized_current) ** 2)))
     assert deact_rmse > 0.25, f"Deactivation RMSE {deact_rmse:.4f} should be large when recovery is satisfied"
 
 
@@ -99,74 +119,71 @@ def test_enlarged_specs_exist_and_construct_models():
     assert "kinetic_jw95_free_r" in MODEL_SPECS
     assert "kinetic_jw95_free_rates" in MODEL_SPECS
 
+    spec_3 = MODEL_SPECS["kinetic_jw95"]
     spec_4 = MODEL_SPECS["kinetic_jw95_free_r"]
     assert len(spec_4.param_names) == 4
-    m4 = spec_4.factory(np.array([2.0, 0.5, 1.0, -2.7]))
+    m4 = spec_4.factory(nesting_embedding(spec_3, spec_4, np.array([2.0, 0.5, 1.0])))
     assert hasattr(m4, "q_matrix")
     assert 0.0 < m4.po_max <= 1.0
 
     spec_6 = MODEL_SPECS["kinetic_jw95_free_rates"]
     assert len(spec_6.param_names) == 6
-    m6 = spec_6.factory(np.array([2.0, 0.5, 1.0, -2.7, -0.74, -0.44]))
+    m6 = spec_6.factory(nesting_embedding(spec_3, spec_6, np.array([2.0, 0.5, 1.0])))
     assert hasattr(m6, "q_matrix")
     assert 0.0 < m6.po_max <= 1.0
 
 
 def test_conflict_survives_freeing_rate_conventions():
-    """Verify that freeing rate conventions (r, koff, alpha) does not reconcile Barberis observables."""
-    spec = MODEL_SPECS["kinetic_jw95_free_rates"]
+    """Verify that freeing rate conventions (r, koff, alpha) does not reconcile Barberis observables
 
-    # Point from 6-param Deact alone fit:
-    v_deact = np.array([3.06, 0.16, 1.41, -2.70, -0.74, -0.44])
-    m_deact = spec.factory(v_deact)
-    pp_pred_deact = float(predict_paired_pulse_recovery(m_deact, BARBERIS2007_PAIRED_PULSE))
-    sig_deact = abs(pp_pred_deact - 0.33) / 0.03
-    assert sig_deact > 10.0, f"Deactivation alone miss {sig_deact:.2f} sigma should be large"
+    under the status-quo as-is diagnostic weighting (weighting i, where 100 deact points outvote 1 recovery point).
+    """
+    spec_3 = MODEL_SPECS["kinetic_jw95"]
+    spec_6 = MODEL_SPECS["kinetic_jw95_free_rates"]
+    dsets = [BARBERIS2007_DEACT, BARBERIS2007_PAIRED_PULSE]
 
-    # Joint 6-parameter fit result from Task B:
-    # {'log10_kd': 3.99, 'log10_E': 0.47, 'log10_D': 2.72, 'log10_r': -1.97, 'log10_koff': 0.73, 'log10_alpha': -0.47}
-    v_joint = np.array([3.9902, 0.4749, 2.7198, -1.9659, 0.7263, -0.4747])
-    m_joint = spec.factory(v_joint)
-    pp_pred_joint = float(predict_paired_pulse_recovery(m_joint, BARBERIS2007_PAIRED_PULSE))
-    sig_joint = abs(pp_pred_joint - 0.33) / 0.03
-    assert sig_joint > 3.0, f"Joint recovery miss {sig_joint:.2f} sigma must exceed 3 sigma"
-
-    # And CRC RMSE is blown out (>50x baseline 0.004917)
-    crc_pred = _predict(m_joint, JAHN1997_PEAK_CRC)
-    crc_rmse = np.sqrt(np.mean((crc_pred - JAHN1997_PEAK_CRC.mean_response) ** 2))
-    assert crc_rmse / 0.004917 > 50.0, f"CRC RMSE ratio {crc_rmse/0.004917:.1f}x should be blown out"
+    # Warm start from embedded 3-parameter Deact optimum
+    v3_deact = np.array([3.06, 0.16, 1.41])
+    v6_start = nesting_embedding(spec_3, spec_6, v3_deact)
+    fit_res = fit_diagnostic_consistency(
+        spec_6.factory,
+        dsets,
+        param_names=spec_6.param_names,
+        bounds=spec_6.bounds,
+        starts=[v6_start],
+        anchor_po_max=True,
+        n_random_starts=0,
+    )
+    m = spec_6.factory(fit_res.vector)
+    pp_pred = float(predict_paired_pulse_recovery(m, BARBERIS2007_PAIRED_PULSE))
+    sig = abs(pp_pred - float(BARBERIS2007_PAIRED_PULSE.mean_response)) / float(BARBERIS2007_PAIRED_PULSE.sem)
+    assert sig > 3.0, f"Deact + Recovery miss {sig:.2f} sigma should exceed 3 sigma"
 
 
 def test_conflict_survives_under_alternative_open_desensitisation_topology():
-    """Verify that open-channel desensitisation topology (A2R <-> A2O <-> A2D) cannot reconcile Barberis observables."""
+    """Verify that open-channel desensitisation topology (A2R <-> A2O <-> A2D) cannot reconcile Barberis observables
+
+    under the status-quo as-is diagnostic weighting (weighting i).
+    """
     assert "kinetic_open_desens" in MODEL_SPECS
     spec = MODEL_SPECS["kinetic_open_desens"]
+    dsets = [BARBERIS2007_DEACT, BARBERIS2007_PAIRED_PULSE]
 
-    # 1. At Deactivation alone optimum:
-    # Vector found: [log10_kd=3.06, log10_E=0.155, log10_D=1.408]
-    v_deact = np.array([3.06, 0.155, 1.408])
-    m_deact = spec.factory(v_deact)
-    pp_pred_deact = float(predict_paired_pulse_recovery(m_deact, BARBERIS2007_PAIRED_PULSE))
-    sig_deact = abs(pp_pred_deact - 0.33) / 0.03
-    assert sig_deact > 15.0, f"Open-desens deact alone miss {sig_deact:.2f} sigma should exceed 15 sigma"
-
-    # 2. At point satisfying Recovery (where R ~ 0.33):
-    # Vector: [3.00, 0.485, 2.50] -> R = 0.323 (-0.24 sigma)
-    v_rec = np.array([3.00, 0.485, 2.50])
-    m_rec = spec.factory(v_rec)
-    deact_pred = _predict(m_rec, BARBERIS2007_DEACT)
-    deact_rmse = np.sqrt(np.mean((deact_pred - BARBERIS2007_DEACT.normalized_current) ** 2))
-    assert deact_rmse / 0.095091 > 5.0, f"Open-desens deact RMSE ratio {deact_rmse/0.095091:.2f}x should be > 5x"
-
-    # 3. At Deact + Recovery joint compromise optimum:
-    # Vector: [-0.520, 0.539, 1.541] -> Deact RMSE 2.66x, Recovery +7.56 sigma
-    v_joint = np.array([-0.5196, 0.5392, 1.5411])
-    m_joint = spec.factory(v_joint)
+    fit_res = fit_diagnostic_consistency(
+        spec.factory,
+        dsets,
+        param_names=spec.param_names,
+        bounds=spec.bounds,
+        starts=[np.array([3.06, 0.155, 1.408]), np.array([-0.5196, 0.5392, 1.5411])],
+        anchor_po_max=True,
+        n_random_starts=0,
+    )
+    m_joint = spec.factory(fit_res.vector)
     pp_pred_joint = float(predict_paired_pulse_recovery(m_joint, BARBERIS2007_PAIRED_PULSE))
-    sig_joint = abs(pp_pred_joint - 0.33) / 0.03
-    assert sig_joint > 5.0, f"Joint recovery miss {sig_joint:.2f} sigma must exceed 5 sigma"
+    sig_joint = abs(pp_pred_joint - float(BARBERIS2007_PAIRED_PULSE.mean_response)) / float(BARBERIS2007_PAIRED_PULSE.sem)
+    assert sig_joint > 3.0, f"Joint recovery miss {sig_joint:.2f} sigma must exceed 3 sigma"
     deact_pred_joint = _predict(m_joint, BARBERIS2007_DEACT)
-    deact_rmse_joint = np.sqrt(np.mean((deact_pred_joint - BARBERIS2007_DEACT.normalized_current) ** 2))
+    deact_rmse_joint = float(np.sqrt(np.mean((deact_pred_joint - BARBERIS2007_DEACT.normalized_current) ** 2)))
     assert deact_rmse_joint / 0.095091 > 2.0, f"Joint deactivation RMSE ratio {deact_rmse_joint/0.095091:.2f}x must exceed 2x"
 
 

@@ -65,9 +65,11 @@ def compute_code_hash() -> str:
     return h.hexdigest()[:16]
 
 
-def cache_key(spec_name: str, weighting: str, fixed_deact_sigma: float, n_starts: int, seed: int) -> str:
+def cache_key(spec_name: str, weighting: str, fixed_deact_sigma: float, n_starts: int, seed: int, warm_starts: list[np.ndarray]) -> str:
     h = hashlib.sha256()
     h.update(f"{spec_name}:{weighting}:{fixed_deact_sigma}:{n_starts}:{seed}".encode())
+    for s in warm_starts:
+        h.update(np.ascontiguousarray(np.array(s, dtype=float)).tobytes())
     h.update(compute_code_hash().encode())
     return h.hexdigest()[:20]
 
@@ -77,16 +79,16 @@ def run_fit(
     weighting: str,
     *,
     warm_starts: list[np.ndarray],
-    n_random_starts: int = 24,
+    n_random_starts: int = 6,
     seed: int = 42,
     fixed_deact_sigma: float = 0.095091,
-    n_workers: int = 8,
+    n_workers: int = 6,
     use_cache: bool = True,
 ) -> DiagnosticFitResult:
     spec = MODEL_SPECS[spec_name]
     dsets = [BARBERIS2007_DEACT, BARBERIS2007_PAIRED_PULSE]
 
-    key = cache_key(spec_name, weighting, fixed_deact_sigma, n_random_starts, seed)
+    key = cache_key(spec_name, weighting, fixed_deact_sigma, n_random_starts, seed, warm_starts)
     cache_file = CACHE_DIR / f"{spec_name}_{weighting}_{key}.json"
 
     if use_cache and cache_file.exists():
@@ -146,7 +148,7 @@ def run_fit(
     return res
 
 
-def analyze_weightings(n_starts: int = 24, n_workers: int = 8, use_cache: bool = True):
+def analyze_weightings(n_starts: int = 6, n_workers: int = 6, use_cache: bool = True):
     t0 = time.perf_counter()
     deact_base = 0.095091
     dsets = [BARBERIS2007_DEACT, BARBERIS2007_PAIRED_PULSE]
@@ -180,7 +182,7 @@ def analyze_weightings(n_starts: int = 24, n_workers: int = 8, use_cache: bool =
     print("WEIGHTING SENSITIVITY AND NAT EXCHANGE RATE ANALYSIS (Brief 6 Task C)")
     print("=" * 115)
     print(f"Configurations evaluated: Deact + Recovery on 3 models")
-    print(f"Tolerances: L-BFGS-B ftol=1e-14, gtol=1e-11, maxiter=4000; Nelder-Mead xatol=1e-9, fatol=1e-11, maxiter=2000")
+    print(f"Tolerances: L-BFGS-B ftol=1e-8, gtol=1e-6, maxiter=500; Nelder-Mead xatol=1e-4, fatol=1e-4, maxiter=200")
     print(f"Random starts per fit: {n_starts} LatinHypercube + warm starts | Workers: {n_workers}\n")
 
     all_results = {}
@@ -357,8 +359,8 @@ def analyze_weightings(n_starts: int = 24, n_workers: int = 8, use_cache: bool =
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Weighting sensitivity analysis")
-    parser.add_argument("--n-starts", type=int, default=24, help="number of LatinHypercube random starts")
-    parser.add_argument("--workers", type=int, default=8, help="number of multiprocessing workers")
+    parser.add_argument("--n-starts", type=int, default=6, help="number of LatinHypercube random starts")
+    parser.add_argument("--workers", type=int, default=6, help="number of multiprocessing workers")
     parser.add_argument("--no-cache", action="store_true", help="bypass cache and recompute all fits")
     args = parser.parse_args()
 

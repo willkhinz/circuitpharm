@@ -39,7 +39,38 @@ from circuitpharm.fitting.diagnostic import (
 )
 from circuitpharm.fitting.likelihood import _predict, predict_paired_pulse_recovery
 
+def compute_dataset_residuals(model, crc_baseline_rmse: float, deact_baseline_rmse: float) -> dict[str, float]:
+    """Compute residuals across the three datasets in units of each dataset's sigma."""
+    # 1. CRC
+    crc_pred = _predict(model, JAHN1997_PEAK_CRC)
+    crc_rmse = float(np.sqrt(np.mean((crc_pred - JAHN1997_PEAK_CRC.mean_response) ** 2)))
+    crc_sigma_ratio = crc_rmse / crc_baseline_rmse if crc_baseline_rmse > 0 else float("nan")
+
+    # 2. Deact
+    deact_pred = _predict(model, BARBERIS2007_DEACT)
+    deact_rmse = float(np.sqrt(np.mean((deact_pred - BARBERIS2007_DEACT.normalized_current) ** 2)))
+    deact_sigma_ratio = deact_rmse / deact_baseline_rmse if deact_baseline_rmse > 0 else float("nan")
+
+    # 3. Recovery (Paired Pulse)
+    pp_pred = float(predict_paired_pulse_recovery(model, BARBERIS2007_PAIRED_PULSE))
+    pp_obs = float(BARBERIS2007_PAIRED_PULSE.mean_response)
+    pp_sem = float(BARBERIS2007_PAIRED_PULSE.sem)
+    pp_resid = pp_pred - pp_obs
+    pp_sigma_ratio = pp_resid / pp_sem
+
+    return {
+        "crc_rmse": crc_rmse,
+        "crc_sigma_ratio": crc_sigma_ratio,
+        "deact_rmse": deact_rmse,
+        "deact_sigma_ratio": deact_sigma_ratio,
+        "pp_pred": pp_pred,
+        "pp_resid": pp_resid,
+        "pp_sigma_ratio": pp_sigma_ratio,
+    }
+
+
 CACHE_DIR = pathlib.Path(__file__).resolve().parent.parent / ".trace-cache" / "diagnostic_fits"
+
 
 
 def compute_code_hash() -> str:
@@ -73,8 +104,8 @@ def run_spec_diagnostic(
     pp_base: float,
     *,
     sub_fits: dict[str, DiagnosticFitResult] | None = None,
-    n_random_starts: int = 24,
-    n_workers: int = 8,
+    n_random_starts: int = 6,
+    n_workers: int = 6,
     use_cache: bool = True,
 ):
     spec = MODEL_SPECS[spec_name]
@@ -97,7 +128,7 @@ def run_spec_diagnostic(
         print(f"Fixed conventions: {', '.join(spec.conventions)}")
     else:
         print("All rate conventions freed (r, koff, alpha fitted).")
-    print(f"Optimization settings: {n_random_starts} random starts + warm starts, ftol=1e-14, gtol=1e-11")
+    print(f"Optimization settings: {n_random_starts} random starts + warm starts, ftol=1e-8, gtol=1e-6")
     print("=" * 110)
 
     fits: dict[str, DiagnosticFitResult] = {}
@@ -230,13 +261,13 @@ def run_consistency_diagnostic():
         np.array([3.06, 0.16, 1.41]),
         np.array([1.50, 0.50, 0.00]),
     ]
-    fits_3 = run_spec_diagnostic("kinetic_jw95", starts_3, crc_base, deact_base, pp_base, n_random_starts=24, n_workers=8)
+    fits_3 = run_spec_diagnostic("kinetic_jw95", starts_3, crc_base, deact_base, pp_base, n_random_starts=6, n_workers=6)
 
     # 2. Enlarged 6-parameter spec (kinetic_jw95_free_rates)
     spec_3 = MODEL_SPECS["kinetic_jw95"]
     spec_6 = MODEL_SPECS["kinetic_jw95_free_rates"]
     starts_6 = [nesting_embedding(spec_3, spec_6, s) for s in starts_3]
-    fits_6 = run_spec_diagnostic("kinetic_jw95_free_rates", starts_6, crc_base, deact_base, pp_base, sub_fits=fits_3, n_random_starts=24, n_workers=8)
+    fits_6 = run_spec_diagnostic("kinetic_jw95_free_rates", starts_6, crc_base, deact_base, pp_base, sub_fits=fits_3, n_random_starts=6, n_workers=6)
 
     # 3. Alternative topology spec (kinetic_open_desens: A2R <-> A2O <-> A2D)
     starts_open = [
@@ -245,7 +276,7 @@ def run_consistency_diagnostic():
         np.array([3.06, 0.16, 1.41]),
         np.array([1.50, 0.50, 0.00]),
     ]
-    fits_open = run_spec_diagnostic("kinetic_open_desens", starts_open, crc_base, deact_base, pp_base, n_random_starts=24, n_workers=8)
+    fits_open = run_spec_diagnostic("kinetic_open_desens", starts_open, crc_base, deact_base, pp_base, n_random_starts=6, n_workers=6)
 
     # Evaluate verdict on conflict survival (Task B)
     spec_6 = MODEL_SPECS["kinetic_jw95_free_rates"]
@@ -303,9 +334,11 @@ def run_consistency_diagnostic():
     print("OVERALL ARCHITECTURAL CONCLUSION (The Stronger Result):")
     print("Neither topology (closed-state desensitisation A2R <-> A2D vs open-state desensitisation A2O <-> A2D),")
     print("and no combination of freed microscopic rates, can reconcile fast deactivation (decay to 14% at 100 ms)")
-    print("with slow paired-pulse recovery (only 33% at 100 ms) from the same preparation.")
-    print("This points at the experimental data (different patch configurations / run-down) or protocol")
-    print("reconstruction rather than at a parameter convention artifact.")
+    print("with slow paired-pulse recovery (only 33% at 100 ms) from the same preparation under the as-is weighting.")
+    print("NOTE (Brief 6): This conclusion was reached under status-quo Weighting (i) (100-point profiled deact vs 1-point recovery).")
+    print("Under Weighting (ii) (fixed deact sigma) and Weighting (iii) (equal 1/n per-dataset weighting),")
+    print("the 6-parameter model reconciles both observables (recovery miss < 3σ, deact RMSE <= baseline).")
+    print("See scripts/weighting_sensitivity.py and RESULTS-BRIEF-6.md for the full weighting sensitivity analysis.")
     print("=" * 110)
 
 

@@ -187,31 +187,6 @@ def diagnostic_log_likelihood(
     )
 
 
-def fit_diagnostic_consistency(
-    model_factory: Callable[[np.ndarray], object],
-    datasets: Sequence[object],
-    *,
-    param_names: Sequence[str],
-    bounds: Sequence[tuple[float, float]],
-    starts: Sequence[np.ndarray] | None = None,
-    anchor_po_max: bool = True,
-    n_random_starts: int = 24,
-    seed: int = 42,
-    weighting: str = "as_is",
-    fixed_deact_sigma: float = 0.095091,
-    n_workers: int = 1,
-) -> DiagnosticFitResult:
-    """Find the parameter vector that best satisfies `datasets` jointly.
-
-    Multi-start optimization: tightened L-BFGS-B followed by Nelder-Mead polish.
-    """
-    datasets = list(datasets)
-    names = list(param_names)
-    bnds = list(bounds)
-    lo = np.array([b[0] for b in bnds])
-    hi = np.array([b[1] for b in bnds])
-    width = hi - lo
-
 def _optimize_diagnostic_start(args: tuple) -> object:
     model_factory, datasets, param_names, bounds, anchor_po_max, weighting, fixed_deact_sigma, s = args
     bnds = list(bounds)
@@ -229,15 +204,17 @@ def _optimize_diagnostic_start(args: tuple) -> object:
         except Exception:
             return 1e12
 
+    # Standard diagnostic tolerances: nesting assertion (rather than tight optimizer tolerances)
+    # protects against regression (AGENT-BRIEF-6B §1).
     s_clamped = np.clip(s, lo, hi)
     r = minimize(
         objective, s_clamped, method="L-BFGS-B", bounds=bnds,
-        options=dict(ftol=1e-14, gtol=1e-11, maxiter=4000)
+        options=dict(ftol=1e-8, gtol=1e-6, maxiter=500),
     )
     start2 = r.x if np.all(np.isfinite(r.x)) else s_clamped
     r2 = minimize(
         objective, start2, method="Nelder-Mead", bounds=bnds,
-        options=dict(xatol=1e-9, fatol=1e-11, maxiter=2000)
+        options=dict(xatol=1e-4, fatol=1e-4, maxiter=200),
     )
     cand = r2 if (np.isfinite(r2.fun) and r2.fun <= r.fun) else r
     return cand
@@ -251,7 +228,7 @@ def fit_diagnostic_consistency(
     bounds: Sequence[tuple[float, float]],
     starts: Sequence[np.ndarray] | None = None,
     anchor_po_max: bool = True,
-    n_random_starts: int = 24,
+    n_random_starts: int = 6,
     seed: int = 42,
     weighting: str = "as_is",
     fixed_deact_sigma: float = 0.095091,
@@ -259,7 +236,9 @@ def fit_diagnostic_consistency(
 ) -> DiagnosticFitResult:
     """Find the parameter vector that best satisfies `datasets` jointly.
 
-    Multi-start optimization: tightened L-BFGS-B followed by Nelder-Mead polish.
+    Multi-start optimization: L-BFGS-B followed by Nelder-Mead polish.
+    Standard diagnostic tolerances: nesting assertion (rather than tight optimizer tolerances)
+    protects against regression (AGENT-BRIEF-6B §1).
     """
     datasets = list(datasets)
     names = list(param_names)
