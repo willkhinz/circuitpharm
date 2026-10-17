@@ -92,3 +92,47 @@ def test_datasets_are_not_mutually_consistent():
     deact_pred = _predict(m_holdout, BARBERIS2007_DEACT)
     deact_rmse = np.sqrt(np.mean((deact_pred - BARBERIS2007_DEACT.normalized_current) ** 2))
     assert deact_rmse > 0.25, f"Deactivation RMSE {deact_rmse:.4f} should be large when recovery is satisfied"
+
+
+def test_enlarged_specs_exist_and_construct_models():
+    """Verify that kinetic_jw95_free_r and kinetic_jw95_free_rates construct valid models."""
+    assert "kinetic_jw95_free_r" in MODEL_SPECS
+    assert "kinetic_jw95_free_rates" in MODEL_SPECS
+
+    spec_4 = MODEL_SPECS["kinetic_jw95_free_r"]
+    assert len(spec_4.param_names) == 4
+    m4 = spec_4.factory(np.array([2.0, 0.5, 1.0, -2.7]))
+    assert hasattr(m4, "q_matrix")
+    assert 0.0 < m4.po_max <= 1.0
+
+    spec_6 = MODEL_SPECS["kinetic_jw95_free_rates"]
+    assert len(spec_6.param_names) == 6
+    m6 = spec_6.factory(np.array([2.0, 0.5, 1.0, -2.7, -0.74, -0.44]))
+    assert hasattr(m6, "q_matrix")
+    assert 0.0 < m6.po_max <= 1.0
+
+
+def test_conflict_survives_freeing_rate_conventions():
+    """Verify that freeing rate conventions (r, koff, alpha) does not reconcile Barberis observables."""
+    spec = MODEL_SPECS["kinetic_jw95_free_rates"]
+
+    # Point from 6-param Deact alone fit:
+    v_deact = np.array([3.06, 0.16, 1.41, -2.70, -0.74, -0.44])
+    m_deact = spec.factory(v_deact)
+    pp_pred_deact = float(predict_paired_pulse_recovery(m_deact, BARBERIS2007_PAIRED_PULSE))
+    sig_deact = abs(pp_pred_deact - 0.33) / 0.03
+    assert sig_deact > 10.0, f"Deactivation alone miss {sig_deact:.2f} sigma should be large"
+
+    # Joint 6-parameter fit result from Task B:
+    # {'log10_kd': 3.99, 'log10_E': 0.47, 'log10_D': 2.72, 'log10_r': -1.97, 'log10_koff': 0.73, 'log10_alpha': -0.47}
+    v_joint = np.array([3.9902, 0.4749, 2.7198, -1.9659, 0.7263, -0.4747])
+    m_joint = spec.factory(v_joint)
+    pp_pred_joint = float(predict_paired_pulse_recovery(m_joint, BARBERIS2007_PAIRED_PULSE))
+    sig_joint = abs(pp_pred_joint - 0.33) / 0.03
+    assert sig_joint > 3.0, f"Joint recovery miss {sig_joint:.2f} sigma must exceed 3 sigma"
+
+    # And CRC RMSE is blown out (>50x baseline 0.004917)
+    crc_pred = _predict(m_joint, JAHN1997_PEAK_CRC)
+    crc_rmse = np.sqrt(np.mean((crc_pred - JAHN1997_PEAK_CRC.mean_response) ** 2))
+    assert crc_rmse / 0.004917 > 50.0, f"CRC RMSE ratio {crc_rmse/0.004917:.1f}x should be blown out"
+

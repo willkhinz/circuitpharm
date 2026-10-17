@@ -92,6 +92,24 @@ def _model_b(v: np.ndarray) -> ReceptorModel:
                                  d=r * d, r=r)
 
 
+def _model_b_free_r(v: np.ndarray) -> ReceptorModel:
+    from ..models.kinetic_jw95 import KineticAllosteryModel
+
+    kd, e, d, r = (10.0 ** float(x) for x in v)
+    koff = FIT_CONVENTIONS["koff"][0]
+    alpha = FIT_CONVENTIONS["alpha"][0]
+    return KineticAllosteryModel(kon=koff / kd, koff=koff, beta=alpha * e, alpha=alpha,
+                                 d=r * d, r=r)
+
+
+def _model_b_free_rates(v: np.ndarray) -> ReceptorModel:
+    from ..models.kinetic_jw95 import KineticAllosteryModel
+
+    kd, e, d, r, koff, alpha = (10.0 ** float(x) for x in v)
+    return KineticAllosteryModel(kon=koff / kd, koff=koff, beta=alpha * e, alpha=alpha,
+                                 d=r * d, r=r)
+
+
 def _model_c(v: np.ndarray) -> ReceptorModel:
     from ..models.extended_desens import ExtendedDesensitizationModel
 
@@ -132,6 +150,23 @@ MODEL_SPECS = {
         conventions=("koff", "alpha", "r"),
         note=("Model B. The three equilibrium-identifiable ratios (P3); the absolute rates "
               "follow from the conventions and are NOT fitted."),
+    ),
+    "kinetic_jw95_free_r": ModelSpec(
+        name="kinetic_jw95_free_r",
+        param_names=("log10_kd", "log10_E", "log10_D", "log10_r"),
+        bounds=((-1.0, 4.0), (-2.0, 3.0), (-3.0, 3.0), (-5.0, 1.0)),
+        factory=_model_b_free_r,
+        conventions=("koff", "alpha"),
+        note=("Model B with resensitisation rate r freed. koff and alpha held at conventions."),
+    ),
+    "kinetic_jw95_free_rates": ModelSpec(
+        name="kinetic_jw95_free_rates",
+        param_names=("log10_kd", "log10_E", "log10_D", "log10_r", "log10_koff", "log10_alpha"),
+        bounds=((-1.0, 4.0), (-2.0, 3.0), (-3.0, 3.0), (-5.0, 1.0), (-3.0, 2.0), (-2.0, 2.0)),
+        factory=_model_b_free_rates,
+        conventions=(),
+        note=("Model B with all microscopic rates freed (r, koff, alpha). "
+              "Used for consistency diagnostics across kinetic observables."),
     ),
     "extended_desens": ModelSpec(
         name="extended_desens",

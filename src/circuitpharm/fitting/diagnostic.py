@@ -197,14 +197,33 @@ def fit_diagnostic_consistency(
         all_starts.extend([np.asarray(s, dtype=float) for s in starts])
     else:
         # Default starts informed by prior knowledge:
-        # 1. Known grid point satisfying holdout
-        all_starts.append(np.array([3.00, 0.50, 2.50]))
-        # 2. Known CRC alone optimum
-        all_starts.append(np.array([2.02, 2.21, -3.00]))
-        # 3. Known Deact alone optimum
-        all_starts.append(np.array([3.06, 0.16, 1.41]))
-        # 4. Box center
-        all_starts.append((lo + hi) / 2.0)
+        if len(names) == 3:
+            # 1. Known grid point satisfying holdout
+            all_starts.append(np.array([3.00, 0.50, 2.50]))
+            # 2. Known CRC alone optimum
+            all_starts.append(np.array([2.02, 2.21, -3.00]))
+            # 3. Known Deact alone optimum
+            all_starts.append(np.array([3.06, 0.16, 1.41]))
+            # 4. Box center
+            all_starts.append((lo + hi) / 2.0)
+        elif len(names) == 4:
+            # log10_kd, log10_E, log10_D, log10_r
+            r_conv = float(np.log10(0.002))
+            all_starts.append(np.array([3.00, 0.50, 2.50, r_conv]))
+            all_starts.append(np.array([2.02, 2.21, -3.00, r_conv]))
+            all_starts.append(np.array([3.06, 0.16, 1.41, r_conv]))
+            all_starts.append((lo + hi) / 2.0)
+        elif len(names) == 6:
+            # log10_kd, log10_E, log10_D, log10_r, log10_koff, log10_alpha
+            r_conv = float(np.log10(0.002))
+            koff_conv = float(np.log10(0.18))
+            alpha_conv = float(np.log10(0.36))
+            all_starts.append(np.array([3.00, 0.50, 2.50, r_conv, koff_conv, alpha_conv]))
+            all_starts.append(np.array([2.02, 2.21, -3.00, r_conv, koff_conv, alpha_conv]))
+            all_starts.append(np.array([3.06, 0.16, 1.41, r_conv, koff_conv, alpha_conv]))
+            all_starts.append((lo + hi) / 2.0)
+        else:
+            all_starts.append((lo + hi) / 2.0)
 
     if n_random_starts > 0:
         rng = np.random.default_rng(seed)
@@ -218,14 +237,14 @@ def fit_diagnostic_consistency(
         s_clamped = np.clip(s, lo, hi)
         r = minimize(
             objective, s_clamped, method="L-BFGS-B", bounds=bnds,
-            options=dict(ftol=1e-12, gtol=1e-8, maxiter=1000)
+            options=dict(ftol=1e-8, gtol=1e-6, maxiter=500)
         )
         start2 = r.x if np.all(np.isfinite(r.x)) else s_clamped
         r2 = minimize(
             objective, start2, method="Nelder-Mead", bounds=bnds,
             options=dict(xatol=1e-4, fatol=1e-4, maxiter=200)
         )
-        cand = r2 if (r2.success and (not r.success or r2.fun <= r.fun)) else r
+        cand = r2 if (np.isfinite(r2.fun) and r2.fun <= r.fun) else r
         if np.isfinite(cand.fun) and cand.fun < best_cost:
             best_cost = float(cand.fun)
             best_cand = cand

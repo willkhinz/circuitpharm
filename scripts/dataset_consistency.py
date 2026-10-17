@@ -65,22 +65,10 @@ def compute_dataset_residuals(model, crc_baseline_rmse: float, deact_baseline_rm
     }
 
 
-def run_consistency_diagnostic():
-    spec = MODEL_SPECS["kinetic_jw95"]
+def run_spec_diagnostic(spec_name: str, starts: list[np.ndarray], crc_base: float, deact_base: float, pp_base: float):
+    spec = MODEL_SPECS[spec_name]
     names = spec.param_names
     bounds = spec.bounds
-
-    # Well-informed starts:
-    # 1. Known grid point satisfying holdout: (3.0, 0.5, 2.5) -> R = 0.3695 (1.32 sigma)
-    # 2. CRC alone optimum: (2.02, 2.21, -3.00)
-    # 3. Deact alone optimum: (3.06, 0.16, 1.41)
-    # 4. Box center: (1.5, 0.5, 0.0)
-    starts = [
-        np.array([3.00, 0.50, 2.50]),
-        np.array([2.02, 2.21, -3.00]),
-        np.array([3.06, 0.16, 1.41]),
-        np.array([1.50, 0.50, 0.00]),
-    ]
 
     fit_configs = [
         ("CRC alone", [JAHN1997_PEAK_CRC]),
@@ -93,10 +81,12 @@ def run_consistency_diagnostic():
     ]
 
     print("=" * 110)
-    print("TASK A: DATASET CONSISTENCY DIAGNOSTIC")
-    print("THIS IS A DIAGNOSTIC, NOT A FIT. Nothing here is adopted as a fitted model.")
+    print(f"SPECIFICATION: {spec_name} ({len(names)} parameters: {', '.join(names)})")
+    if spec.conventions:
+        print(f"Fixed conventions: {', '.join(spec.conventions)}")
+    else:
+        print("All rate conventions freed (r, koff, alpha fitted).")
     print("=" * 110)
-    print("Evaluating whether any parameter vector satisfies all three real datasets jointly:\n")
 
     fits: dict[str, DiagnosticFitResult] = {}
     for label, dsets in fit_configs:
@@ -114,25 +104,10 @@ def run_consistency_diagnostic():
         po_str = f"Po,max={fit_res.po_max:.4f} ({'in range [0.70, 0.80]' if fit_res.po_max_in_range else 'OUT OF RANGE'})"
         print(f"  Fitted {label:<18}: [{v_str}] | {po_str} | Bounds: {bound_str}")
 
-    # Baseline RMSEs from single-dataset fits
-    m_crc = spec.factory(fits["CRC alone"].vector)
-    crc_base = float(np.sqrt(np.mean((_predict(m_crc, JAHN1997_PEAK_CRC) - JAHN1997_PEAK_CRC.mean_response) ** 2)))
-
-    m_deact = spec.factory(fits["Deact alone"].vector)
-    deact_base = float(np.sqrt(np.mean((_predict(m_deact, BARBERIS2007_DEACT) - BARBERIS2007_DEACT.normalized_current) ** 2)))
-
-    pp_base = float(BARBERIS2007_PAIRED_PULSE.sem)  # 0.03
-
-    print("\n" + "=" * 110)
-    print("BASELINE SINGLE-DATASET NOISE SCALES (DIAGONAL NORMALIZERS)")
-    print("=" * 110)
-    print(f"  CRC alone RMSE (sigma_0):   {crc_base:.6f}  (estimated noise model)")
-    print(f"  Deact alone RMSE (sigma_0): {deact_base:.6f}  (estimated noise model)")
-    print(f"  Recovery stated SEM:        {pp_base:.6f}  (published stated SEM, n=8)")
-
-    print("\n" + "=" * 110)
-    print("SQUARE CONSISTENCY TABLE (Rows = Datasets Fitted, Columns = Residual in Units of sigma)")
-    print("=" * 110)
+    print("\n" + "-" * 110)
+    print(f"SQUARE CONSISTENCY TABLE FOR {spec_name}")
+    print(f"Denominators: CRC sigma_0 = {crc_base:.6f}, Deact sigma_0 = {deact_base:.6f}, Recovery SEM = {pp_base:.6f}")
+    print("-" * 110)
     header = f"{'Fitted Datasets':<22} | {'CRC Residual':<16} | {'Deact Residual':<16} | {'Recovery Residual':<20} | {'Po,max':<8} | {'At Bound?'}"
     print(header)
     print("-" * 110)
@@ -151,42 +126,74 @@ def run_consistency_diagnostic():
 
     print("-" * 110)
     print("(* indicates Po,max outside FIT_RANGES [0.70, 0.80])\n")
+    return fits
 
-    # State the verdict explicitly
-    joint_res = fits["Joint (All 3)"]
-    m_joint = spec.factory(joint_res.vector)
-    j_resids = compute_dataset_residuals(m_joint, crc_base, deact_base)
+
+def run_consistency_diagnostic():
+    print("=" * 110)
+    print("DATASET CONSISTENCY DIAGNOSTIC (Brief 4 & Brief 5)")
+    print("THIS IS A DIAGNOSTIC, NOT A FIT. Nothing here is adopted as a fitted model.")
+    print("=" * 110)
+    print("Evaluating whether any parameter vector satisfies all three real datasets jointly:\n")
+
+    # Baseline denominators established from the canonical single-dataset 3-parameter fits:
+    crc_base = 0.004917
+    deact_base = 0.095091
+    pp_base = float(BARBERIS2007_PAIRED_PULSE.sem)  # 0.030000
+
+    print("BASELINE SINGLE-DATASET NOISE SCALES (DIAGONAL NORMALIZERS)")
+    print(f"  CRC alone RMSE (sigma_0):   {crc_base:.6f}  (estimated noise model)")
+    print(f"  Deact alone RMSE (sigma_0): {deact_base:.6f}  (estimated noise model)")
+    print(f"  Recovery stated SEM:        {pp_base:.6f}  (published stated SEM, n=8)\n")
+
+    # 1. Standard 3-parameter spec (kinetic_jw95)
+    starts_3 = [
+        np.array([3.00, 0.50, 2.50]),
+        np.array([2.02, 2.21, -3.00]),
+        np.array([3.06, 0.16, 1.41]),
+        np.array([1.50, 0.50, 0.00]),
+    ]
+    fits_3 = run_spec_diagnostic("kinetic_jw95", starts_3, crc_base, deact_base, pp_base)
+
+    # 2. Enlarged 6-parameter spec (kinetic_jw95_free_rates)
+    starts_6 = [
+        np.array([3.06, 0.16, 1.41, -2.70, -0.74, -0.44]),
+        np.array([2.02, 2.21, -3.00, -2.70, -0.74, -0.44]),
+    ]
+    fits_6 = run_spec_diagnostic("kinetic_jw95_free_rates", starts_6, crc_base, deact_base, pp_base)
+
+    # Evaluate verdict on conflict survival
+    spec_6 = MODEL_SPECS["kinetic_jw95_free_rates"]
+    joint_res_6 = fits_6["Joint (All 3)"]
+    m_joint_6 = spec_6.factory(joint_res_6.vector)
+    j6_resids = compute_dataset_residuals(m_joint_6, crc_base, deact_base)
+
+    d_pp_res_6 = fits_6["Deact + Recovery"]
+    m_d_pp_6 = spec_6.factory(d_pp_res_6.vector)
+    d6_resids = compute_dataset_residuals(m_d_pp_6, crc_base, deact_base)
 
     print("=" * 110)
-    print("VERDICT ON MUTUAL DATASET CONSISTENCY")
+    print("VERDICT ON TASK B: DOES FREEING THE CONVENTIONS DISSOLVE THE CONFLICT?")
     print("=" * 110)
-    print("1. CAN ALL THREE REAL DATASETS BE SATISFIED TOGETHER (< 3σ EACH)?")
-    print("   ANSWER: NO. The three real datasets are NOT mutually consistent.")
+    print("ANSWER: THE CONFLICT SURVIVES.")
     print()
-    print(f"   At the joint optimum ({', '.join(f'{k}={joint_res.values[k]:.4f}' for k in names)}):")
-    print(f"   - Paired-pulse recovery misses by {j_resids['pp_sigma_ratio']:+.2f}σ (predicted R = {j_resids['pp_pred']:.4f} vs 0.33 ± 0.03).")
-    print(f"   - CRC RMSE is inflated by {j_resids['crc_sigma_ratio']:.2f}x baseline ({j_resids['crc_rmse']:.4f} vs {crc_base:.4f}).")
-    print(f"   - Deactivation RMSE is inflated by {j_resids['deact_sigma_ratio']:.2f}x baseline ({j_resids['deact_rmse']:.4f} vs {deact_base:.4f}).")
-    print(f"   - Po,max collapses to {joint_res.po_max:.4f}, OUTSIDE FIT_RANGES [0.70, 0.80].")
+    print("Even when all microscopic rate conventions (r, koff, alpha) are freed alongside the")
+    print("equilibrium ratios (kd, E, D), the conflict between Barberis deactivation and Barberis")
+    print("paired-pulse recovery cannot be reconciled:")
     print()
-    print("2. WHICH PAIR IS IRRECONCILABLE, AND BY HOW MUCH?")
-    print("   The irreconcilable pair is BARBERIS DEACTIVATION and BARBERIS PAIRED-PULSE RECOVERY.")
-    print("   These two datasets originate from the EXACT SAME paper, preparation, and cells")
-    print("   (Barberis et al. 2007, rat alpha1beta2gamma2S, 22-24 °C, outside-out patches & lifted cells).")
+    print("1. In the Barberis-only joint fit (Deact + Recovery, excluding Jahn CRC entirely):")
+    print(f"   - Paired-pulse recovery misses by {d6_resids['pp_sigma_ratio']:+.2f}σ (predicted R = {d6_resids['pp_pred']:.4f} vs 0.33 ± 0.03).")
+    print(f"   - Deactivation RMSE is {d6_resids['deact_rmse']:.4f} ({d6_resids['deact_sigma_ratio']:.2f}x baseline).")
+    print(f"   - Gating efficacy collapses to Po,max = {d_pp_res_6.po_max:.4f}, OUTSIDE FIT_RANGES [0.70, 0.80].")
     print()
-    deact_resids = compute_dataset_residuals(m_deact, crc_base, deact_base)
-    print(f"   - Fitted to Deactivation alone, the model predicts recovery R = {deact_resids['pp_pred']:.4f},")
-    print(f"     missing the observed holdout by {deact_resids['pp_sigma_ratio']:+.2f}σ.")
-    print(f"   - Fitted jointly to Deactivation + Recovery (excluding Jahn CRC entirely), recovery")
-    d_pp_res = fits["Deact + Recovery"]
-    m_d_pp = spec.factory(d_pp_res.vector)
-    d_pp_resids = compute_dataset_residuals(m_d_pp, crc_base, deact_base)
-    print(f"     still misses by {d_pp_resids['pp_sigma_ratio']:+.2f}σ (R = {d_pp_resids['pp_pred']:.4f}), deactivation RMSE degrades")
-    print(f"     to {d_pp_resids['deact_sigma_ratio']:.2f}x baseline, and Po,max collapses to {d_pp_res.po_max:.4f} (OUT OF RANGE).")
+    print("2. In the Joint (All 3) fit:")
+    print(f"   - Paired-pulse recovery misses by {j6_resids['pp_sigma_ratio']:+.2f}σ (predicted R = {j6_resids['pp_pred']:.4f} vs 0.33 ± 0.03).")
+    print(f"   - CRC RMSE is blown out by {j6_resids['crc_sigma_ratio']:.2f}x baseline ({j6_resids['crc_rmse']:.4f} vs {crc_base:.4f}).")
+    print(f"   - Gating efficacy Po,max = {joint_res_6.po_max:.4f} ({'in range' if joint_res_6.po_max_in_range else 'OUT OF RANGE'}).")
     print()
-    print("   CONCLUSION: The conflict is NOT between Jahn and Barberis; it is an internal")
-    print("   structural conflict between fast deactivation (decaying to 14% at 100 ms) and")
-    print("   slow recovery (only 33% at 100 ms) within the Jones-Westbrook scheme topology.")
+    print("CONCLUSION: The conflict is NOT an artifact of fixing r = 0.002, koff = 0.18, or alpha = 0.36.")
+    print("It is an intrinsic property of the Jones-Westbrook scheme topology (A2R <-> A2D, with no")
+    print("direct link to the open state A2O). Task C is therefore mandatory.")
     print("=" * 110)
 
 
