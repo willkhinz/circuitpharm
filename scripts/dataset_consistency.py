@@ -22,7 +22,11 @@ import argparse
 import sys
 import numpy as np
 
-from circuitpharm.fitting.comparison import MODEL_SPECS
+import hashlib
+import json
+import pathlib
+import time
+from circuitpharm.fitting.comparison import MODEL_SPECS, nesting_embedding
 from circuitpharm.fitting.data import (
     JAHN1997_PEAK_CRC,
     BARBERIS2007_DEACT,
@@ -30,42 +34,49 @@ from circuitpharm.fitting.data import (
 )
 from circuitpharm.fitting.diagnostic import (
     DiagnosticFitResult,
+    diagnostic_log_likelihood,
     fit_diagnostic_consistency,
 )
 from circuitpharm.fitting.likelihood import _predict, predict_paired_pulse_recovery
 
-
-def compute_dataset_residuals(model, crc_baseline_rmse: float, deact_baseline_rmse: float) -> dict[str, float]:
-    """Compute residuals across the three datasets in units of each dataset's sigma."""
-    # 1. CRC
-    crc_pred = _predict(model, JAHN1997_PEAK_CRC)
-    crc_rmse = float(np.sqrt(np.mean((crc_pred - JAHN1997_PEAK_CRC.mean_response) ** 2)))
-    crc_sigma_ratio = crc_rmse / crc_baseline_rmse if crc_baseline_rmse > 0 else float("nan")
-
-    # 2. Deact
-    deact_pred = _predict(model, BARBERIS2007_DEACT)
-    deact_rmse = float(np.sqrt(np.mean((deact_pred - BARBERIS2007_DEACT.normalized_current) ** 2)))
-    deact_sigma_ratio = deact_rmse / deact_baseline_rmse if deact_baseline_rmse > 0 else float("nan")
-
-    # 3. Recovery (Paired Pulse)
-    pp_pred = float(predict_paired_pulse_recovery(model, BARBERIS2007_PAIRED_PULSE))
-    pp_obs = float(BARBERIS2007_PAIRED_PULSE.mean_response)
-    pp_sem = float(BARBERIS2007_PAIRED_PULSE.sem)
-    pp_resid = pp_pred - pp_obs
-    pp_sigma_ratio = pp_resid / pp_sem
-
-    return {
-        "crc_rmse": crc_rmse,
-        "crc_sigma_ratio": crc_sigma_ratio,
-        "deact_rmse": deact_rmse,
-        "deact_sigma_ratio": deact_sigma_ratio,
-        "pp_pred": pp_pred,
-        "pp_resid": pp_resid,
-        "pp_sigma_ratio": pp_sigma_ratio,
-    }
+CACHE_DIR = pathlib.Path(__file__).resolve().parent.parent / ".trace-cache" / "diagnostic_fits"
 
 
-def run_spec_diagnostic(spec_name: str, starts: list[np.ndarray], crc_base: float, deact_base: float, pp_base: float):
+def compute_code_hash() -> str:
+    h = hashlib.sha256()
+    repo_root = pathlib.Path(__file__).resolve().parent.parent
+    for rel_path in [
+        "src/circuitpharm/fitting/diagnostic.py",
+        "src/circuitpharm/fitting/comparison.py",
+        "src/circuitpharm/fitting/likelihood.py",
+        "src/circuitpharm/models/kinetic.py",
+        "src/circuitpharm/models/kinetic_open_desens.py",
+    ]:
+        p = repo_root / rel_path
+        if p.exists():
+            h.update(p.read_bytes())
+    return h.hexdigest()[:16]
+
+
+def cache_key(spec_name: str, label: str, n_starts: int, seed: int) -> str:
+    h = hashlib.sha256()
+    h.update(f"{spec_name}:{label}:{n_starts}:{seed}".encode())
+    h.update(compute_code_hash().encode())
+    return h.hexdigest()[:20]
+
+
+def run_spec_diagnostic(
+    spec_name: str,
+    starts: list[np.ndarray],
+    crc_base: float,
+    deact_base: float,
+    pp_base: float,
+    *,
+    sub_fits: dict[str, DiagnosticFitResult] | None = None,
+    n_random_starts: int = 24,
+    n_workers: int = 8,
+    use_cache: bool = True,
+):
     spec = MODEL_SPECS[spec_name]
     names = spec.param_names
     bounds = spec.bounds
@@ -86,18 +97,83 @@ def run_spec_diagnostic(spec_name: str, starts: list[np.ndarray], crc_base: floa
         print(f"Fixed conventions: {', '.join(spec.conventions)}")
     else:
         print("All rate conventions freed (r, koff, alpha fitted).")
+    print(f"Optimization settings: {n_random_starts} random starts + warm starts, ftol=1e-14, gtol=1e-11")
     print("=" * 110)
 
     fits: dict[str, DiagnosticFitResult] = {}
     for label, dsets in fit_configs:
-        fit_res = fit_diagnostic_consistency(
-            spec.factory,
-            dsets,
-            param_names=names,
-            bounds=bounds,
-            starts=starts,
-            anchor_po_max=True,
-        )
+        cfg_starts = list(starts)
+        v_emb = None
+        if sub_fits is not None and label in sub_fits:
+            sub_spec = MODEL_SPECS["kinetic_jw95"]
+            v_sub = sub_fits[label].vector
+            v_emb = nesting_embedding(sub_spec, spec, v_sub)
+            cfg_starts.insert(0, v_emb)
+
+        # Check disk cache
+        k = cache_key(spec_name, label, n_random_starts, 42)
+        c_file = CACHE_DIR / f"{spec_name}_{label.replace(' ', '_').replace('(', '').replace(')', '')}_{k}.json"
+
+        fit_res = None
+        if use_cache and c_file.exists():
+            try:
+                with open(c_file, "r") as f:
+                    data = json.load(f)
+                v = np.array(data["vector"], dtype=float)
+                m = spec.factory(v)
+                sc = diagnostic_log_likelihood(m, dsets, n_params=len(names), anchor_po_max=True)
+                fit_res = DiagnosticFitResult(
+                    values={names[i]: float(v[i]) for i in range(len(v))},
+                    vector=v,
+                    total_log_likelihood=float(sc.total_log_likelihood),
+                    per_dataset=sc.per_dataset,
+                    po_max=float(m.po_max) if hasattr(m, "po_max") else None,
+                    po_max_in_range=data["po_max_in_range"],
+                    at_bound=tuple(data["at_bound"]),
+                    converged=data["converged"],
+                    note=data.get("note", ""),
+                )
+            except Exception:
+                fit_res = None
+
+        if fit_res is None:
+            fit_res = fit_diagnostic_consistency(
+                spec.factory,
+                dsets,
+                param_names=names,
+                bounds=bounds,
+                starts=cfg_starts,
+                anchor_po_max=True,
+                n_random_starts=n_random_starts,
+                seed=42,
+                n_workers=n_workers,
+            )
+            if use_cache:
+                CACHE_DIR.mkdir(parents=True, exist_ok=True)
+                with open(c_file, "w") as f:
+                    json.dump({
+                        "spec_name": spec_name,
+                        "label": label,
+                        "vector": fit_res.vector.tolist(),
+                        "values": fit_res.values,
+                        "total_log_likelihood": fit_res.total_log_likelihood,
+                        "po_max": fit_res.po_max,
+                        "po_max_in_range": fit_res.po_max_in_range,
+                        "at_bound": list(fit_res.at_bound),
+                        "converged": fit_res.converged,
+                        "note": fit_res.note,
+                    }, f, indent=2)
+
+        # Enforce nesting check on total objective (Brief 6 Task C §6):
+        if v_emb is not None:
+            m_emb = spec.factory(v_emb)
+            ll_sub_emb = float(diagnostic_log_likelihood(m_emb, dsets, n_params=len(names), anchor_po_max=True).total_log_likelihood)
+            if fit_res.total_log_likelihood < ll_sub_emb - 1e-4:
+                raise RuntimeError(
+                    f"Nesting violation in {label}: enlarged model total LL ({fit_res.total_log_likelihood:.6f}) < "
+                    f"embedded sub-model LL ({ll_sub_emb:.6f})"
+                )
+
         fits[label] = fit_res
         v_str = ", ".join(f"{k}={fit_res.values[k]:.4f}" for k in names)
         bound_str = f"PINNED: {', '.join(fit_res.at_bound)}" if fit_res.at_bound else "none (interior)"
@@ -130,6 +206,7 @@ def run_spec_diagnostic(spec_name: str, starts: list[np.ndarray], crc_base: floa
 
 
 def run_consistency_diagnostic():
+    t_start = time.perf_counter()
     print("=" * 110)
     print("DATASET CONSISTENCY DIAGNOSTIC (Brief 4 & Brief 5)")
     print("THIS IS A DIAGNOSTIC, NOT A FIT. Nothing here is adopted as a fitted model.")
@@ -153,14 +230,13 @@ def run_consistency_diagnostic():
         np.array([3.06, 0.16, 1.41]),
         np.array([1.50, 0.50, 0.00]),
     ]
-    fits_3 = run_spec_diagnostic("kinetic_jw95", starts_3, crc_base, deact_base, pp_base)
+    fits_3 = run_spec_diagnostic("kinetic_jw95", starts_3, crc_base, deact_base, pp_base, n_random_starts=24, n_workers=8)
 
     # 2. Enlarged 6-parameter spec (kinetic_jw95_free_rates)
-    starts_6 = [
-        np.array([3.06, 0.16, 1.41, -2.70, -0.74, -0.44]),
-        np.array([2.02, 2.21, -3.00, -2.70, -0.74, -0.44]),
-    ]
-    fits_6 = run_spec_diagnostic("kinetic_jw95_free_rates", starts_6, crc_base, deact_base, pp_base)
+    spec_3 = MODEL_SPECS["kinetic_jw95"]
+    spec_6 = MODEL_SPECS["kinetic_jw95_free_rates"]
+    starts_6 = [nesting_embedding(spec_3, spec_6, s) for s in starts_3]
+    fits_6 = run_spec_diagnostic("kinetic_jw95_free_rates", starts_6, crc_base, deact_base, pp_base, sub_fits=fits_3, n_random_starts=24, n_workers=8)
 
     # 3. Alternative topology spec (kinetic_open_desens: A2R <-> A2O <-> A2D)
     starts_open = [
@@ -169,7 +245,7 @@ def run_consistency_diagnostic():
         np.array([3.06, 0.16, 1.41]),
         np.array([1.50, 0.50, 0.00]),
     ]
-    fits_open = run_spec_diagnostic("kinetic_open_desens", starts_open, crc_base, deact_base, pp_base)
+    fits_open = run_spec_diagnostic("kinetic_open_desens", starts_open, crc_base, deact_base, pp_base, n_random_starts=24, n_workers=8)
 
     # Evaluate verdict on conflict survival (Task B)
     spec_6 = MODEL_SPECS["kinetic_jw95_free_rates"]
