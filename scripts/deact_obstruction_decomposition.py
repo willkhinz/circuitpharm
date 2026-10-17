@@ -449,6 +449,9 @@ def run_fit_decomposition(
         "ratio": ratio,
         "is_conditioned": is_conditioned,
         "cond_reason": cond_reason,
+        "warm_start_won": getattr(best_fit, "warm_start_won", True),
+        "cost_warm": getattr(best_fit, "cost_warm", 0.0),
+        "cost_random": getattr(best_fit, "cost_random", 0.0),
         "display": disp,
         "runtime_s": elapsed,
         "budget": f"{n_samples} LHS + {n_polish} polish",
@@ -510,6 +513,27 @@ def format_conditioning_table(
                 lines.append(
                     f"| `{scheme}` | {route_name} | `{obj}` | {c2_str} | {raw_s} | {po0} | {ratio} | **{status}** |"
                 )
+    return "\n".join(lines)
+
+
+def format_warm_start_table(
+    schemes: list[str],
+    results_fit: dict[tuple[str, str], dict[str, Any]],
+) -> str:
+    """Format table evaluating warm-start outcome, costs, and spread (Brief 9C §2)."""
+    lines = []
+    lines.append("| Scheme | Objective | Warm Start Won? | Cost (Warm) | Cost (Random) | Spread (taus, ms) | Fit Conditioning |")
+    lines.append("| :--- | :---: | :---: | :---: | :---: | :---: | :---: |")
+    for s in schemes:
+        for obj in ["all_six", "taus_only", "amplitudes_only"]:
+            r = results_fit[(s, obj)]
+            fit_res = r.get("fit_res")
+            w_won = "**YES**" if r.get("warm_start_won", True) else "**NO (Random beat warm)**"
+            c_w = f"{r.get('cost_warm', 0.0):.4e}"
+            c_r = f"{r.get('cost_random', 0.0):.4e}"
+            spread_t = tuple(round(x, 2) for x in getattr(fit_res, "spread_taus", ())) if fit_res else "N/A"
+            cond_str = "Well-conditioned" if not r.get("is_degenerate", False) else f"DEGENERATE ({r.get('degeneracy_reason', '')})"
+            lines.append(f"| `{s}` | `{obj}` | {w_won} | {c_w} | {c_r} | {spread_t} | {cond_str} |")
     return "\n".join(lines)
 
 
@@ -623,8 +647,13 @@ def main():
     print(budget_table)
     print("\n")
 
+    ws_table = format_warm_start_table(schemes, results_fit)
+    print("## 4. Warm-Start Outcome and Multi-Start Verification (Brief 9C §2)\n")
+    print(ws_table)
+    print("\n")
+
     # Task 4 Check for any candidate with chi^2 < 100
-    print("## 4. Task 4 Cross-Checks for Optima with $\\chi^2 < 100$\n")
+    print("## 5. Task 4 Cross-Checks for Optima with $\\chi^2 < 100$\n")
     found_any = False
     for scheme in schemes:
         spec = MODEL_SPECS[scheme]
