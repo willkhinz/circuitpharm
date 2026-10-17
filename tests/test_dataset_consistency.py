@@ -136,3 +136,37 @@ def test_conflict_survives_freeing_rate_conventions():
     crc_rmse = np.sqrt(np.mean((crc_pred - JAHN1997_PEAK_CRC.mean_response) ** 2))
     assert crc_rmse / 0.004917 > 50.0, f"CRC RMSE ratio {crc_rmse/0.004917:.1f}x should be blown out"
 
+
+def test_conflict_survives_under_alternative_open_desensitisation_topology():
+    """Verify that open-channel desensitisation topology (A2R <-> A2O <-> A2D) cannot reconcile Barberis observables."""
+    assert "kinetic_open_desens" in MODEL_SPECS
+    spec = MODEL_SPECS["kinetic_open_desens"]
+
+    # 1. At Deactivation alone optimum:
+    # Vector found: [log10_kd=3.06, log10_E=0.155, log10_D=1.408]
+    v_deact = np.array([3.06, 0.155, 1.408])
+    m_deact = spec.factory(v_deact)
+    pp_pred_deact = float(predict_paired_pulse_recovery(m_deact, BARBERIS2007_PAIRED_PULSE))
+    sig_deact = abs(pp_pred_deact - 0.33) / 0.03
+    assert sig_deact > 15.0, f"Open-desens deact alone miss {sig_deact:.2f} sigma should exceed 15 sigma"
+
+    # 2. At point satisfying Recovery (where R ~ 0.33):
+    # Vector: [3.00, 0.485, 2.50] -> R = 0.323 (-0.24 sigma)
+    v_rec = np.array([3.00, 0.485, 2.50])
+    m_rec = spec.factory(v_rec)
+    deact_pred = _predict(m_rec, BARBERIS2007_DEACT)
+    deact_rmse = np.sqrt(np.mean((deact_pred - BARBERIS2007_DEACT.normalized_current) ** 2))
+    assert deact_rmse / 0.095091 > 5.0, f"Open-desens deact RMSE ratio {deact_rmse/0.095091:.2f}x should be > 5x"
+
+    # 3. At Deact + Recovery joint compromise optimum:
+    # Vector: [-0.520, 0.539, 1.541] -> Deact RMSE 2.66x, Recovery +7.56 sigma
+    v_joint = np.array([-0.5196, 0.5392, 1.5411])
+    m_joint = spec.factory(v_joint)
+    pp_pred_joint = float(predict_paired_pulse_recovery(m_joint, BARBERIS2007_PAIRED_PULSE))
+    sig_joint = abs(pp_pred_joint - 0.33) / 0.03
+    assert sig_joint > 5.0, f"Joint recovery miss {sig_joint:.2f} sigma must exceed 5 sigma"
+    deact_pred_joint = _predict(m_joint, BARBERIS2007_DEACT)
+    deact_rmse_joint = np.sqrt(np.mean((deact_pred_joint - BARBERIS2007_DEACT.normalized_current) ** 2))
+    assert deact_rmse_joint / 0.095091 > 2.0, f"Joint deactivation RMSE ratio {deact_rmse_joint/0.095091:.2f}x must exceed 2x"
+
+

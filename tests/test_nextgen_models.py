@@ -148,6 +148,50 @@ def test_kinetic_jw95_a2d_connectivity_is_strictly_to_a2r():
     assert q[3, 4] == 0.0, "A2O (open state) must not transition to A2D"
 
 
+def test_kinetic_open_desens_connectivity_is_strictly_to_a2o():
+    """Assert that in KineticOpenDesensModel, A2D connects strictly to A2O, not to A2R.
+
+    States: 0: R, 1: AR, 2: A2R, 3: A2O, 4: A2D.
+    Desensitisation enters from open state A2O (rate d) and resensitises
+    exclusively to A2O (rate r). It does NOT connect to or from closed state A2R.
+    """
+    from circuitpharm.models.kinetic_open_desens import KineticOpenDesensModel
+
+    model = KineticOpenDesensModel()
+    q = model.q_matrix(gaba_um=100.0)
+
+    # All rows sum to zero
+    assert np.allclose(q.sum(axis=1), 0.0, atol=1e-12)
+
+    # Row 4 (A2D outgoing transitions): only non-diagonal entry is to column 3 (A2O)
+    for col in range(5):
+        if col == 4:
+            assert q[4, col] == -model.r, f"A2D diagonal should be -r, got {q[4, col]}"
+        elif col == 3:
+            assert q[4, col] == model.r, f"A2D -> A2O rate should be r, got {q[4, col]}"
+        else:
+            assert q[4, col] == 0.0, f"A2D transition to state {col} must be 0, got {q[4, col]}"
+
+    # Column 4 (incoming transitions into A2D): only non-diagonal entry is from row 3 (A2O)
+    for row in range(5):
+        if row == 4:
+            continue
+        elif row == 3:
+            assert q[row, 4] == model.d, f"A2O -> A2D rate should be d, got {q[row, 4]}"
+        else:
+            assert q[row, 4] == 0.0, f"Transition from state {row} to A2D must be 0, got {q[row, 4]}"
+
+    # Explicit negative assertions: no direct connection with closed state A2R (index 2)
+    assert q[4, 2] == 0.0, "A2D must not transition to A2R (closed state)"
+    assert q[2, 4] == 0.0, "A2R (closed state) must not transition to A2D"
+
+    # Equilibrium state distribution sums to 1.0
+    for gaba in [0.0, 1.0, 10.0, 100.0, 10000.0]:
+        dist = model.state_distribution(gaba)
+        assert np.isclose(np.sum(dist), 1.0, atol=1e-12)
+        assert np.all(dist >= 0.0)
+
+
 def test_extended_desensitization_model_protocol_and_behavior():
     model = ExtendedDesensitizationModel()
     assert isinstance(model, ReceptorModel)

@@ -110,6 +110,25 @@ def _model_b_free_rates(v: np.ndarray) -> ReceptorModel:
                                  d=r * d, r=r)
 
 
+def _model_open_desens(v: np.ndarray) -> ReceptorModel:
+    from ..models.kinetic_open_desens import KineticOpenDesensModel
+
+    kd, e, d = (10.0 ** float(x) for x in v)
+    koff = FIT_CONVENTIONS["koff"][0]
+    alpha = FIT_CONVENTIONS["alpha"][0]
+    r = FIT_CONVENTIONS["r"][0]
+    return KineticOpenDesensModel(kon=koff / kd, koff=koff, beta=alpha * e, alpha=alpha,
+                                  d=r * d, r=r)
+
+
+def _model_open_desens_free_rates(v: np.ndarray) -> ReceptorModel:
+    from ..models.kinetic_open_desens import KineticOpenDesensModel
+
+    kd, e, d, r, koff, alpha = (10.0 ** float(x) for x in v)
+    return KineticOpenDesensModel(kon=koff / kd, koff=koff, beta=alpha * e, alpha=alpha,
+                                  d=r * d, r=r)
+
+
 def _model_c(v: np.ndarray) -> ReceptorModel:
     from ..models.extended_desens import ExtendedDesensitizationModel
 
@@ -167,6 +186,15 @@ MODEL_SPECS = {
         conventions=(),
         note=("Model B with all microscopic rates freed (r, koff, alpha). "
               "Used for consistency diagnostics across kinetic observables."),
+    ),
+    "kinetic_open_desens": ModelSpec(
+        name="kinetic_open_desens",
+        param_names=("log10_kd", "log10_E", "log10_D"),
+        bounds=((-1.0, 4.0), (-2.0, 3.0), (-3.0, 3.0)),
+        factory=_model_open_desens,
+        conventions=("koff", "alpha", "r"),
+        note=("Alternative 5-state model where desensitisation connects strictly to open state A2O "
+              "(A2R <-> A2O <-> A2D). Used in Brief 5 Task C as topological diagnostic."),
     ),
     "extended_desens": ModelSpec(
         name="extended_desens",

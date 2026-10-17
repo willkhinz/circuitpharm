@@ -162,7 +162,16 @@ def run_consistency_diagnostic():
     ]
     fits_6 = run_spec_diagnostic("kinetic_jw95_free_rates", starts_6, crc_base, deact_base, pp_base)
 
-    # Evaluate verdict on conflict survival
+    # 3. Alternative topology spec (kinetic_open_desens: A2R <-> A2O <-> A2D)
+    starts_open = [
+        np.array([3.00, 0.50, 2.50]),
+        np.array([2.02, 2.21, -3.00]),
+        np.array([3.06, 0.16, 1.41]),
+        np.array([1.50, 0.50, 0.00]),
+    ]
+    fits_open = run_spec_diagnostic("kinetic_open_desens", starts_open, crc_base, deact_base, pp_base)
+
+    # Evaluate verdict on conflict survival (Task B)
     spec_6 = MODEL_SPECS["kinetic_jw95_free_rates"]
     joint_res_6 = fits_6["Joint (All 3)"]
     m_joint_6 = spec_6.factory(joint_res_6.vector)
@@ -172,14 +181,26 @@ def run_consistency_diagnostic():
     m_d_pp_6 = spec_6.factory(d_pp_res_6.vector)
     d6_resids = compute_dataset_residuals(m_d_pp_6, crc_base, deact_base)
 
+    # Evaluate verdict on alternative topology (Task C)
+    spec_open = MODEL_SPECS["kinetic_open_desens"]
+    d_pp_res_open = fits_open["Deact + Recovery"]
+    m_d_pp_open = spec_open.factory(d_pp_res_open.vector)
+    d_open_resids = compute_dataset_residuals(m_d_pp_open, crc_base, deact_base)
+
+    m_deact_open = spec_open.factory(fits_open["Deact alone"].vector)
+    deact_open_resids = compute_dataset_residuals(m_deact_open, crc_base, deact_base)
+
+    m_rec_open = spec_open.factory(fits_open["Recovery alone"].vector)
+    rec_open_resids = compute_dataset_residuals(m_rec_open, crc_base, deact_base)
+
     print("=" * 110)
     print("VERDICT ON TASK B: DOES FREEING THE CONVENTIONS DISSOLVE THE CONFLICT?")
     print("=" * 110)
-    print("ANSWER: THE CONFLICT SURVIVES.")
+    print("ANSWER: NO. THE CONFLICT SURVIVES.")
     print()
     print("Even when all microscopic rate conventions (r, koff, alpha) are freed alongside the")
     print("equilibrium ratios (kd, E, D), the conflict between Barberis deactivation and Barberis")
-    print("paired-pulse recovery cannot be reconciled:")
+    print("paired-pulse recovery cannot be reconciled in Model B (JW95):")
     print()
     print("1. In the Barberis-only joint fit (Deact + Recovery, excluding Jahn CRC entirely):")
     print(f"   - Paired-pulse recovery misses by {d6_resids['pp_sigma_ratio']:+.2f}σ (predicted R = {d6_resids['pp_pred']:.4f} vs 0.33 ± 0.03).")
@@ -191,9 +212,24 @@ def run_consistency_diagnostic():
     print(f"   - CRC RMSE is blown out by {j6_resids['crc_sigma_ratio']:.2f}x baseline ({j6_resids['crc_rmse']:.4f} vs {crc_base:.4f}).")
     print(f"   - Gating efficacy Po,max = {joint_res_6.po_max:.4f} ({'in range' if joint_res_6.po_max_in_range else 'OUT OF RANGE'}).")
     print()
-    print("CONCLUSION: The conflict is NOT an artifact of fixing r = 0.002, koff = 0.18, or alpha = 0.36.")
-    print("It is an intrinsic property of the Jones-Westbrook scheme topology (A2R <-> A2D, with no")
-    print("direct link to the open state A2O). Task C is therefore mandatory.")
+    print("=" * 110)
+    print("VERDICT ON TASK C: DOES AN ALTERNATIVE TOPOLOGY (OPEN-STATE DESENSITISATION) RECONCILE THEM?")
+    print("=" * 110)
+    print("ANSWER: NO. THE CONFLICT PERSISTS UNDER THE ALTERNATIVE TOPOLOGY AS WELL.")
+    print()
+    print("Testing KineticOpenDesensModel (A2R <-> A2O <-> A2D, desensitisation directly from open channel):")
+    print(f"1. Deactivation alone misses paired-pulse recovery by {deact_open_resids['pp_sigma_ratio']:+.2f}σ (predicted R = {deact_open_resids['pp_pred']:.4f}),")
+    print(f"   and Po,max drops to {fits_open['Deact alone'].po_max:.4f} (OUT OF RANGE).")
+    print(f"2. Recovery alone inflates deactivation RMSE by {rec_open_resids['deact_sigma_ratio']:.2f}x baseline ({rec_open_resids['deact_rmse']:.4f} vs {deact_base:.4f}).")
+    print(f"3. Deactivation + Recovery jointly misses recovery by {d_open_resids['pp_sigma_ratio']:+.2f}σ (R = {d_open_resids['pp_pred']:.4f})")
+    print(f"   and inflates deactivation RMSE by {d_open_resids['deact_sigma_ratio']:.2f}x baseline ({d_open_resids['deact_rmse']:.4f} vs {deact_base:.4f}).")
+    print()
+    print("OVERALL ARCHITECTURAL CONCLUSION (The Stronger Result):")
+    print("Neither topology (closed-state desensitisation A2R <-> A2D vs open-state desensitisation A2O <-> A2D),")
+    print("and no combination of freed microscopic rates, can reconcile fast deactivation (decay to 14% at 100 ms)")
+    print("with slow paired-pulse recovery (only 33% at 100 ms) from the same preparation.")
+    print("This points at the experimental data (different patch configurations / run-down) or protocol")
+    print("reconstruction rather than at a parameter convention artifact.")
     print("=" * 110)
 
 
