@@ -92,3 +92,81 @@ replaced by the standard point treatment, fails at 3.56σ; and because it requir
 1.5–2 orders of magnitude beyond published estimates. The honest headline is that **a scheme
 with two conducting open states and strong binding cooperativity is the first to come within
 reach of all five observables at once, and the cooperativity it demands is its main liability.**
+
+---
+
+## Addendum, 2026-10-17 — the cooperativity liability evaporates; the Hill slope is the real tension
+
+Agent 16 profiled `c` across 23 log-spaced points, 1–10,000, with four-pass bidirectional
+warm-starting (down from 1000, up from 1000, up from 1, down from 10,000) to remove optimiser
+noise and hysteresis. 18.4 min, ~48 s per point. I read the profile JSON directly; the numbers
+below are from it, not from the report.
+
+### c = 1000 was an artefact of an under-constrained plateau
+
+| c | minimax | | c | minimax |
+|---|---|---|---|---|
+| 1.0 | 3.232σ | | 100.0 | **2.751σ** |
+| 5.0 | 3.078σ | | 158.5 | **2.709σ** |
+| **23.0** | **3.013σ** | | 1000.0 | **2.585σ** |
+| **35.0** | **2.909σ** | | **1584.9** | **2.373σ** |
+| 50.0 | **2.841σ** | | 2511.9 | **2.868σ** |
+| 75.0 | **2.745σ** | | 3981.1 | 4.314σ |
+
+An asymmetric trough: a broad **plateau over c ∈ [35, 2500]** where all five observables pass,
+a shallow global minimum at c = 1585 (2.373σ), and a steep wall above 2500 bound by mean open
+time and deactivation. **So c = 1000 was never required** — it is simply where a minimax
+optimiser settled inside a flat basin.
+
+**The liability largely evaporates.** The lowest passing cooperativity is **c = 35**, and at
+Olsen's published ratio of **23×** the minimax is **3.013σ** — missing the 3σ criterion by
+**0.013σ**, which is inside any honest optimiser tolerance. The model needs roughly **1.5×** the
+published cooperativity, not 43–200×.
+
+### But the Hill slope never reaches the published value, anywhere
+
+Reading the Hill slope along the same profile:
+
+| c | nH | z_nH | mean open time | P(AR) peak |
+|---|---|---|---|---|
+| 1.0 | 0.91 | −3.23σ | 2.22 ms | 8.81% |
+| 23.0 | 0.99 | −3.01σ | 3.27 ms | 2.62% |
+| 35.0 | 1.04 | −2.91σ | 2.83 ms | 2.34% |
+| 100.0 | 1.10 | −2.75σ | 2.52 ms | 1.61% |
+| 1000.0 | 1.18 | −2.55σ | 3.20 ms | 0.55% |
+| 10000.0 | 1.63 | −1.43σ | 1.37 ms | 0.39% |
+
+* **Maximum Hill slope anywhere on the profile: 1.63** — and only at c = 10,000, where the
+  minimax is 8.10σ and mean open time collapses to 1.37 ms.
+* **Maximum Hill slope among passing points: 1.25.** Published: **2.2 ± 0.4**.
+* At **every** passing point the Hill slope residual is between **−2.55σ and −2.91σ**.
+
+**So "satisfies all five observables" means, precisely: its worst residual is just under 3σ, and
+that worst residual is always the Hill slope.** Cooperativity steepens nH monotonically, exactly
+as brief 13 predicted, but cannot carry it past ~1.25 without destroying mean open time and
+deactivation. **The concentration–response steepness is the irreducible tension** — not
+deactivation, not recovery, not `po_max`.
+
+That is a sharper and more useful conclusion than the pass/fail. It is also a prediction: any
+scheme in this class should fall ~2.5σ short on Hill slope.
+
+### A falsifiable prediction that the fitted data cannot settle
+
+Because the plateau is flat, the five fitted observables **cannot determine `c`**. Agent 16
+identified something that can: the **10–90% current risetime** under rapid application of 10 µM
+GABA on outside-out macropatches — **3.54 ms at c = 23 against 9.19 ms at c = 1000**, a 2.6×
+difference. The mechanism is explicit: at high `c` the first unbinding is ultra-fast
+(`koff` = 85.7 ms⁻¹, 11.7 µs dwell, Kd₁ = 401 µM), so many abortive unbindings occur before a
+second agonist binds, and the rise is slow.
+
+This is an experimental-design result: one measurement discriminates across a basin that the
+entire fitted dataset leaves flat. **No literature value was sought or assigned for it** — it
+stands as a prediction.
+
+### Status
+
+`kinetic_coop` passes five observables with residual dof +1 at any c ∈ [35, 2500], needing only
+~1.5× the published cooperativity. Two caveats remain, and the second is now the headline:
+the mean-open-time pass still depends on the band treatment of an unstated error (see above),
+and **the Hill slope is 2.5–2.9σ short at every passing point and cannot be fixed within this
+model class.**
