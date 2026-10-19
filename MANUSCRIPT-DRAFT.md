@@ -163,8 +163,28 @@ Both identities were verified numerically across 400 random parameter sets with 
 (2000 checks of the Duhamel identity, 400 of the secular identity), and every premise of the
 proof is mirrored as an executable assertion in the test suite.
 
-**Limits.** The positive result for two open states (a₁ = +1.116) is measured, not derived; no
-proof is offered that a second conducting state *must* lift the constraint. The admissibility
+### 2.3 Two conducting open states are *necessary*, and that is also a theorem
+
+The converse direction is now proven as well, and by a sharper route than the amplitude bound.
+
+For a single-open **five-state** scheme the doubly-liganded block has dimension 3, so the
+relaxation has at most **three** non-zero modes. The extremal mode's amplitude is strictly
+negative (§2.2). Therefore **at most two modes can carry positive amplitude.**
+
+The measurement reports **three** positive fractional amplitudes — 0.57 ± 0.04, 0.23 ± 0.02,
+0.20 ± 0.03. A five-state single-open scheme cannot produce three positive decay components at
+any parameter values whatsoever. **Observing them necessitates at least two conducting open
+states.**
+
+A sufficient condition is also available: a closed-form gateway projection gives a spectral sign
+partition, and a root in the required interval is guaranteed whenever γ+δ > r and
+2k_off/(γ+δ) + d/(γ+δ−r) > 1 — conditions the GABA-A rate ranges satisfy comfortably, so the
+published a₁ = 0.57 is reachable rather than merely not excluded.
+
+**Limits.** The necessity argument is dimensional and therefore scoped to **five-state**
+single-open schemes. A six-state single-open scheme such as the pre-open variant has a
+four-dimensional block and could in principle supply three positive components; it is excluded
+by measurement (a₁ ≤ 0.245, and only with condition numbers above 10⁸), not by this theorem. The admissibility
 criterion is no longer arbitrary: a decomposition is admitted only if the model's waveform
 supports a well-conditioned three-exponential fit, which is the procedure the source
 experimenters applied. Under that criterion the pre-open scheme's apparent a₁ = +0.245 disappears
@@ -187,6 +207,18 @@ Positive residual degrees of freedom matter here: an earlier four-observable ver
 had nine parameters against nine data and was exactly saturated, so its success carried no
 evidential weight. Mean open time was added as a fifth observable specifically to recover a
 degree of freedom.
+
+**That recovery does not survive an honest accounting of the band constraints, and the
+manuscript states so rather than relying on it.** Two of the ten data — `po_max` and mean open
+time — are bands, not measurements with errors. Scoring a band by treating its half-width as a
+σ is what yields `res_dof = +1`. Under the alternative reading, a uniform prior over the band
+with effective σ = half-width/√3, a flat prior carries **zero Fisher information in the
+interior**: `po_max` = 0.767 sits interior and so constrains nothing, while mean open time is
+*active* on its upper bound. Counting only the eight genuine point measurements gives
+**res_dof = 0 or −1**. The fit still passes numerically at 2.58σ, and `kinetic_two_open` still
+fails at 3.28σ, so the *ranking* is robust — but **`kinetic_coop` should not be described as an
+over-determined statistical test.** It is a scheme that is consistent with five observables, not
+one that has survived a test with degrees of freedom to spare.
 
 ### 3.1 Mean open time, and a convention that affects the verdict
 
@@ -302,7 +334,10 @@ Two consequences follow, and they sharpen the tension rather than resolving it.
 
 * The published 2.2 ± 0.4 has a 1σ interval of [1.8, 2.6]. The fully cooperative asymptote of
   2.000 lies **inside** it, at −0.5σ. The measurement is therefore **not** inconsistent with a
-  two-site scheme in principle.
+  two-site scheme in principle. **This is a falsification boundary:** a Hill slope reliably
+  above 2.000 would exclude the entire two-site class, not a parameter choice. Making that test
+  decisive at 3σ requires measuring n_H to σ ≤ 0.067 — about a sixfold improvement on the
+  published precision, and the single most informative experiment this analysis points to.
 * But the jointly-fitted value is **1.18** — within 0.01 of the *non-cooperative* value 1.1716,
   despite c ≈ 1000. **The cooperativity is not being spent on the concentration–response.** The
   deactivation and mean-open-time constraints consume it, leaving the CRC essentially where an
@@ -318,17 +353,30 @@ scientifically misleading: those values are attained at EC50 values far from the
 observables rather than a limit of any one scheme. Stated as a prediction: schemes of this
 family should fall roughly 2.5σ short on Hill slope when fitted jointly.
 
-### 5.1 A measurement that discriminates where the fitted data cannot
+### 5.1 A discriminating measurement — SOUGHT AND NOT FOUND
 
-Because the cooperativity plateau is flat, the five fitted observables cannot determine c. One
-measurement can: the **10–90% current risetime under rapid application of 10 µM GABA** to
-outside-out macropatches, predicted at **3.54 ms for c = 23 against 9.19 ms for c = 1000**, a
-2.6× difference. The mechanism is explicit — at high c the first unbinding is very fast, so many
-abortive unbindings occur before a second agonist binds, slowing the rise.
+An earlier version of this section proposed the 10–90% current risetime under rapid 10 µM GABA
+application as a measurement that would resolve the cooperativity plateau, quoting 3.54 ms at
+c = 23 against 9.20 ms at c = 1000 — an apparent 2.6× separation.
 
-No literature value was sought or assigned for this quantity; it is offered as a prediction, and
-as an illustration that a single well-chosen measurement can discriminate across a basin that an
-entire fitted dataset leaves flat.
+**That claim is withdrawn.** Those were two single optima drawn from a flat basin. Propagating
+across the *admissible region* at each cooperativity gives
+
+| c | predicted 10–90% risetime |
+|---|---|
+| 23 | [3.05, 3.60] ms |
+| 1000 | [1.71, 15.24] ms |
+
+The c = 23 interval is **entirely contained** within the c = 1000 interval. The minimum
+resolvable difference is **0.00 ms**: no experimental precision can discriminate, because the
+model's own predictions overlap completely. Ultrafast application (60–100 µs exchange) is far
+more than fast enough; the limitation is the model, not the method.
+
+This is recorded rather than deleted because the error is instructive and is the same one this
+paper documents elsewhere: **a point estimate quoted from a flat likelihood basin, mistaken for
+a determination.** The cooperativity plateau means the fitted data cannot determine c; it also
+means predictions derived from a single point on that plateau cannot be trusted. No
+discriminating measurement has been identified.
 
 ## 6. Claims retracted during this work
 
@@ -387,6 +435,11 @@ Three practices are worth stating as method rather than detail, because each cau
   error kind is verified from the full text, so the band is source-mandated; but a reader who
   insists on a point treatment would see a 3.56σ failure, and that disagreement is about
   inference, not about the measurement.
+* **`kinetic_coop` is consistent with five observables; it has not survived an over-determined
+  test.** Under a defensible reading of the two band constraints its residual degrees of freedom
+  are 0 or −1 (§3.1).
+* **No discriminating measurement for the cooperativity plateau has been found** (§5.1). The
+  previously proposed risetime experiment does not discriminate.
 * All searches are bounded. Statements of the form "no vector was found" are not proofs of
   non-existence.
 * Two of the ten data are band constraints scored with half-width as σ, so residual dof = +1

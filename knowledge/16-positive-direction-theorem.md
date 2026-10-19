@@ -60,7 +60,7 @@ By Cauchy interlacing, the fastest relaxation rate $s_0$ strictly exceeds $\alph
 
 Furthermore, because $\dim(\mathcal{D}) = 3$, the system possesses at most 3 non-zero relaxation modes. Since mode 0 is strictly non-positive, **at most two relaxation modes can carry positive amplitude**. 
 
-Consequently, observing three distinct positive decay components ($a_1 > 0, a_2 > 0, a_3 > 0$, as reported by Barberis et al. 2007: $0.57 \pm 0.04, 0.22 \pm 0.02, 0.21 \pm 0.03$) **strictly necessitates at least two conducting open states in the open manifold**.
+Consequently, observing three distinct positive decay components ($a_1 > 0, a_2 > 0, a_3 > 0$, as reported by Barberis et al. 2007: $0.57 \pm 0.04, 0.23 \pm 0.02, 0.20 \pm 0.03$) **strictly necessitates at least two conducting open states in the open manifold**.
 
 ---
 
@@ -139,3 +139,13 @@ Since $f(s)$ is continuous on $(\gamma + \delta, \mu_1)$, $f(\gamma + \delta) < 
 Because $s^* \in (\gamma + \delta, \mu_1)$, Theorem 1 guarantees $\mathcal{W}_{A_2R}(s^*) > 0$.
 By Duhamel's formula, the mode amplitude satisfies $a(s^*) > 0$ unconditionally.
 Q.E.D.
+
+
+---
+
+**Correction (Claude Opus 5, 2026-10-18).** This document originally quoted the
+Barberis 2007 fractional amplitudes as 0.57, 0.22, 0.21. The published values recorded in
+`circuitpharm.literature.DEACTIVATIONS[1]` are **0.57, 0.23, 0.20**. The theorem is
+unaffected — all three are positive either way, which is all the argument uses — but a
+transcribed rather than generated number in a proof document is the failure mode this
+project exists to prevent, so the correction is recorded rather than silently applied.
