@@ -53,8 +53,8 @@ PULSE = dict(SYNAPTIC_PULSE)
 #: FIT_FIXED_ALPHA. Measured under scipy 1.17.1 / numpy 2.4.6; the square system is
 #: well-posed, so this is a property of the model and the convention rather than of the
 #: environment.
-EXPECTED = dict(kon=0.0075785, koff=0.180415, beta=1.177468,
-                kd_um=23.8062, gating_efficacy=3.9249, headroom=123.344)
+EXPECTED = dict(kon=0.0130384, koff=0.180304, beta=1.175664,
+                kd_um=13.8287, gating_efficacy=3.9189, headroom=43.259)
 
 
 def _headroom(s: Scheme, ambient: float = 0.40) -> float:

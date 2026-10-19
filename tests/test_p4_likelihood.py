@@ -767,7 +767,7 @@ def test_registry_fitted_kinetic_carries_its_caveats():
     joined = " ".join(q.caveats).lower()
     for needed in ("d and r", "convention", "11.6"):
         assert needed.lower() in joined, f"the caveat about {needed!r} is missing"
-    assert rates["koff"] / rates["kon"] == pytest.approx(23.8062, rel=1e-3)
+    assert rates["koff"] / rates["kon"] == pytest.approx(13.8287, rel=1e-3)
     assert rates["alpha"] == pytest.approx(0.30, rel=1e-12)
 
 

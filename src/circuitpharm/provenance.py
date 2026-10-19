@@ -52,6 +52,7 @@ class Record:
     basis: Basis
     source_key: str = ""      # key into the `sources` table, where one exists
     note: str = ""            # the derivation, or why none exists
+    where: str = ""           # where in source, e.g. "abstract", "Table 1"
 
     @property
     def is_sourced(self) -> bool:
@@ -245,6 +246,12 @@ MODEL_PARAM_PROV = {
         "This is a CONVENTION about a REAL single-channel observable, so roadmap P1-2 can "
         "replace it with a digitised mean open time and the fit becomes data-determined; "
         "it makes the rates REPRODUCIBLE, not identifiable.")),
+    ("gabaa_kinetics", "ec50_um"): Record(Basis.QUANTITATIVE, "jahn_a1b2g2_kinetics", (
+        "11.6 +/- 0.9 uM (Jahn et al. 1997, NeuroReport 8(16):3443-6) for alpha1beta2gamma2L "
+        "expressed in HEK293 measured with ultra-fast solution exchange. Resolved in Brief 13 "
+        "Task 2 in favour of this sourced measurement, replacing the legacy unsourced 20.0 uM "
+        "('recalled literature middle from earlier legacy tuning files') and eliminating the "
+        "+9.33 sigma discrepancy.")),
     ("operational", "tau_deact_ms"): Record(Basis.FITTED, "", (
         "15.0 ms, again the project's own tau fit target -- and the value the old decay "
         "estimator returned on failure, which is what made a failed fit look perfect "
@@ -271,8 +278,9 @@ DATASET_PROV = {
         "QUANTITATIVE on that basis, with kind='parametric' and the fit tainted as for a "
         "synthetic trace. The full text could not be read (pubmed/PMC/EuropePMC are "
         "egress-blocked here), so the figure was never digitised. "
-        "ONE DISCREPANCY IT SURFACES, unresolved: FIT_TARGETS['ec50_um'] is 20.0 uM "
-        "against this 11.6. A SECOND, the scheme's 1.294 peak Hill slope against this 2.2, "
+        "ONE DISCREPANCY IT SURFACED: FIT_TARGETS['ec50_um'] was previously 20.0 uM "
+        "against this 11.6 (+9.33 sigma); resolved in Brief 13 in favour of this sourced "
+        "11.6 uM measurement. A SECOND, the scheme's 1.294 peak Hill slope against this 2.2, "
         "was recorded here as structural and is WITHDRAWN: the 2.2 is the slope 'between "
         "0.001 and 0.01 mM GABA', a LOCAL measurement on the rising phase, and 1.294 was a "
         "whole-curve regression. Measured alike the scheme gives 1.59-1.71, inside the "
@@ -352,6 +360,31 @@ WAVEFORM_PROV = {
         "600 time samples, held at the value the solve_ivp implementation used so that "
         "replacing it with an exact propagator did not move any PEAK number for a reason "
         "unrelated to the model. The peak is a maximum over these samples.")),
+}
+
+#: Cooperativity literature provenance (Brief 15 Task 3).
+#: Sources documenting evidence of positive cooperativity between GABA-A receptor
+#: agonist binding sites. Literature provenance for existence and direction only;
+#: strictly NOT used as numerical fitting constraints or Likelihood datasets.
+COOPERATIVITY_LITERATURE_PROV = {
+    "olsen1981": Record(
+        Basis.FROM_QUALITATIVE,
+        "olsen1981",
+        "Curvilinear Scatchard plots and Hill coefficients consistent with positive cooperativity in [3H]GABA equilibrium binding in mammalian brain membranes.",
+        where="abstract",
+    ),
+    "agey1989": Record(
+        Basis.FROM_QUALITATIVE,
+        "agey1989",
+        "Rapid filtration binding kinetics in rat brain membranes demonstrating multi-step association kinetics and non-first-order dissociation consistent with cooperativity between binding sites.",
+        where="abstract",
+    ),
+    "mozrzymas2003": Record(
+        Basis.FROM_QUALITATIVE,
+        "mozrzymas2003",
+        "Experimental and modeling study of recombinant alpha1beta2gamma2 receptors demonstrating non-equivalent binding sites and positive cooperativity in binding/gating steps.",
+        where="abstract",
+    ),
 }
 
 

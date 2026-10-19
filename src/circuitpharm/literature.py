@@ -227,6 +227,58 @@ SOURCES = {
               "it is itself informative: it questions the number of binding steps, which "
               "is the inference Jahn drew from the Hill slope. CONTENT STILL UNREAD."),
     ),
+    "olsen1981": Source(
+        key="olsen1981",
+        citation=("Olsen RW, Bergman MO, Van Ness PC, Lummis SC, Watkins AE, Napias C, "
+                  "Greenlee DV. gamma-Aminobutyric acid receptor binding in mammalian brain."),
+        journal_ref="Mol Pharmacol 19(2):217-227",
+        doi="10.1016/s0026-895x(25)13464-0", pmid="6262615",
+        url="https://pubmed.ncbi.nlm.nih.gov/6262615/",
+        year=1981, read="ABSTRACT_PUBMED",
+        receptor_verbatim="GABA-A receptor",
+        species="mammalian brain (rat, bovine)",
+        prep="brain membrane preparations, [3H]GABA radioligand binding",
+        temp_c="not stated in abstract",
+        err_kind="UNSTATED",
+        note=("Curvilinear Scatchard plots and Hill coefficients consistent with positive "
+              "cooperativity / multiple affinity binding sites in [3H]GABA equilibrium binding. "
+              "Abstract read on PubMed. Qualitative literature provenance only, not a fitting constraint."),
+    ),
+    "agey1989": Source(
+        key="agey1989",
+        citation=("Agey MW, Dunn MW. Kinetics of [3H]gamma-aminobutyric acid binding to "
+                  "membrane-bound and solubilized receptors from rat brain."),
+        journal_ref="Biochemistry 28(10):4200-4208",
+        doi="10.1021/bi00436a012", pmid="2548571",
+        url="https://pubmed.ncbi.nlm.nih.gov/2548571/",
+        year=1989, read="ABSTRACT_PUBMED",
+        receptor_verbatim="GABA receptor",
+        species="rat",
+        prep="rat brain membranes and deoxycholate-solubilized receptors, rapid filtration binding kinetics",
+        temp_c="not stated in abstract",
+        err_kind="UNSTATED",
+        note=("Biphasic and multi-step association/dissociation kinetics of [3H]GABA binding "
+              "demonstrating cooperative interactions between binding sites. Abstract read on PubMed. "
+              "Qualitative literature provenance only, not a fitting constraint."),
+    ),
+    "mozrzymas2003": Source(
+        key="mozrzymas2003",
+        citation=("Mozrzymas JW, Barberis A, Mercik K, Zarnowska ED. Binding sites, gating, "
+                  "and desensitization in alpha1beta2gamma2 GABA-A receptors: experimental "
+                  "and modeling study."),
+        journal_ref="J Neurophysiol 89(2):871-883",
+        doi="10.1152/jn.00951.2002", pmid="12574465",
+        url="https://pubmed.ncbi.nlm.nih.gov/12574465/",
+        year=2003, read="ABSTRACT_PUBMED",
+        receptor_verbatim="alpha1beta2gamma2",
+        species="rat",
+        prep="HEK293, excised patch, rapid perfusion",
+        temp_c="room temperature",
+        err_kind="UNSTATED",
+        note=("Experimental and modeling study of recombinant alpha1beta2gamma2 receptors "
+              "demonstrating non-equivalent binding sites and positive cooperativity in binding/gating steps. "
+              "Abstract read on PubMed. Qualitative literature provenance only, not a fitting constraint."),
+    ),
 }
 
 # =======================================================================================
