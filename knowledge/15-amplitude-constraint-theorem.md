@@ -131,8 +131,10 @@ $$w_j = \sqrt{\frac{\pi_O}{\pi_j}} u^{(1)}_O u^{(1)}_j$$
 
 For `kinetic_jw95` (where $O = 3$ is state $A2O$):
 - $w_{A2O} = (u^{(1)}_3)^2 > 0$
-- $w_{A2R} = \sqrt{\frac{\beta}{\alpha}} u^{(1)}_3 u^{(1)}_2 = -\sqrt{\frac{\beta}{\alpha}} \frac{\sqrt{\alpha\beta}}{|\lambda_1| - \alpha} (u^{(1)}_3)^2 = -\frac{\beta}{|\lambda_1| - \alpha} w_{A2O} < 0$
-- $w_{A2D} = \sqrt{\frac{\beta/\alpha}{d/r}} u^{(1)}_3 u^{(1)}_1 = +\frac{r}{|\lambda_1| - r} \frac{\beta d}{\alpha r} \dots = +\frac{r}{|\lambda_1| - r} |w_{A2R}| > 0$
+- $w_{A2R} = \sqrt{\frac{\beta}{\alpha}} u^{(1)}_3 u^{(1)}_2 = -\sqrt{\frac{\beta}{\alpha}} \frac{|\lambda_1| - \alpha}{\sqrt{\alpha\beta}} (u^{(1)}_3)^2 = -\frac{|\lambda_1| - \alpha}{\alpha} w_{A2O} < 0$
+- $w_{A2D} = \sqrt{\frac{\beta/\alpha}{d/r}} u^{(1)}_3 u^{(1)}_1 = \sqrt{\frac{\beta r}{\alpha d}} u^{(1)}_3 \left( \frac{\sqrt{dr}}{|\lambda_1| - r} \frac{|\lambda_1| - \alpha}{\sqrt{\alpha\beta}} u^{(1)}_3 \right) = \frac{r}{|\lambda_1| - r} \frac{|\lambda_1| - \alpha}{\alpha} w_{A2O} = \frac{r}{|\lambda_1| - r} |w_{A2R}| > 0$
+
+Notice that $w = (w_{A2D}, w_{A2R}, w_{A2O})^T$ is a right eigenvector of the subgenerator $B$: $B w = \lambda_1 w$.
 
 Thus, the exact ratio between the positive open-state weight and the negative shut-gateway weight is:
 $$\frac{w_{A2O}}{|w_{A2R}|} = \frac{\alpha}{|\lambda_1| - \alpha}$$
@@ -146,35 +148,71 @@ holding identically for all positive microscopic parameter values.
 
 ---
 
-### Step 6: Trajectory and Reachable Initial Occupancy
+### Step 6: Reachable Set Characterization and Non-Positivity via Convex Cone Invariance
 
-The condition for $\text{amp}_1 \le 0$ expands to:
-$$\text{amp}_1 = w_{A2O} p_{A2O}(0) - |w_{A2R}| p_{A2R}(0) + w_{A2D} p_{A2D}(0) \le 0$$
-Dividing by $|w_{A2R}|$:
-$$p_{A2R}(0) \ge \frac{w_{A2O}}{|w_{A2R}|} p_{A2O}(0) + \frac{w_{A2D}}{|w_{A2R}|} p_{A2D}(0)$$
+The amplitude of mode 1 at the onset of deactivation ($t = 0$, following an agonist pulse of duration $\Delta t > 0$) is given by the linear functional:
+$$\text{amp}_1(p) = \sum_{j \in \mathcal{D}} w_j p_j(0) = p_{\mathcal{D}}(0) w$$
+where $w = (w_{A2D}, w_{A2R}, w_{A2O})^T$ is the right eigenvector of $B$ corresponding to the fastest relaxation eigenvalue $\lambda_1 < 0$ ($B w = \lambda_1 w$), so that:
+$$e^{B u} w = e^{\lambda_1 u} w = e^{-|\lambda_1| u} w \quad \text{for all } u \ge 0$$
+From Step 4, the gateway shut state $A2R$ carries strictly negative weight:
+$$w_{A2R} = -|w_{A2R}| < 0$$
 
-Because $w_{A2D} > 0$ and $\frac{w_{A2O}}{|w_{A2R}|} < \frac{\alpha}{\beta} = \frac{1}{E}$, a sufficient condition for $\text{amp}_1 \le 0$ in the absence of desensitisation is:
-$$\frac{p_{A2R}(0)}{p_{A2O}(0)} \ge \frac{w_{A2O}}{|w_{A2R}|}$$
+#### 1. Reachable Cone Representation (Duhamel's Invariance)
 
-1. **Equilibrium Saturating Limit:**
-   At equilibrium under saturating agonist ($\Delta t \to \infty$):
-   $$\frac{p_{A2R}^{\text{eq}}}{p_{A2O}^{\text{eq}}} = \frac{\alpha}{\beta} = \frac{1}{E}$$
-   Because $\frac{w_{A2O}}{|w_{A2R}|} < \frac{1}{E}$, the equilibrium occupancy satisfies:
-   $$p_{A2R}^{\text{eq}} |w_{A2R}| > p_{A2O}^{\text{eq}} w_{A2O}$$
-   Furthermore, including $A2D$ at equilibrium ($p_{A2D}^{\text{eq}} = \frac{d}{r} p_{A2R}^{\text{eq}}$):
-   $$w_{A2D} p_{A2D}^{\text{eq}} + w_{A2O} p_{A2O}^{\text{eq}} - |w_{A2R}| p_{A2R}^{\text{eq}} = w_{A2O} p_{A2O}^{\text{eq}} \left[ 1 + \frac{d}{|\lambda_1| - r} - \frac{|\lambda_1| - \alpha}{\alpha} \frac{\beta}{\alpha} \right] < 0$$
-   strictly negative across the physical parameter domain.
-2. **Transient Pulse Limit:**
-   Starting from unliganded resting state $R$, probability must enter $A2R$ before reaching $A2O$:
-   $$\frac{d}{dt} p_{A2O}(t) = \beta p_{A2R}(t) - \alpha p_{A2O}(t)$$
-   At onset $t=0$, $p_{A2O}(0) = 0$ while $p_{A2R}$ is rising, so $p_{A2R}(t) / p_{A2O}(t) \to \infty$.
-   As $A2O$ populates, $p_{A2R}(t) / p_{A2O}(t)$ decreases monotonically towards its gating equilibrium $\alpha / \beta = 1/E$.
-   At no time during activation does $p_{A2R}(t) / p_{A2O}(t)$ fall below $w_{A2O} / |w_{A2R}|$.
-   Therefore, at the end of any agonist application pulse ($2\text{ ms}$ of $10\text{ mM}$ GABA), $p(0)$ is strictly in the region where:
-   $$\text{amp}_1 \le 0$$
+Consider an agonist application pulse of arbitrary duration $\Delta t > 0$ and arbitrary concentration profile $g(t) \ge 0$. The receptor begins at $t=0$ in the unliganded resting state $p(0^-) = \delta_R$.
+By the acyclic sequential topology of binding, probability enters the doubly-liganded manifold $\mathcal{D} = \{A2D, A2R, A2O\}$ exclusively through the gateway state $A2R$; no incoming transitions from $\{R, AR\}$ enter $A2O$ or $A2D$ directly.
+Therefore, the master equation for $p_{\mathcal{D}}(t)$ during the pulse is:
+$$\frac{d}{dt} p_{\mathcal{D}}(t) = p_{\mathcal{D}}(t) B + \sigma(t) e_{\text{gate}}^T, \quad p_{\mathcal{D}}(0) = 0$$
+where $e_{\text{gate}} = (0, 1, 0)$ is the gateway indicator for $A2R$, and $\sigma(t) = k_{\text{on}} g(t) p_{AR}(t) \ge 0$ is the non-negative scalar inflow flux into $\mathcal{D}$.
 
-The argument holds identically for `kinetic_open_desens`, where states order as $(1: A2R, 2: A2O, 3: A2D)$ with $O=2$ in the interior of the chain. There, both $w_{A2R} < 0$ and $w_{A2D} < 0$, giving:
-$$\text{amp}_1 = w_{A2O} \left[ p_{A2O}(0) - \frac{\beta}{|\lambda_1| - (2 k_{\text{off}} + \beta)} p_{A2R}(0) - \frac{r}{|\lambda_1| - r} p_{A2D}(0) \right] \le 0$$
+Integrating this linear system via Duhamel's variation-of-parameters formula:
+$$p_{\mathcal{D}}(\Delta t) = \int_0^{\Delta t} \sigma(s) \, \left[ e_{\text{gate}}^T e^{B (\Delta t - s)} \right] \, ds$$
+Consequently, the reachable set of occupancies $C_{\text{reach}} = \{ p_{\mathcal{D}}(\Delta t) : g > 0, \Delta t > 0 \}$ is contained within the convex cone:
+$$\mathcal{C}_{\text{reach}} \subseteq \operatorname{cone} \left\{ \rho(u) = e_{\text{gate}}^T e^{B u} : u \ge 0 \right\}$$
+Every reachable state $p_{\mathcal{D}}(\Delta t)$ is a non-negative continuous mixture of the impulse-response states $\rho(u) = e_{\text{gate}}^T e^{B u}$.
+
+#### 2. Strict Negativity on Extreme Rays
+
+Evaluating the linear functional $\text{amp}_1$ on any impulse-response generator $\rho(u)$ at age $u = \Delta t - s \ge 0$:
+$$\rho(u) \cdot w = (e_{\text{gate}}^T e^{B u}) w = e_{\text{gate}}^T (e^{B u} w) = e^{\lambda_1 u} (e_{\text{gate}}^T w)$$
+Since $e_{\text{gate}} = e_{A2R}$ and $w_{A2R} = -|w_{A2R}| < 0$:
+$$\rho(u) \cdot w = -|w_{A2R}| e^{-|\lambda_1| u} < 0 \quad \text{for all } u \ge 0$$
+Because the linear functional is strictly negative on every generating ray of the cone, its integral against the non-negative flux $\sigma(s) \ge 0$ satisfies:
+$$\text{amp}_1(p_{\mathcal{D}}(\Delta t)) = \int_0^{\Delta t} \sigma(s) \left[ \rho(\Delta t - s) \cdot w \right] \, ds = -|w_{A2R}| \int_0^{\Delta t} \sigma(s) e^{-|\lambda_1|(\Delta t - s)} \, ds \le 0$$
+with strict inequality whenever $\sigma(s) > 0$ on a set of positive measure (i.e. whenever any agonist binds to form $A2R$).
+Because $p_{A2O}(\Delta t) > 0$ for any pulse with $\Delta t > 0$, the fractional amplitude satisfies:
+$$a_1 = \frac{\text{amp}_1(p_{\mathcal{D}}(\Delta t))}{p_{A2O}(\Delta t)} \le 0$$
+unconditionally for all pulse durations $\Delta t > 0$, concentrations $g > 0$, and positive rate constants.
+The unproven monotonicity hypothesis of $p_{A2R}(t)/p_{A2O}(t)$ is discarded.
+
+#### 3. Rigorous Proof of the Equilibrium Case via the Secular Identity
+
+In the long-saturating-pulse limit ($\Delta t \to \infty, g \to \infty$), the receptor reaches gating equilibrium $p_{\mathcal{D}}^{\text{eq}} \propto (d/r, 1, \beta/\alpha)$.
+At gating equilibrium:
+$$\text{amp}_1^{\text{eq}} = w_{A2D} p_{A2D}^{\text{eq}} + w_{A2R} p_{A2R}^{\text{eq}} + w_{A2O} p_{A2O}^{\text{eq}}$$
+Using the closed-form weight ratios from Step 5 ($w_{A2O} = \frac{\alpha}{|\lambda_1| - \alpha} |w_{A2R}|$ and $w_{A2D} = \frac{r}{|\lambda_1| - r} |w_{A2R}|$):
+$$\text{amp}_1^{\text{eq}} = p_{A2R}^{\text{eq}} |w_{A2R}| \left[ \frac{\beta}{|\lambda_1| - \alpha} + \frac{d}{|\lambda_1| - r} - 1 \right]$$
+We prove that the bracket is strictly negative by evaluating the exact secular equation of the tridiagonal matrix $H$.
+The characteristic polynomial $\det(s I - (-H)) = 0$ at $s = |\lambda_1|$ expands by Schur complement on the central node $A2R$:
+$$\det(s I - (-H)) = (s - r)(s - \alpha) \left[ s - 2 k_{\text{off}} - \beta - d - \frac{\alpha\beta}{s - \alpha} - \frac{dr}{s - r} \right] = 0$$
+Observing that $\beta + \frac{\alpha\beta}{s - \alpha} = \frac{\beta s}{s - \alpha}$ and $d + \frac{dr}{s - r} = \frac{ds}{s - r}$, this factors as:
+$$s - 2 k_{\text{off}} - \frac{\beta s}{s - \alpha} - \frac{ds}{s - r} = 0$$
+Dividing by $s = |\lambda_1| > 0$:
+$$\frac{\beta}{|\lambda_1| - \alpha} + \frac{d}{|\lambda_1| - r} = 1 - \frac{2 k_{\text{off}}}{|\lambda_1|}$$
+Therefore, the bracket simplifies to the **exact algebraic identity**:
+$$\left[ \frac{\beta}{|\lambda_1| - \alpha} + \frac{d}{|\lambda_1| - r} - 1 \right] \equiv -\frac{2 k_{\text{off}}}{|\lambda_1|}$$
+Substituting this into $\text{amp}_1^{\text{eq}}$:
+$$\text{amp}_1^{\text{eq}} = -\frac{2 k_{\text{off}}}{|\lambda_1|} |w_{A2R}| p_{A2R}^{\text{eq}} < 0$$
+which is strictly negative for all physical rate constants $k_{\text{off}}, \alpha, \beta, d, r > 0$.
+In the limit $k_{\text{off}} / |\lambda_1| \to 0$ (unbinding much slower than gating relaxation), $\text{amp}_1^{\text{eq}} \to -0.000000$. This explains why the supremum over the 8-dimensional parameter space is attained at gating equilibrium.
+
+#### 4. Open-State Desensitisation Topology
+
+For `kinetic_open_desens` (ordering $A2R, A2O, A2D$), $A2R$ remains the sole gateway state into $\mathcal{D}$, carrying negative weight $w_{A2R} = -\frac{\beta}{|\lambda_1| - (2k_{\text{off}} + \beta)} u_{A2O}^2 < 0$.
+The identical Duhamel cone argument establishes $\text{amp}_1 \le 0$ on all reachable trajectories.
+At equilibrium, the Schur complement of $s I - (-H)$ on state $A2O$ yields the exact secular identity:
+$$\left[ 1 - \frac{\alpha}{|\lambda_1| - (2k_{\text{off}} + \beta)} - \frac{d}{|\lambda_1| - r} \right] \equiv -\frac{2 k_{\text{off}}}{|\lambda_1|} \frac{\alpha}{|\lambda_1| - (2k_{\text{off}} + \beta)} < 0$$
+proving $\text{amp}_1^{\text{eq}} < 0$ unconditionally for both single-open topologies.
 Q.E.D.
 
 ---
