@@ -126,11 +126,35 @@ a₁ = 0.245, still short of 0.57, and only at the cancellation limit. So this i
 the topology, not of parameter count — adding a shut state upstream of the gate does not help;
 adding a second conducting state does.
 
-**Limits.** This is a bounded search: no admissible vector was *found* within the declared boxes
-at the stated budget, which is not a proof that none exists. A derivation of the constraint from
-the generator's structure would be worth more than a larger search and has not been attempted.
-The 1.5 cancellation bound is a declared convention; the five-state results sit at 1.000 and are
-insensitive to it, but the two six-state results press against it and depend on it.
+### 2.2 The constraint is partly proven, not merely observed
+
+At zero agonist **no transition enters** the doubly-liganded set {A2R, A2O, A2D}, so its 3×3
+sub-generator governs the open-state relaxation exactly. That subset is an acyclic tree, so
+detailed balance holds unconditionally and `D = diag(√π)` symmetrizes the sub-generator to a real
+symmetric tridiagonal matrix. A Rayleigh quotient with test vector `(0, −√β, √α)` gives
+`|λ₁| > α + β`, and the open-state eigenvector row then yields in closed form
+
+  w_A2O / |w_A2R| = α / (|λ₁| − α) < α/β = 1/E,
+
+**unconditionally, for all positive rate constants.** Since the fastest mode's amplitude is
+a₁ = p_A2O(0)·w_A2O − p_A2R(0)·|w_A2R| + p_A2D(0)·w_A2D, non-positivity follows whenever the
+initial condition satisfies p_A2R(0)/p_A2O(0) ≥ w_A2O/|w_A2R|, which holds with strict inequality
+at gating equilibrium.
+
+**What remains unproven** is that every *reachable* initial condition satisfies it. The step is
+supported but not demonstrated: searching 8 dimensions — the six rates plus pulse concentration
+(1 µM–100 mM) and duration (0.1–100 ms), 6000 starts — gives max a₁ = −0.000000, with the
+supremum attained in the long saturating limit, i.e. at the equilibrium case that *is* proven.
+Because a₁ is linear in p(0) and the reachable set is convex, establishing that equilibrium
+maximises a₁ over that set would complete the proof.
+
+**Limits.** The positive result for two open states (a₁ = +1.116) is measured, not derived; no
+proof is offered that a second conducting state *must* lift the constraint. The admissibility
+criterion is no longer arbitrary: a decomposition is admitted only if the model's waveform
+supports a well-conditioned three-exponential fit, which is the procedure the source
+experimenters applied. Under that criterion the pre-open scheme's apparent a₁ = +0.245 disappears
+— reaching it requires near-degenerate eigenvalues with condition numbers above 10⁸ — and the
+qualitative table is unchanged.
 
 ## 3. A scheme that satisfies five observables
 
@@ -157,8 +181,14 @@ combination as the deactivation source. Its M-mode components are
 area-weighted mean open time of **2.684 ms**; the source does not state whether its errors are
 SD or SEM.
 
-Because the error kind is unstated, the observable was scored as a band [2.54, 2.83] ms
-propagated from the published component errors, rather than as a Gaussian with an assumed σ.
+**The absence of an error convention was verified against the full text** (PubMed Central
+PMC2213567): searching the complete article for `s.e.m`, "standard error", "standard deviation",
+`SD` and `mean ±` returns no genuine occurrence. The band treatment is therefore not a
+conservative choice under ambiguity but the only treatment the source supports; assigning a
+Gaussian σ would require inventing a convention the authors never published.
+
+The observable was scored as a band [2.54, 2.83] ms propagated from the published component
+errors, rather than as a Gaussian with an assumed σ.
 The fitted scheme predicts **3.20 ms**, outside that band. **The verdict depends on this
 choice:**
 
@@ -234,9 +264,17 @@ criterion, and that worst residual is always the Hill slope. Cooperativity steep
 monotonically, as expected, but cannot carry it past ~1.25 without destroying mean open time and
 deactivation.
 
-**The concentration–response steepness is the irreducible tension in this model class** — not
-deactivation, not recovery, not peak open probability. Stated as a prediction: schemes of this
-family should fall roughly 2.5σ short on Hill slope.
+**This is a joint-compatibility conflict, not a topological incapacity, and the distinction
+matters.** Maximising n_H over each scheme's parameter box with no other observable constrained
+gives: 2.93 for the three-parameter JW95 scheme, 3.92 with its rates freed, 6.16 for open-state
+desensitisation with rates freed, 10.26 for the pre-open scheme, 10.66 for two open states and
+12.06 for the cooperative scheme. **Every scheme can reach n_H = 2.2 in isolation.** None can
+reach it while simultaneously satisfying deactivation and peak open probability.
+
+**The concentration–response steepness is therefore the irreducible tension in this model class**
+— not deactivation, not recovery, not peak open probability — and it is a conflict *between*
+observables rather than a limit of any one scheme. Stated as a prediction: schemes of this
+family should fall roughly 2.5σ short on Hill slope when fitted jointly.
 
 ### 5.1 A measurement that discriminates where the fitted data cannot
 
@@ -295,10 +333,16 @@ Three practices are worth stating as method rather than detail, because each cau
 
 ## 8. What this does not establish
 
-* No scheme examined here reproduces the published Hill slope. The best admissible value is 1.25
-  against 2.2 ± 0.4.
-* The five-observable result rests on a band treatment of a source that does not state its error
-  kind; under a point treatment it fails.
+* No scheme examined here reproduces the published Hill slope **while satisfying the other
+  observables**. The best jointly-admissible value is 1.25 against 2.2 ± 0.4. In isolation every
+  scheme can exceed 2.2, so this is a compatibility conflict and not a topological limit.
+* The amplitude constraint of §2 is **proven for the weights and unproven for the reachable
+  initial conditions**; the latter is supported by an 8-dimensional search including the pulse
+  protocol, not by derivation.
+* The five-observable result rests on a band treatment of mean open time. The absence of a stated
+  error kind is verified from the full text, so the band is source-mandated; but a reader who
+  insists on a point treatment would see a 3.56σ failure, and that disagreement is about
+  inference, not about the measurement.
 * All searches are bounded. Statements of the form "no vector was found" are not proofs of
   non-existence.
 * Two of the ten data are band constraints scored with half-width as σ, so residual dof = +1
