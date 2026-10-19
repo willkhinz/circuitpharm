@@ -116,6 +116,7 @@ class DoseResponseDataset:
     #: dataset's own points lie inside it.
     source_measured_domain: tuple[float, float] | None = None
     noise_model: NoiseModel = "estimated"
+    evidence: Any = None
 
     def __post_init__(self):
         _validate_dataset(self)
@@ -180,6 +181,7 @@ class DeactivationDataset:
     #: dataset's own points lie inside it.
     source_measured_domain: tuple[float, float] | None = None
     noise_model: NoiseModel = "estimated"
+    evidence: Any = None
 
     def __post_init__(self):
         if self.pulse_ms is not None and self.pulse_duration_ms is not None:
@@ -424,6 +426,9 @@ def _validate_dataset(ds) -> None:
             raise ValueError(
                 f"{ds.citation_label!r} is real data but does not say which `figure` it came "
                 f"from or how it was obtained (`digitisation`). Roadmap P1-2 requires both.")
+        if getattr(ds, "evidence", None) is not None:
+            from .digitisation import assert_digitised_evidence
+            assert_digitised_evidence(ds)
 
 
 # ---------------------------------------------------------------------------------------
