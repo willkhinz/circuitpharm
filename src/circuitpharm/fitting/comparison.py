@@ -60,6 +60,8 @@ FIT_CONVENTIONS = {
     "r_fast": (0.0050, "Model C's own default; no recorded origin (P0-13)"),
     "r_slow": (0.0004, "Model C's own default; no recorded origin (P0-13)"),
     "c": (1.0, "neutral binding cooperativity convention (koff2 = koff, c = 1.0)"),
+    "delta2": (1e-5, "collapse convention for third open state: delta2 -> 0"),
+    "gamma2": (1.0, "default return rate for third open state"),
 }
 
 
@@ -219,6 +221,28 @@ def _model_coop(v: np.ndarray) -> ReceptorModel:
     )
 
 
+def _model_three_open(v: np.ndarray) -> ReceptorModel:
+    from ..models.kinetic_three_open import KineticThreeOpenModel
+
+    kd, e, d, r, koff, alpha, delta, gamma, c, delta2, gamma2 = (10.0 ** float(x) for x in v)
+    koff2 = koff / c
+    if delta2 <= 1e-5:
+        delta2 = 0.0
+    return KineticThreeOpenModel(
+        kon=koff / kd,
+        koff=koff,
+        koff2=koff2,
+        beta=alpha * e,
+        alpha=alpha,
+        delta=delta,
+        gamma=gamma,
+        delta2=delta2,
+        gamma2=gamma2,
+        d=r * d,
+        r=r,
+    )
+
+
 
 def _model_c(v: np.ndarray) -> ReceptorModel:
     from ..models.extended_desens import ExtendedDesensitizationModel
@@ -373,6 +397,29 @@ MODEL_SPECS = {
             "(R <-> AR <-> A2R <-> A2O <-> A2O', A2R <-> A2D; Brief 13 Task 1). "
             "Cooperativity factor c = koff / koff2. At c = 1 (log10_c = 0), reduces exactly "
             "to kinetic_two_open. Strictly nests kinetic_two_open."
+        ),
+    ),
+    "kinetic_three_open": ModelSpec(
+        name="kinetic_three_open",
+        param_names=(
+            "log10_kd", "log10_E", "log10_D", "log10_r",
+            "log10_koff", "log10_alpha", "log10_delta", "log10_gamma", "log10_c",
+            "log10_delta2", "log10_gamma2",
+        ),
+        bounds=(
+            (-1.0, 4.0), (-2.0, 3.0), (-3.0, 3.0), (-5.0, 1.0),
+            (-3.0, 2.0), (-2.0, 2.0), (-3.0, 3.0), (-3.0, 3.0), (-3.0, 3.0),
+            (-5.0, 3.0), (-3.0, 3.0),
+        ),
+        factory=_model_three_open,
+        conventions=(),
+        nests=("kinetic_coop",),
+        note=(
+            "7-state model with binding cooperativity and three sequential open conducting states "
+            "(R <-> AR <-> A2R <-> A2O <-> A2O' <-> A2O'', A2R <-> A2D; Brief 18). "
+            "Observable is the sum of A2O, A2O', and A2O''. "
+            "In the limit delta2 -> 0 (log10_delta2 <= -5), reduces exactly to kinetic_coop. "
+            "Strictly nests kinetic_coop."
         ),
     ),
 }

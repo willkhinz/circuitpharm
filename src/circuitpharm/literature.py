@@ -82,9 +82,12 @@ SOURCES = {
         prep="HEK293, excised outside-out patch, -70 and +70 mV",
         temp_c="21 +/- 1",
         err_kind="UNSTATED",
-        note=("The paper states NO error convention. SEM is the journal's usual and the "
-              "same group's 2010 paper declares SEM, but this one does not, so every "
-              "error bar below is recorded UNSTATED rather than assumed."),
+        note=("Full text read via PMC (PMC2213567). The paper states NO error convention. "
+              "SEM is the journal's usual and the same group's 2010 paper declares SEM, but "
+              "this one does not, so every error bar below is recorded UNSTATED rather than "
+              "assumed. Full text explicitly reports that GABA-gated bursts require three shut "
+              "and three open components for M-mode (10 patches) and two shut and three open "
+              "states for H-mode (5 patches) in rat alpha1beta2gamma2S."),
     ),
     "keramidas2010": Source(
         key="keramidas2010",
@@ -299,6 +302,8 @@ class OpenTimeFit:
     areas: tuple
     n_patches: str
     err_kind: str
+    where: str = "full text"
+    note: str = ""
 
 
 OPEN_TIME_FITS = (
@@ -308,6 +313,11 @@ OPEN_TIME_FITS = (
         conditioning="WITHIN bursts, medium-P_o gating mode (11 of ~15 patches)",
         taus_ms=(0.49, 2.58, 5.17), tau_errs=(0.02, 0.09, 0.38),
         areas=(0.26, 0.49, 0.25), n_patches="10", err_kind="UNSTATED",
+        where="full text (Table III and p. 172)",
+        note=("Full text read (PMC2213567). Reports three shut and three open components "
+              "to describe M-Mode activation (10 patches): 'GABA-gated bursts required three "
+              "shut and three open components to adequately describe M-Mode activation "
+              "(… = 10 patches). This is the same number of components reported for αβγGABARs.'"),
     ),
     OpenTimeFit(
         label="Keramidas 2008 H-Mode", source_key="keramidas2008",
@@ -315,6 +325,10 @@ OPEN_TIME_FITS = (
         conditioning="WITHIN bursts, high-P_o gating mode (5 patches)",
         taus_ms=(0.59, 4.22, 13.2), tau_errs=(0.11, 0.73, 2.6),
         areas=(0.18, 0.41, 0.41), n_patches="5", err_kind="UNSTATED",
+        where="full text (Table III and abstract)",
+        note=("Full text read (PMC2213567). Reports two shut and three open states "
+              "for high-P_o mode: 'the high P_o mode (~0.9) was characterized by "
+              "two shut and three open states.'"),
     ),
     OpenTimeFit(
         label="Li 2008 / Li 2007b control", source_key="li2008",
@@ -322,6 +336,8 @@ OPEN_TIME_FITS = (
         conditioning="WITHIN clusters (intracluster), 50 uM GABA is SUB-SATURATING",
         taus_ms=(0.28, 3.0, 7.3), tau_errs=(0.05, 0.7, 3.2),
         areas=(0.22, 0.65, 0.13), n_patches="4", err_kind="SD",
+        where="full text",
+        note="",
     ),
 )
 
@@ -528,6 +544,14 @@ OTHER = (
          n="3 to 8", source_key="dixon2014", receptor="alpha1beta2gamma2L",
          prep="HEK293, outside-out", where="Table 1",
          note="The 2 uM figure counts only bursts with >=2 events."),
+    dict(quantity="intraburst open dwell-time components, M-mode",
+         value="tau_O = (0.49, 2.58, 5.17) ms, areas = (0.26, 0.49, 0.25)",
+         n="10 patches", source_key="keramidas2008", receptor="alpha1beta2gamma2S",
+         prep="HEK293, outside-out excised patch, 10 mM GABA", where="full text (Table III and p. 172)",
+         note=("Three open components required within bursts. Verbatim: 'GABA-gated bursts "
+               "required three shut and three open components to adequately describe M-Mode "
+               "activation (… = 10 patches). This is the same number of components reported "
+               "for αβγGABARs.' Error convention UNSTATED.")),
 )
 
 

@@ -523,8 +523,8 @@ def main():
     parser.add_argument(
         "--schemes",
         nargs="+",
-        default=["kinetic_jw95_free_rates", "kinetic_two_open", "kinetic_coop"],
-        help="Schemes to evaluate (default: kinetic_jw95_free_rates kinetic_two_open kinetic_coop).",
+        default=["kinetic_two_open", "kinetic_coop", "kinetic_three_open"],
+        help="Schemes to evaluate (default: kinetic_two_open kinetic_coop kinetic_three_open).",
     )
     parser.add_argument(
         "--mot-mode",
@@ -573,13 +573,38 @@ def main():
             v_coop_b14_j = np.array([2.438, -0.071, 1.381, -1.825, 1.937, 1.333, -1.082, -1.483, 2.981])
             v_coop_5way = np.array([2.7420, -0.0828, 1.3951, -1.8619, 2.2637, 0.2393, -1.1410, -1.5737, 3.3895])
 
+            def _clip(v_in, b_in):
+                lo = np.array([b[0] for b in b_in], dtype=float)
+                hi = np.array([b[1] for b in b_in], dtype=float)
+                return np.clip(v_in, lo, hi)
+
             warm_starts = {
-                "deact": [nesting_embedding(spec_sub, spec, v_two_opt_d), v_coop_b14_m],
-                "crc": [nesting_embedding(spec_sub, spec, v_two_opt_c), v_coop_b14_m],
-                "joint": [nesting_embedding(spec_sub, spec, v_two_opt_j), v_coop_b14_j, v_coop_5way],
-                "minimax": [nesting_embedding(spec_sub, spec, v_two_opt_m), v_coop_b14_m, v_coop_5way],
+                "deact": [nesting_embedding(spec_sub, spec, _clip(v_two_opt_d, spec_sub.bounds)), v_coop_b14_m],
+                "crc": [nesting_embedding(spec_sub, spec, _clip(v_two_opt_c, spec_sub.bounds)), v_coop_b14_m],
+                "joint": [nesting_embedding(spec_sub, spec, _clip(v_two_opt_j, spec_sub.bounds)), v_coop_b14_j, v_coop_5way],
+                "minimax": [nesting_embedding(spec_sub, spec, _clip(v_two_opt_m, spec_sub.bounds)), v_coop_b14_m, v_coop_5way],
             }
             print(f"[{scheme}] Warm-starting from kinetic_two_open optima via nesting_embedding (c = 1.0) and cooperativity islands...", flush=True)
+        elif scheme == "kinetic_three_open" and "kinetic_coop" in results:
+            spec_sub = MODEL_SPECS["kinetic_coop"]
+            res_sub = results["kinetic_coop"]
+            v_coop_opt_j = res_sub["joint_opt"]["vector"]
+            v_coop_opt_m = res_sub["minimax_opt"]["vector"]
+            v_coop_opt_d = res_sub["deact_opt"]["vector"]
+            v_coop_opt_c = res_sub["crc_opt"]["vector"]
+
+            def _clip(v_in, b_in):
+                lo = np.array([b[0] for b in b_in], dtype=float)
+                hi = np.array([b[1] for b in b_in], dtype=float)
+                return np.clip(v_in, lo, hi)
+
+            warm_starts = {
+                "deact": [nesting_embedding(spec_sub, spec, _clip(v_coop_opt_d, spec_sub.bounds))],
+                "crc": [nesting_embedding(spec_sub, spec, _clip(v_coop_opt_c, spec_sub.bounds))],
+                "joint": [nesting_embedding(spec_sub, spec, _clip(v_coop_opt_j, spec_sub.bounds))],
+                "minimax": [nesting_embedding(spec_sub, spec, _clip(v_coop_opt_m, spec_sub.bounds))],
+            }
+            print(f"[{scheme}] Warm-starting from kinetic_coop optima via nesting_embedding (delta2 -> 0)...", flush=True)
 
         res = fit_joint_fiveway(
             spec,
@@ -611,6 +636,28 @@ def main():
         print("[NESTING ASSERTION PASSED] kinetic_coop objective values strictly bounded by kinetic_two_open optimum.")
         print(f"  * obj_natural_joint:   coop {obj_j_coop:.6f} <= two_open {obj_j_two:.6f}")
         print(f"  * obj_fiveway_minimax: coop {obj_m_coop:.6f} <= two_open {obj_m_two:.6f}")
+        print("=" * 80 + "\n", flush=True)
+
+    # Enforce Nesting Assertion for kinetic_three_open from kinetic_coop
+    if "kinetic_three_open" in results and "kinetic_coop" in results:
+        res_three = results["kinetic_three_open"]
+        res_coop = results["kinetic_coop"]
+
+        obj_j_three = res_three["joint_opt_val"]
+        obj_j_coop = res_coop["joint_opt_val"]
+        assert obj_j_three <= obj_j_coop + 1e-4, (
+            f"Nesting violation (obj_natural_joint): three_open ({obj_j_three:.6f}) > coop ({obj_j_coop:.6f})"
+        )
+
+        obj_m_three = res_three["minimax_opt_val"]
+        obj_m_coop = res_coop["minimax_opt_val"]
+        assert obj_m_three <= obj_m_coop + 1e-4, (
+            f"Nesting violation (obj_fiveway_minimax): three_open ({obj_m_three:.6f}) > coop ({obj_m_coop:.6f})"
+        )
+        print("\n" + "=" * 80)
+        print("[NESTING ASSERTION PASSED] kinetic_three_open objective values strictly bounded by kinetic_coop optimum.")
+        print(f"  * obj_natural_joint:   three_open {obj_j_three:.6f} <= coop {obj_j_coop:.6f}")
+        print(f"  * obj_fiveway_minimax: three_open {obj_m_three:.6f} <= coop {obj_m_coop:.6f}")
         print("=" * 80 + "\n", flush=True)
 
     print("\n" + "=" * 80)
@@ -647,7 +694,7 @@ def main():
         elif res_dof == 0:
             print("  * NOTE: Fit is EXACTLY SATURATED (residual dof = 0). This is an existence result, not a test.")
         elif res_dof < 0:
-            print(f"  * NOTE: Fit is OVERPARAMETERIZED (residual dof = {res_dof} < 0).")
+            print(f"  * NOTE: Fit is OVERPARAMETERIZED (residual dof = {res_dof} < 0). Fits with residual dof <= 0 cannot serve as statistical tests; they evaluate parameter saturation.")
 
         print(f"  * Five-Way Minimax Optimum worst residual: {ev_mini['max_violation'] * 3.0:.2f} sigma")
         print(f"  * Natural Joint Optimum worst residual: {ev_joint['max_violation'] * 3.0:.2f} sigma")
@@ -663,11 +710,14 @@ def main():
             print(f"  * Minimum minimax violation factor: {min_viol:.2f}x beyond 3-sigma threshold")
             print(f"  * At best compromise: max residual = {min_viol * 3.0:.2f} sigma")
 
-        if scheme == "kinetic_coop":
+        if scheme in ("kinetic_coop", "kinetic_three_open"):
             m_opt = spec.factory(ev_mini["vector"])
             print(f"  * Cooperativity factor c (minimax opt): {m_opt.c:.4f} (log10_c = {np.log10(m_opt.c):.4f})")
             print(f"  * koff: {m_opt.koff:.6f} ms^-1, koff2: {m_opt.koff2:.6f} ms^-1")
             print(f"  * Mean open time: {ev_mini['mot_ms']:.3f} ms (Keramidas Table III M-mode band: [{MOT_BAND_LO}, {MOT_BAND_HI}] ms)")
+            print(f"  * Hill slope n_H: {ev_mini['hill_meas']:.3f} (z_nH = {ev_mini['z_hill']:+.2f} sigma vs target 2.2 +/- 0.4)")
+            if scheme == "kinetic_three_open":
+                print(f"  * delta2: {m_opt.delta2:.6f} ms^-1, gamma2: {m_opt.gamma2:.6f} ms^-1")
     print("=" * 80 + "\n")
 
 
