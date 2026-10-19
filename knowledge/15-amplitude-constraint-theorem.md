@@ -1,7 +1,7 @@
 # Theorem — Fast Deactivation Amplitude Constraint in Single-Open Schemes
 
-**Status:** Mathematical Proof & Empirical Verification across declared parameter boxes.  
-**Branch:** `claude/agent-brief-17`  
+**Status:** Mathematical Proof (Steps 1–5: spectral bounds and weight ratios; Step 6: non-positivity on the reachable cone and exact equilibrium secular identity) & Empirical Verification (two-open relief and 8D parameter sweep).  
+**Branch:** `claude/agent-brief-19`  
 **Date:** 2026-10-18  
 
 ---
@@ -217,15 +217,16 @@ Q.E.D.
 
 ---
 
-## 4. Why Two Open States Break the Constraint
+## 4. Conjecture with Numerical Support: Why Two Open States Can Break the Constraint
 
-In a scheme with two conducting open states (`kinetic_two_open`), the conducting manifold consists of both $A2O$ and $A2O'$:
+In a scheme with two conducting open states (`kinetic_two_open`), the conducting manifold consists of two states, $A2O$ and $A2O'$:
 $$A2R \xrightleftharpoons[\alpha]{\beta} A2O \xrightleftharpoons[\gamma]{\delta} A2O'$$
-The observable channel current is the sum of projections onto both states:
+The observable channel current is the sum of projections onto both open states:
 $$\text{amp}_k = \sum_{j \in \mathcal{D}} \left( w_j^{(O_1)} + w_j^{(O_2)} \right) p_j(0)$$
-where $w_j^{(O_1)}$ and $w_j^{(O_2)}$ have different spatial phases along the 4-state chain $\{A2D, A2R, A2O, A2O'\}$.
-Because $A2O'$ is downstream of $A2O$, the mode amplitude receives constructive interference from $u^{(1)}_{A2O} + u^{(1)}_{A2O'}$.
-This removes the single-leaf oscillation constraint and enables $a_1 = +1.116 > +0.57$ without mode cancellation pathology.
+
+**Empirical Fact:** Numerical optimization confirms that `kinetic_two_open` breaks the single-open non-positivity constraint, achieving $a_1 = +1.116 > +0.57$ while satisfying the well-conditioned fit admissibility criterion (Table 5).
+
+**Conjecture with Numerical Support:** The hypothesized physical mechanism is that the two conducting states occupy distinct spatial positions along the 4-state chain $\{A2D, A2R, A2O, A2O'\}$. Because the extremal eigenvector $u^{(1)}$ alternates in sign along the chain, projecting onto a two-dimensional conducting subspace rather than a single leaf allows constructive spatial interference between $u^{(1)}_{A2O}$ and $u^{(1)}_{A2O'}$. This removes the single-leaf sign-definiteness constraint. This mechanism is a conjecture supported by numerical parameter search; no general analytical theorem for multi-open conducting manifolds is claimed here.
 
 ---
 
