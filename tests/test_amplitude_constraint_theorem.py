@@ -1,4 +1,4 @@
-"""Executable mathematical assertions mirroring the Amplitude Constraint Theorem (Brief 17).
+"""Executable mathematical assertions mirroring the Amplitude Constraint Theorem (Brief 17 & 19).
 
 See `knowledge/15-amplitude-constraint-theorem.md` for the full theorem and derivation.
 
@@ -11,6 +11,10 @@ Mirrors every key mathematical step as an executable unit test:
 6. Open-state desensitisation exact formulas: both neighboring shut states carry negative weights.
 7. Reachable initial occupancy constraint: a_1 <= 0 across randomized parameter vectors and pulses.
 8. Two-open relief: kinetic_two_open breaks the single-open constraint and exceeds 0.57.
+9. Duhamel cone impulse response negativity: rho(u) @ w = w_A2R * exp(lambda_1 * u) < 0 for all u >= 0 (JW95 & open-desens).
+10. Exact equilibrium secular bracket identity: [beta/(|lambda_1|-alpha) + d/(|lambda_1|-r) - 1] = -2*koff/|lambda_1| < 0.
+11. Exact open-desens equilibrium secular identity: [1 - alpha/(|lambda_1|-(2koff+beta)) - d/(|lambda_1|-r)] = -(2koff/|lambda_1|)*(alpha/(|lambda_1|-(2koff+beta))) < 0.
+12. Transient scalar dissipative ODE: z(t) = w @ p_D(t) satisfies z_dot = lambda_1 * z + w_A2R * sigma(t) <= 0.
 """
 from __future__ import annotations
 
@@ -246,3 +250,166 @@ def test_two_open_states_relieves_constraint():
     res = maximize_admissible_a1_for_scheme(spec, [1.0], n_samples=100, n_polish=2, seed=42)
     max_a1 = res[1.0]["a1"]
     assert max_a1 > 0.57, f"kinetic_two_open max a1 {max_a1} must exceed published target 0.57"
+
+
+def test_duhamel_cone_impulse_response_negativity_jw95():
+    """Verify that rho(u) @ w = w_A2R * exp(lambda_1 * u) < 0 for all ages u >= 0 in JW95."""
+    np.random.seed(111)
+    for _ in range(50):
+        r = float(10 ** np.random.uniform(-4, 1))
+        d = float(10 ** np.random.uniform(-3, 3))
+        alpha = float(10 ** np.random.uniform(-2, 2))
+        beta = float(10 ** np.random.uniform(-2, 2))
+        koff = float(10 ** np.random.uniform(-3, 2))
+
+        B = np.array([
+            [-r, r, 0.0],
+            [d, -(2.0 * koff + beta + d), beta],
+            [0.0, alpha, -alpha],
+        ], dtype=float)
+        pi = np.array([d / r, 1.0, beta / alpha], dtype=float)
+        D = np.diag(np.sqrt(pi))
+        H = D @ B @ np.linalg.inv(D)
+        eigvals, U = np.linalg.eigh(H)
+        lam1 = float(eigvals[0])
+        u1 = U[:, 0]
+        w = np.sqrt(pi[2] / pi) * u1[2] * u1
+
+        e_gate = np.array([0.0, 1.0, 0.0], dtype=float)
+        for u in [0.0, 0.0001, 0.001, 0.01]:
+            rho_u = e_gate @ la.expm(B * u)
+            amp = float(np.dot(rho_u, w))
+            expected = float(w[1] * np.exp(lam1 * u))
+            assert expected < 0.0, "Expected amplitude must be strictly negative"
+            assert np.isclose(amp, expected, rtol=1e-7, atol=1e-9)
+            if expected < -1e-12:
+                assert amp < 0.0, f"Impulse response amp {amp} must be strictly negative"
+            else:
+                assert amp <= 1e-14
+
+
+def test_duhamel_cone_impulse_response_negativity_open_desens():
+    """Verify that rho(u) @ w = w_A2R * exp(lambda_1 * u) < 0 for all ages u >= 0 in open desens."""
+    np.random.seed(222)
+    for _ in range(50):
+        r = float(10 ** np.random.uniform(-4, 1))
+        d = float(10 ** np.random.uniform(-3, 3))
+        alpha = float(10 ** np.random.uniform(-2, 2))
+        beta = float(10 ** np.random.uniform(-2, 2))
+        koff = float(10 ** np.random.uniform(-3, 2))
+
+        # States: A2R (0), A2O (1), A2D (2)
+        B = np.array([
+            [-(2.0 * koff + beta), beta, 0.0],
+            [alpha, -(alpha + d), d],
+            [0.0, r, -r],
+        ], dtype=float)
+        pi = np.array([1.0, beta / alpha, (beta / alpha) * (d / r)], dtype=float)
+        D = np.diag(np.sqrt(pi))
+        H = D @ B @ np.linalg.inv(D)
+        eigvals, U = np.linalg.eigh(H)
+        lam1 = float(eigvals[0])
+        u1 = U[:, 0]
+        w = np.sqrt(pi[1] / pi) * u1[1] * u1
+
+        e_gate = np.array([1.0, 0.0, 0.0], dtype=float)
+        for u in [0.0, 0.0001, 0.001, 0.01]:
+            rho_u = e_gate @ la.expm(B * u)
+            amp = float(np.dot(rho_u, w))
+            expected = float(w[0] * np.exp(lam1 * u))
+            assert expected < 0.0, "Expected open-desens amplitude must be strictly negative"
+            assert np.isclose(amp, expected, rtol=1e-7, atol=1e-9)
+            if expected < -1e-12:
+                assert amp < 0.0, f"Open desens impulse response amp {amp} must be strictly negative"
+            else:
+                assert amp <= 1e-14
+
+
+def test_equilibrium_secular_bracket_identity_jw95():
+    """Verify exact algebraic secular identity beta/(|lam1|-alpha) + d/(|lam1|-r) - 1 = -2*koff/|lam1|."""
+    np.random.seed(333)
+    for _ in range(50):
+        r = float(10 ** np.random.uniform(-4, 1))
+        d = float(10 ** np.random.uniform(-3, 3))
+        alpha = float(10 ** np.random.uniform(-2, 2))
+        beta = float(10 ** np.random.uniform(-2, 2))
+        koff = float(10 ** np.random.uniform(-3, 2))
+
+        B = np.array([
+            [-r, r, 0.0],
+            [d, -(2.0 * koff + beta + d), beta],
+            [0.0, alpha, -alpha],
+        ], dtype=float)
+        pi = np.array([d / r, 1.0, beta / alpha], dtype=float)
+        D = np.diag(np.sqrt(pi))
+        H = D @ B @ np.linalg.inv(D)
+        eigvals = np.linalg.eigvalsh(H)
+        lam1 = float(eigvals[0])
+        s = -lam1
+
+        bracket = beta / (s - alpha) + d / (s - r) - 1.0
+        secular_rhs = -2.0 * koff / s
+        assert np.isclose(bracket, secular_rhs, rtol=1e-8, atol=1e-9)
+        assert bracket < 0.0, "JW95 equilibrium bracket must be strictly negative"
+
+
+def test_equilibrium_secular_bracket_identity_open_desens():
+    """Verify open-desens secular identity: 1 - alpha/(s - (2koff+beta)) - d/(s - r) = -(2koff/s)*(alpha/(s - (2koff+beta)))."""
+    np.random.seed(444)
+    for _ in range(50):
+        r = float(10 ** np.random.uniform(-4, 1))
+        d = float(10 ** np.random.uniform(-3, 3))
+        alpha = float(10 ** np.random.uniform(-2, 2))
+        beta = float(10 ** np.random.uniform(-2, 2))
+        koff = float(10 ** np.random.uniform(-3, 2))
+
+        B = np.array([
+            [-(2.0 * koff + beta), beta, 0.0],
+            [alpha, -(alpha + d), d],
+            [0.0, r, -r],
+        ], dtype=float)
+        pi = np.array([1.0, beta / alpha, (beta / alpha) * (d / r)], dtype=float)
+        D = np.diag(np.sqrt(pi))
+        H = D @ B @ np.linalg.inv(D)
+        eigvals = np.linalg.eigvalsh(H)
+        lam1 = float(eigvals[0])
+        s = -lam1
+
+        bracket = 1.0 - alpha / (s - (2.0 * koff + beta)) - d / (s - r)
+        secular_rhs = -(2.0 * koff / s) * (alpha / (s - (2.0 * koff + beta)))
+        assert np.isclose(bracket, secular_rhs, rtol=1e-8, atol=1e-9)
+        assert bracket < 0.0, "Open desens equilibrium bracket must be strictly negative"
+
+
+def test_transient_scalar_dissipative_ode_identity():
+    """Verify that z(t) = w @ p_D(t) satisfies the dissipative ODE z_dot = lam1 * z + w_A2R * sigma(t) <= 0."""
+    from scipy.integrate import solve_ivp
+    kon = 15.0; koff = 2.0; alpha = 60.0; beta = 180.0; d = 5.0; r = 0.5; g = 10.0
+    Q = np.zeros((5, 5))
+    Q[0, 1] = 2 * kon * g; Q[0, 0] = -Q[0, 1]
+    Q[1, 0] = koff; Q[1, 2] = kon * g; Q[1, 1] = -(Q[1, 0] + Q[1, 2])
+    Q[2, 1] = 2 * koff; Q[2, 3] = beta; Q[2, 4] = d; Q[2, 2] = -(Q[2, 1] + Q[2, 3] + Q[2, 4])
+    Q[3, 2] = alpha; Q[3, 3] = -alpha
+    Q[4, 2] = r; Q[4, 4] = -r
+
+    B = np.array([
+        [-r, r, 0.0],
+        [d, -(2 * koff + beta + d), beta],
+        [0.0, alpha, -alpha]
+    ])
+    pi = np.array([d / r, 1.0, beta / alpha])
+    D = np.diag(np.sqrt(pi))
+    H = D @ B @ np.linalg.inv(D)
+    eigvals, U = np.linalg.eigh(H)
+    lam1 = float(eigvals[0])
+    u1 = U[:, 0]
+    w = np.sqrt(pi[2] / pi) * u1[2] * u1
+
+    def rhs(t, y):
+        return y @ Q
+
+    sol = solve_ivp(rhs, (0, 0.05), [1.0, 0, 0, 0, 0], t_eval=np.linspace(0.0005, 0.05, 100), rtol=1e-10, atol=1e-12)
+    pD = np.array([sol.y[4], sol.y[2], sol.y[3]])
+    z = np.dot(w, pD)
+    assert np.all(z < 0.0), f"All transient mode 1 amplitudes must be strictly negative, max was {np.max(z)}"
+
