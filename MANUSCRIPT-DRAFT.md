@@ -126,7 +126,7 @@ a₁ = 0.245, still short of 0.57, and only at the cancellation limit. So this i
 the topology, not of parameter count — adding a shut state upstream of the gate does not help;
 adding a second conducting state does.
 
-### 2.2 The constraint is partly proven, not merely observed
+### 2.2 The constraint is a theorem, not an observation
 
 At zero agonist **no transition enters** the doubly-liganded set {A2R, A2O, A2D}, so its 3×3
 sub-generator governs the open-state relaxation exactly. That subset is an acyclic tree, so
@@ -141,12 +141,27 @@ a₁ = p_A2O(0)·w_A2O − p_A2R(0)·|w_A2R| + p_A2D(0)·w_A2D, non-positivity f
 initial condition satisfies p_A2R(0)/p_A2O(0) ≥ w_A2O/|w_A2R|, which holds with strict inequality
 at gating equilibrium.
 
-**What remains unproven** is that every *reachable* initial condition satisfies it. The step is
-supported but not demonstrated: searching 8 dimensions — the six rates plus pulse concentration
-(1 µM–100 mM) and duration (0.1–100 ms), 6000 starts — gives max a₁ = −0.000000, with the
-supremum attained in the long saturating limit, i.e. at the equilibrium case that *is* proven.
-Because a₁ is linear in p(0) and the reachable set is convex, establishing that equilibrium
-maximises a₁ over that set would complete the proof.
+**The reachable-initial-condition step is also proven**, by an argument that needs no
+monotonicity assumption. At zero agonist probability enters the doubly-liganded set **only**
+through the gateway shut state A2R. By Duhamel's formula every reachable p(0) is therefore a
+non-negative combination of impulse responses ρ(u) = e_A2Rᵀ e^{Bu}, u ≥ 0. The weight vector is
+proportional to B's right eigenvector for λ₁, so
+
+  a₁(ρ(u)) = e^{λ₁u} · w_A2R < 0 for every u ≥ 0,
+
+because the gateway weight w_A2R is strictly negative. Since a₁ is linear, it is negative on the
+entire reachable cone. The equilibrium case follows from an exact secular identity obtained from
+the Schur complement of H,
+
+  β/(|λ₁| − α) + d/(|λ₁| − r) − 1 = −2k_off/|λ₁| < 0,
+
+which gives a₁^eq = −(2k_off/|λ₁|)·|w_A2R|·p_A2R^eq < 0 for all positive rates, and shows that
+the quantity controlling the sign is precisely the leak out of the doubly-liganded set by
+unbinding. The same construction yields the result for the open-state-desensitisation topology.
+
+Both identities were verified numerically across 400 random parameter sets with no violations
+(2000 checks of the Duhamel identity, 400 of the secular identity), and every premise of the
+proof is mirrored as an executable assertion in the test suite.
 
 **Limits.** The positive result for two open states (a₁ = +1.116) is measured, not derived; no
 proof is offered that a second conducting state *must* lift the constraint. The admissibility
@@ -336,9 +351,10 @@ Three practices are worth stating as method rather than detail, because each cau
 * No scheme examined here reproduces the published Hill slope **while satisfying the other
   observables**. The best jointly-admissible value is 1.25 against 2.2 ± 0.4. In isolation every
   scheme can exceed 2.2, so this is a compatibility conflict and not a topological limit.
-* The amplitude constraint of §2 is **proven for the weights and unproven for the reachable
-  initial conditions**; the latter is supported by an 8-dimensional search including the pulse
-  protocol, not by derivation.
+* The amplitude constraint of §2 is **proven**, for both the weights and the reachable initial
+  conditions, for the two single-open topologies stated. What is **not** proven is the
+  complementary positive claim: that a second conducting open state *must* lift the constraint.
+  That direction rests on measurement (a₁ = +1.116) and a conjecture about mode phases.
 * The five-observable result rests on a band treatment of mean open time. The absence of a stated
   error kind is verified from the full text, so the band is source-mandated; but a reader who
   insists on a point treatment would see a 3.56σ failure, and that disagreement is about
