@@ -8,6 +8,12 @@ from .extended_desens import ExtendedDesensitizationModel
 from .kinetic_flip import KineticFlipModel
 from .kinetic_two_open import KineticTwoOpenModel
 from .kinetic_coop import KineticCoopModel
+from .kinetic_three_open import (
+    KineticThreeOpenModel,
+    KineticThreeOpenParallelModel,
+    OPEN_INDICES_7,
+    STATES_7,
+)
 
 __all__ = [
     "JAHN1997_SLOPE_WINDOW_REL",
@@ -21,5 +27,9 @@ __all__ = [
     "KineticFlipModel",
     "KineticTwoOpenModel",
     "KineticCoopModel",
+    "KineticThreeOpenModel",
+    "KineticThreeOpenParallelModel",
+    "OPEN_INDICES_7",
+    "STATES_7",
 ]
 
