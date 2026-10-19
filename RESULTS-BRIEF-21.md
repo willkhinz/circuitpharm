@@ -167,3 +167,36 @@ If and when real digitised figure images are provided and ingested:
 1. The synthetic flag on `BARBERIS2007_DEACT` and `JAHN1997_PEAK_CRC` will switch from `True` to `False`, eliminating `ProvisionalResultWarning` in point-wise checks.
 2. The self-validation gate will guarantee that digitised curves reproduce published parameters within published errors.
 3. The five-way minimax fit ($2.58\sigma$), the amplitude constraint theorem ($a_1 \le 0$), the necessity theorem, and the Hill slope ceiling ($1.18$) will remain completely intact.
+
+---
+
+## 4. Task 4 — Test Suite Verification
+
+Both test tiers were executed twice in `/Users/whinz/Biochemistry-wt-agent-brief-21` using `/Users/whinz/Biochemistry/.venv/bin/pytest` with `PYTHONPATH=src`. All tests passed on every run.
+
+### Fast Tier: `pytest -q -m "not slow"`
+Baseline on main: 631 passed.
+With Brief 21 (16 new digitisation tests in `tests/test_digitisation.py`): 647 passed.
+
+- **Run 1:**
+```
+647 passed, 32 warnings in 137.13s (0:02:17)
+```
+- **Run 2:**
+```
+647 passed, 42 warnings in 136.61s (0:02:16)
+```
+
+### Full Tier: `pytest -q`
+Baseline on main: 705 passed.
+With Brief 21: 721 passed.
+
+- **Run 1:**
+```
+721 passed, 120 warnings in 904.99s (0:15:04)
+```
+- **Run 2:**
+```
+721 passed, 137 warnings in 743.08s (0:12:23)
+```
+
