@@ -421,6 +421,40 @@ Three practices are worth stating as method rather than detail, because each cau
   carry two degrees of freedom, not three; scoring them as independent inflates χ² and was the
   source of retraction (1).
 
+## 7.1 On the status of the source data — a correction
+
+The repository marks two datasets `kind="parametric"`, `synthetic=True`, and its provisional
+gate reports that conclusions drawn from them "are not usable". I previously treated that as
+applying to the results in this paper. **It does not, and the distinction is worth stating
+precisely because it cuts the other way from how it first reads.**
+
+Traced directly: the five-observable fit scores **no synthetic array**. `JAHN1997_PEAK_CRC` is
+imported but never used in it, and neither reconstruction's point array
+(`mean_response`, `normalized_current`) is scored anywhere in that path. What the fit consumes is
+
+* the **published** deactivation components and their errors, from the literature record;
+* the **published** EC50 and n_H;
+* the paired-pulse recovery scalar, which is `kind="digitised"`, `synthetic=False`;
+* the `po_max` band, a declared convention;
+* the **published** mean open time.
+
+All real published measurements. The synthetic arrays were what weightings (i)–(iii) scored —
+and those are precisely the analyses this paper withdraws (§1.3, §6). The gate is correctly
+flagging datasets that exist in the repository and are synthetic; it is not flagging the live
+results, which do not touch them. One stale import remains in the fitting script and should be
+removed.
+
+**What digitisation would still buy**, and why it remains worth doing: an actual digitised trace
+carries information the six published parameters do not — the fit residuals and the true waveform
+shape — which would allow waveform-level analysis and an independent check that the published
+triexponential actually describes the recorded current. A pipeline for it is now in place
+(`src/circuitpharm/fitting/digitisation.py`), gated so that a dataset cannot be registered as
+non-synthetic without the source image on disk, its SHA-256, the axis calibration and the
+method, and so that any ingested curve must reproduce the published parameters within their
+errors. Retrieval of the figures was attempted and failed: Europe PMC returned HTTP 403, the PMC
+BioC API returns text without figures, the NCBI open-access service returned 404, and the Jahn
+1997 article is paywalled with no PMC copy. **No data point was manufactured in the attempt.**
+
 ## 8. What this does not establish
 
 * No scheme examined here reproduces the published Hill slope while satisfying the other
@@ -438,6 +472,9 @@ Three practices are worth stating as method rather than detail, because each cau
 * **`kinetic_coop` is consistent with five observables; it has not survived an over-determined
   test.** Under a defensible reading of the two band constraints its residual degrees of freedom
   are 0 or −1 (§3.1).
+* The source data are **published parameters, not digitised traces** (§7.1). That is sufficient
+  for every claim made here, but it means no claim rests on the recorded waveform shape, and the
+  published triexponential has not been independently checked against the current it summarises.
 * **No discriminating measurement for the cooperativity plateau has been found** (§5.1). The
   previously proposed risetime experiment does not discriminate.
 * All searches are bounded. Statements of the form "no vector was found" are not proofs of
