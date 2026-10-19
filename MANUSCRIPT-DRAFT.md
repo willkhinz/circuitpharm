@@ -279,12 +279,39 @@ criterion, and that worst residual is always the Hill slope. Cooperativity steep
 monotonically, as expected, but cannot carry it past ~1.25 without destroying mean open time and
 deactivation.
 
-**This is a joint-compatibility conflict, not a topological incapacity, and the distinction
-matters.** Maximising n_H over each scheme's parameter box with no other observable constrained
-gives: 2.93 for the three-parameter JW95 scheme, 3.92 with its rates freed, 6.16 for open-state
-desensitisation with rates freed, 10.26 for the pre-open scheme, 10.66 for two open states and
-12.06 for the cooperative scheme. **Every scheme can reach n_H = 2.2 in isolation.** None can
-reach it while simultaneously satisfying deactivation and peak open probability.
+**The ceiling has an analytic explanation, and open states cannot lift it.**
+
+The normalised concentration–response of these schemes depends **only on the binding steps**.
+If every conducting state is reached from the doubly-liganded shut state A2R, the equilibrium
+open probability is a fixed multiple of p_A2R, and that multiple is independent of agonist
+concentration; normalising it away leaves a curve determined entirely by binding. **Adding open
+states — a second, a third, in series or in parallel — therefore cannot change the Hill slope at
+all.** This is a derivation, not an observation, and it is confirmed numerically: a third
+conducting state moves n_H from 1.178 to 1.184.
+
+The achievable range is then bracketed analytically. For two **independent** identical sites with
+an all-or-none readout, the Hill slope at EC50 is
+
+  n_H = 2/(1 + 1/√2) = **4 − 2√2 ≈ 1.1716**,
+
+verified numerically to 1.17157. In the **fully cooperative** limit the two sites bind
+concertedly and n_H → **2.000** exactly. So the entire reachable interval for any two-site scheme
+of this family is (1.1716, 2.000), with cooperativity the only parameter that moves within it.
+
+Two consequences follow, and they sharpen the tension rather than resolving it.
+
+* The published 2.2 ± 0.4 has a 1σ interval of [1.8, 2.6]. The fully cooperative asymptote of
+  2.000 lies **inside** it, at −0.5σ. The measurement is therefore **not** inconsistent with a
+  two-site scheme in principle.
+* But the jointly-fitted value is **1.18** — within 0.01 of the *non-cooperative* value 1.1716,
+  despite c ≈ 1000. **The cooperativity is not being spent on the concentration–response.** The
+  deactivation and mean-open-time constraints consume it, leaving the CRC essentially where an
+  entirely non-cooperative scheme would put it.
+
+An earlier version of this section reported unconstrained maxima of 2.93 to 12.06 and concluded
+that every scheme can reach n_H = 2.2 in isolation. That is arithmetically true and
+scientifically misleading: those values are attained at EC50 values far from the measured
+11.6 ± 0.9 µM. Constraining EC50 to a physiological window collapses the maximum to ≤ 1.18.
 
 **The concentration–response steepness is therefore the irreducible tension in this model class**
 — not deactivation, not recovery, not peak open probability — and it is a conflict *between*
@@ -348,9 +375,10 @@ Three practices are worth stating as method rather than detail, because each cau
 
 ## 8. What this does not establish
 
-* No scheme examined here reproduces the published Hill slope **while satisfying the other
-  observables**. The best jointly-admissible value is 1.25 against 2.2 ± 0.4. In isolation every
-  scheme can exceed 2.2, so this is a compatibility conflict and not a topological limit.
+* No scheme examined here reproduces the published Hill slope while satisfying the other
+  observables; the best jointly-admissible value is ~1.18 against 2.2 ± 0.4. Open states cannot
+  help — that is proven. Cooperativity can, in principle, reach 2.000, which is inside the
+  published interval; it does not, because the other observables consume it.
 * The amplitude constraint of §2 is **proven**, for both the weights and the reachable initial
   conditions, for the two single-open topologies stated. What is **not** proven is the
   complementary positive claim: that a second conducting open state *must* lift the constraint.
