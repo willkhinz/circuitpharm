@@ -204,19 +204,22 @@ We tested whether conducting mono-liganded states ($AR \rightleftharpoons AR^*$)
 
 Both test tiers were executed twice sequentially on the active worktree (`claude/agent-brief-22`):
 
-### Fast Tier (`-m "not slow" -p no:randomly`)
+### Fast Tier (`PYTHONPATH=src /Users/whinz/Biochemistry/.venv/bin/pytest -q -m "not slow" -p no:randomly`)
 - **Run 1:**
-  `655 passed, 4 warnings in 29.83s`
+  `658 passed, 32 warnings in 109.14s (0:01:49)`
 - **Run 2:**
-  `655 passed, 4 warnings in 29.74s`
+  `658 passed, 32 warnings in 102.87s (0:01:42)`
 
-### Full Tier (`-p no:randomly`)
+### Full Tier (`PYTHONPATH=src /Users/whinz/Biochemistry/.venv/bin/pytest -q -p no:randomly`)
 - **Run 1:**
-  `729 passed, 4 warnings in 118.66s (0:01:58)`
+  `732 passed, 130 warnings in 811.17s (0:13:31)`
 - **Run 2:**
-  `729 passed, 4 warnings in 118.91s (0:01:58)`
+  `732 passed, 126 warnings in 831.23s (0:13:51)`
 
-All 8 new adversarial test cases in `tests/test_audit_theorems.py` and `tests/test_audit_observables_and_bounds.py` passed with 100% determinism across all runs. Zero flaky tests detected. Zero regressions against main baseline (647 fast / 721 full $\to$ 655 fast / 729 full).
+### Consistency and Regressions Check:
+Both runs of each tier produced exact matching test counts (658 fast / 732 full).
+Compared to the baseline before Brief 22 (650 fast / 724 full), both tiers increased by exactly 8 passed tests (+8 fast, +8 full) corresponding to the 8 new adversarial test cases across `tests/test_audit_theorems.py` (4 tests) and `tests/test_audit_observables_and_bounds.py` (4 tests).
+Zero failures, zero regressions, 100% green across all runs.
 
 ---
 
