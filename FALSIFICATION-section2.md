@@ -88,3 +88,70 @@ manuscript contradicted each other for five rounds and I did not notice.
 
 Until 1–3 are resolved the paper has **no established structural claim**, and the two results
 that remain intact are the methodological leverage finding and the Hill-slope bracket.
+
+---
+
+## Second falsification, same error class — the Hill-slope boundary (brief 22)
+
+**The n_H > 2.000 falsification boundary is broken**, and for exactly the reason that broke §2:
+a quantity derived in one definition, compared against a measurement made in another.
+
+The bracket (4 − 2√2, 2.000) is the **local logarithmic derivative at EC50, at equilibrium**.
+The paper reports — and Jahn 1997 measured — a slope fitted over a **finite 1–10 µM window on
+peak currents**. Those are different quantities, and the difference is not marginal. Under the
+windowed definition, unconstrained two-site models reach
+
+* `kinetic_jw95`: n_H = **2.9325**
+* `kinetic_coop`: n_H = **11.7284**
+
+both far above the supposed 2.000 ceiling. Jahn's measurement also violates **both** hypotheses
+of the bracket: peak currents are not equilibrium occupancies, and a finite-window regression is
+not a local derivative.
+
+**Consequence:** §5's claim that "a Hill slope reliably above 2.000 would exclude the entire
+two-site class" is withdrawn. So is the associated precision requirement (σ_nH ≤ 0.067). The
+bracket remains true of the quantity it describes — the equilibrium slope at EC50 — and that is
+all it may be used for.
+
+I reported this boundary as a headline falsification criterion. It was wrong.
+
+## Third defect — the abstract contradicts the body
+
+The abstract still asserts that the 10–90% risetime discriminates across the cooperativity
+plateau. §5.1 and §8 withdrew that claim after the intervals were found to overlap completely
+(minimum resolvable difference 0.00 ms). **I withdrew it in the body and left it in the
+abstract.** Corrected.
+
+## The pattern, stated plainly
+
+Three claims have now broken, and all three broke the same way:
+
+| claim | proven/derived about | compared against |
+|---|---|---|
+| §2 amplitude constraint | eigenmode amplitudes | a **fitted** amplitude |
+| §2.3 necessity | eigenmode count | **fitted** component count |
+| §5 Hill boundary | local derivative at EC50, at equilibrium | **windowed regression** on peak currents |
+
+This is one error made three times: **establishing a result about one mathematical quantity and
+testing it against a different measured quantity.** It is the same failure the paper's own
+methodological section documents — scoring a reconstruction as data — in a more abstract
+costume. The project's own `DECISION-deactivation-objective.md` names the rule that would have
+caught all three: *the model must pass through the same pipeline as the measurement.* I wrote
+that rule and then broke it three times in the same manuscript.
+
+## What survives the audit
+
+* **Theorem 2.2 as a statement about eigenmodes** — survives corner attacks: degenerate
+  eigenvalues, vanishing off-diagonals, extreme ratios (10^±6), leaf and non-leaf topologies.
+* **Theorem 2.3's necessity, restricted to admissible fits** — brief 22 reports 0 of 96 single-open
+  configurations yielding three positive well-conditioned amplitudes; every attempt failed by
+  amplitude collapse or τ coalescence. My own 3000-vector-per-scheme sweep is still running and
+  is the larger test.
+* **The fifth observable is robust to band choice** — `kinetic_coop` passes under the M-mode
+  band (2.54σ), the H-mode band (2.39σ) **and** the full modal span (2.25σ). The modal span is
+  the physically defensible choice for an ensemble measurement and removes the boundary pinning,
+  so this is now *stronger* than when it rested on the narrowest band.
+* **The leverage figures** are exact objective-function precision weights (n/σ²), not artefacts.
+* **The 203.0625 floor** is the exact profiled minimum Mahalanobis distance on the rank-2
+  2-simplex covariance — a live result, not a residue of the withdrawn sum-to-one objective.
+* A §3 discrepancy (3.28σ in text vs 3.23σ in table) is resolved: different priors, both correct.
