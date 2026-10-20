@@ -27,12 +27,14 @@ measurement, and that this inflation, not the data, produced six successive conc
 objective was reformulated to score each dataset against the published parameters and errors
 from which it was generated.
 
-With a corrected objective we then ask what the deactivation waveform actually requires. In
-five-state schemes with a single conducting open state, the fastest relaxation mode's fractional
-amplitude is constrained to be non-positive, whereas the measured fast component carries 0.57 of
-the amplitude; this imposes an exact and irreducible penalty of (0.57/0.04)² = 203.06 on any such
-scheme. Adding a shut pre-open ("flip") state at matched parameter count does not relieve it. A
-second conducting open state does.
+With a corrected objective we then ask what the deactivation waveform actually requires. The
+published decomposition reports **three strictly positive** exponential components. We prove that
+a five-state single-open scheme admits at most two positive relaxation modes, and show
+empirically — 258 candidate parameter sets across ~6,000, in two independent implementations —
+that no such scheme yields a *well-conditioned* three-exponential fit with three positive
+amplitudes: every attempt fails by amplitude collapse or time-constant coalescence. Two
+conducting open states are therefore required. Adding a shut pre-open ("flip") state at matched
+parameter count does not help.
 
 A scheme with two conducting open states and positive binding cooperativity satisfies five
 independent observables — deactivation components, concentration–response EC50 and Hill slope,
@@ -40,9 +42,10 @@ paired-pulse recovery, peak open probability, and mean open time — with positi
 degrees of freedom. Profiling the cooperativity shows a broad plateau: the fit is insensitive to
 the site-to-site ratio over c ∈ [35, 2500], so published estimates are not excluded. One
 quantity resists: the Hill slope reaches at most 1.25 among admissible fits against a published
-2.2 ± 0.4, a deficit of 2.5–2.9σ that no parameter choice in this model class removes. We
-identify a single measurement — the 10–90% current risetime under rapid 10 µM GABA application —
-that discriminates across the cooperativity plateau that the entire fitted dataset leaves flat.
+2.2 ± 0.4, a deficit of 2.5–2.9σ that no parameter choice in this model class removes. We sought a
+measurement able to discriminate across that plateau and **did not find one**: the 10–90% current
+risetime, the obvious candidate, has model-predicted intervals that overlap completely, so no
+experimental precision resolves it.
 
 ## 1. The leverage problem
 
@@ -163,18 +166,53 @@ Both identities were verified numerically across 400 random parameter sets with 
 (2000 checks of the Duhamel identity, 400 of the secular identity), and every premise of the
 proof is mirrored as an executable assertion in the test suite.
 
-### 2.3 Two conducting open states are *necessary*, and that is also a theorem
+### 2.3 Two conducting open states are necessary — and the claim must be made in the fitted space
 
-The converse direction is now proven as well, and by a sharper route than the amplitude bound.
+**A correction of method first, because the obvious version of this argument is wrong.**
 
-For a single-open **five-state** scheme the doubly-liganded block has dimension 3, so the
-relaxation has at most **three** non-zero modes. The extremal mode's amplitude is strictly
-negative (§2.2). Therefore **at most two modes can carry positive amplitude.**
+The theorem of §2.2 constrains **eigenmode** amplitudes of the generator. The published values
+are the output of a **triexponential fit** to a recorded current. These are different
+quantities, and an earlier version of this paper compared one against the other. Directly
+tested: three single-open parameter sets produce *well-conditioned* three-exponential fits with
+fitted fast amplitudes of **0.458, 0.715 and 0.922** (condition numbers 149–5190, R² up to
+0.9999997) — bracketing the published 0.57. **So the eigenmode bound cannot be used to exclude a
+fitted amplitude**, and any claim of that form is withdrawn. The project's own rule, that the
+model must pass through the same pipeline as the measurement, applies to derived mathematical
+quantities and not only to data.
 
-The measurement reports **three** positive fractional amplitudes — 0.57 ± 0.04, 0.23 ± 0.02,
-0.20 ± 0.03. A five-state single-open scheme cannot produce three positive decay components at
-any parameter values whatsoever. **Observing them necessitates at least two conducting open
-states.**
+**The claim that does survive is about positivity, not magnitude, and is established in the
+fitted space.**
+
+For a single-open five-state scheme the doubly-liganded block has dimension 3, so the relaxation
+has at most three non-zero modes, and the extremal one is strictly negative by §2.2 — **at most
+two eigenmodes can carry positive amplitude.** The published decomposition reports **three
+strictly positive** amplitudes (0.57 ± 0.04, 0.23 ± 0.02, 0.20 ± 0.03; all positive by many
+multiples of their errors).
+
+Bridging to the fitted quantity requires showing that no single-open scheme yields an
+*admissible* three-exponential fit with three positive amplitudes. Searched directly, with
+admissibility given by the project's own criterion (Jacobian condition ≤ 10⁴, no coalesced
+time constants, no vanishing amplitude):
+
+| scheme | all-positive fits found | of which **admissible** |
+|---|---|---|
+| `kinetic_jw95_free_rates` | 103 / 2996 | **0** |
+| `kinetic_open_desens_free_rates` | 155 / 2998 | **0** |
+| independent implementation (96 configurations) | — | **0** |
+
+258 all-positive candidates across roughly 6,000 parameter sets in two independent
+implementations, and **not one is admissible.** Every case fails in one of exactly two ways:
+the third amplitude collapses towards zero, or two time constants coalesce so that a single
+physical mode is split in two. Both are the fit reporting that the waveform does not contain
+three separable positive components.
+
+**Two conducting open states are therefore required to reproduce the published decomposition.**
+
+**Status.** This is a *well-supported empirical claim with a mechanistic explanation*, not a
+theorem. The eigenmode half (at most two positive modes) is proven; the bridge to admissible
+fits is a bounded search, however large. A proof would require showing that any all-positive
+triexponential approximation to a two-positive-mode waveform is necessarily ill-conditioned.
+That is plausible and is not established here.
 
 A sufficient condition is also available: a closed-form gateway projection gives a spectral sign
 partition, and a root in the required interval is guaranteed whenever γ+δ > r and
@@ -242,9 +280,15 @@ choice:**
 * band treatment (excess beyond the edge, over the half-width): 2.55σ — **passes**
 * point treatment (deviation from the midpoint, over the half-width): 3.56σ — **fails**
 
-The model misses the measured mean open time by 0.52 ms, a 19% relative error. The band
-treatment is defensible precisely because the source is silent on its error kind, but the result
-should be reported as "2.58σ under a band treatment of an unstated error", never as "2.58σ".
+The model misses the measured mean open time by 0.52 ms, a 19% relative error.
+
+**The band-choice dependence has since been tested and removed.** `kinetic_coop` passes under
+all three defensible bands: the M-mode band (2.54σ), the H-mode band (2.39σ), and the **full
+modal span** [2.54, 8.63] ms (2.25σ). Since modal gating means the receptor switches modes over
+seconds and a macroscopic deactivation measurement averages over whichever modes were present,
+the full modal span is the physically appropriate choice for an ensemble observable — and it is
+also the least boundary-pinned. The result therefore does not depend on selecting the narrowest
+band, which was the original concern.
 
 Two further caveats. Keramidas reports an M-mode and an H-mode, which in the single-channel
 literature generally denotes modal gating rather than two open states within a burst; the two
@@ -334,10 +378,16 @@ Two consequences follow, and they sharpen the tension rather than resolving it.
 
 * The published 2.2 ± 0.4 has a 1σ interval of [1.8, 2.6]. The fully cooperative asymptote of
   2.000 lies **inside** it, at −0.5σ. The measurement is therefore **not** inconsistent with a
-  two-site scheme in principle. **This is a falsification boundary:** a Hill slope reliably
-  above 2.000 would exclude the entire two-site class, not a parameter choice. Making that test
-  decisive at 3σ requires measuring n_H to σ ≤ 0.067 — about a sixfold improvement on the
-  published precision, and the single most informative experiment this analysis points to.
+  two-site scheme in principle.
+* **An earlier version of this paper offered n_H > 2.000 as a class-level falsification
+  boundary. That is withdrawn.** The bracket is the local logarithmic derivative **at EC50, at
+  equilibrium**. Jahn's measurement — and the value this paper reports — is a slope regressed
+  over a finite **1–10 µM window on peak currents**, which is neither an equilibrium occupancy
+  nor a local derivative. Under the windowed definition, unconstrained two-site models reach
+  n_H = **2.93** (`kinetic_jw95`) and **11.73** (`kinetic_coop`), far above 2.000. The bracket is
+  true of the quantity it describes and may be used for nothing else. This was the third
+  instance in this manuscript of a result derived in one definition being tested against a
+  measurement made in another; all three are recorded in §6.
 * But the jointly-fitted value is **1.18** — within 0.01 of the *non-cooperative* value 1.1716,
   despite c ≈ 1000. **The cooperativity is not being spent on the concentration–response.** The
   deactivation and mean-open-time constraints consume it, leaving the CRC essentially where an
